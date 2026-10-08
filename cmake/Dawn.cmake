@@ -21,6 +21,9 @@ nm_dawn_set(DAWN_BUILD_BENCHMARKS OFF)
 nm_dawn_set(DAWN_BUILD_FUZZERS OFF)
 nm_dawn_set(DAWN_BUILD_PROTOBUF OFF)
 nm_dawn_set(DAWN_BUILD_NODE_BINDINGS OFF)
+# Dawn's optional C++ module target cannot be generated with the Linux CI
+# compiler/CMake combination. libnoisemaker only uses the C WebGPU headers.
+nm_dawn_set(DAWN_SUPPORTS_CXX_MODULES OFF)
 nm_dawn_set(DAWN_USE_GLFW OFF)
 nm_dawn_set(DAWN_USE_X11 OFF)
 nm_dawn_set(DAWN_USE_WAYLAND OFF)

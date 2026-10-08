@@ -2,6 +2,7 @@
 #include "core/value/json.h"
 #include "core/value/js_number.h"
 #include "core/value/js_string.h"
+#include "core/value/parse_double.h"
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -108,7 +109,7 @@ double to_number(const Value& value) {
     const auto last=s.find_last_not_of(u" \t\n\r\v\f");
     std::string ascii=js_to_utf8(s.substr(first,last-first+1));
     double n=0;
-    auto parsed=std::from_chars(ascii.data(),ascii.data()+ascii.size(),n);
+    auto parsed=parse_double(ascii.data(),ascii.data()+ascii.size(),n);
     if(parsed.ec==std::errc()&&parsed.ptr==ascii.data()+ascii.size()) return n;
     if(ascii=="Infinity"||ascii=="+Infinity") return std::numeric_limits<double>::infinity();
     if(ascii=="-Infinity") return -std::numeric_limits<double>::infinity();

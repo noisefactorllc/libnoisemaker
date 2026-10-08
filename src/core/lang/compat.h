@@ -5,6 +5,7 @@
 #include "core/js/text.h"
 #include "core/value/value.h"
 #include "core/value/js_string.h"
+#include "core/value/parse_double.h"
 #include <algorithm>
 #include <charconv>
 #include <cstdlib>
@@ -35,7 +36,7 @@ public:
     double toDouble() const {
         const std::string ascii = js_to_utf8(*this);
         double value = 0;
-        const auto result = std::from_chars(ascii.data(), ascii.data() + ascii.size(), value);
+        const auto result = parse_double(ascii.data(), ascii.data() + ascii.size(), value);
         return result.ec == std::errc() ? value : 0;
     }
     std::string toStdString() const { return js_to_utf8(*this); }

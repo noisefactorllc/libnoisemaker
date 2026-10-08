@@ -1,6 +1,7 @@
 #include "core/value/json.h"
 
 #include "core/value/js_number.h"
+#include "core/value/parse_double.h"
 
 #include <algorithm>
 #include <charconv>
@@ -192,8 +193,7 @@ class Parser {
         }
         const std::string_view number = text_.substr(start, pos_ - start);
         double parsed = 0;
-        const auto [end, error] = std::from_chars(number.data(), number.data() + number.size(),
-                                                  parsed, std::chars_format::general);
+        const auto [end, error] = parse_double(number.data(), number.data() + number.size(), parsed);
         if (end != number.data() + number.size()) fail("invalid number");
         if (error == std::errc::result_out_of_range) {
             const bool negative = number.front() == '-';

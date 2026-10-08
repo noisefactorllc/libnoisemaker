@@ -62,8 +62,8 @@ jobs:
         include:
           - { name: linux-x64,       os: ubuntu-24.04,     generator: Ninja }
           - { name: linux-arm64,     os: ubuntu-24.04-arm, generator: Ninja }
-          - { name: windows-x64,     os: windows-2025,     generator: "Visual Studio 17 2022", arch: x64 }
-          - { name: windows-arm64,   os: windows-11-arm,   generator: "Visual Studio 17 2022", arch: ARM64 }
+          - { name: windows-x64,     os: windows-2025,     generator: "Visual Studio 18 2026", arch: x64 }
+          - { name: windows-arm64,   os: windows-11-arm,   generator: "Visual Studio 18 2026", arch: ARM64 }
           - { name: macos-arm64,     os: macos-15,         generator: Ninja, osx_arch: arm64 }
           - { name: macos-x86_64,    os: macos-15,         generator: Ninja, osx_arch: x86_64 }
     runs-on: ${{ matrix.os }}
@@ -78,6 +78,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "26"
+      - name: Install CMake for Visual Studio 2026
+        if: runner.os == 'Windows'
+        run: |
+          python -m pip install --upgrade cmake
+          python -m cmake --version
       - name: Install Linux packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ninja-build mesa-vulkan-drivers libvulkan1
@@ -102,9 +107,19 @@ jobs:
           args=(-S . -B build -G "${{ matrix.generator }}" -DCMAKE_BUILD_TYPE=Release)
           if [ -n "${{ matrix.arch }}" ]; then args+=(-A "${{ matrix.arch }}"); fi
           if [ -n "${{ matrix.osx_arch }}" ]; then args+=("-DCMAKE_OSX_ARCHITECTURES=${{ matrix.osx_arch }}"); fi
-          cmake "${args[@]}"
+          if [ "$RUNNER_OS" = Windows ]; then
+            python -m cmake "${args[@]}"
+          else
+            cmake "${args[@]}"
+          fi
       - name: Build
-        run: cmake --build build --config Release --parallel
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            python -m cmake --build build --config Release --parallel
+          else
+            cmake --build build --config Release --parallel
+          fi
       - name: Test
         if: matrix.osx_arch != 'x86_64'
         run: ctest --test-dir build --build-config Release --output-on-failure

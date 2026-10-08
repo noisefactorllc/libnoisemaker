@@ -1,4 +1,5 @@
 #include "obj_parser.h"
+#include "core/value/parse_double.h"
 
 
 #include <algorithm>
@@ -141,7 +142,7 @@ double jsParseFloat(std::u16string_view token) {
     }
 
     double value = 0.0;
-    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+    const auto parsed = parse_double(text.data(), text.data() + text.size(), value);
     if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size()) {
         return value;
     }
