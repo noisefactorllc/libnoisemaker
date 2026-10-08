@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+export NM_REFERENCE_ROOT="$(scripts/reference)"
+export NM_RENDER="$repo_root/build/nm-dump"
+export NM_REGISTRY_DUMP="$repo_root/build/nm-dump-registry"
+export NM_MIDI_STATE_DUMP="$repo_root/build/nm-dump-midi-state"
+export NM_AUDIO_STATE_DUMP="$repo_root/build/nm-dump-audio-state"
+export NM_OBJ_PARSER_DUMP="$repo_root/build/nm-dump-obj-parser"
+export NM_DSL="$repo_root/build/nm-dump"
+export NM_PROGRAM_STATE="$repo_root/build/nm-dump"
+export NM_JSYNTAX_DUMP="$repo_root/build/nm-dump-js-syntax"
+export NM_DIFF_EVIDENCE_DIR="$repo_root/.cache/evidence"
+
+node tools/catalog/fetch-catalog.mjs --cache .cache/catalog --offline
+node tools/catalog/check-catalog.mjs build/catalog
+node parity/check_func_bodies_differential.mjs
+node parity/check_frontend.mjs tokens ast validated expanded graph
+node parity/check_frontend.mjs validated expanded graph --isolated
+node parity/check_registry.mjs
+node parity/check_midi_state.mjs
+node parity/check_audio_state.mjs
+node parity/check_obj_parser.mjs
+node parity/check_dsl_tools.mjs
+node parity/check_program_state.mjs

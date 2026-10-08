@@ -6,7 +6,7 @@ This library is under construction. Nothing here is ready to use yet.
 
 ## Building
 
-Requirements: CMake 3.22 or later, a C++20 compiler, Python 3.12 or later, Git and Ninja (or Visual Studio 2022 on Windows).
+Requirements: CMake 3.22 or later, a C++20 compiler, Python 3.12 or later, Node.js 26, Git and Ninja (or Visual Studio 2022 on Windows).
 
     python3 tools/fetch_dawn.py
     cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

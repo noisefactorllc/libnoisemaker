@@ -4,18 +4,58 @@ on:
   push:
     branches: [main]
     paths-ignore: ["**.md", "docs/**", "LICENSE"]
+  schedule:
+    - cron: '17 4 * * 0'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  gates:
+    name: frontend parity gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build mesa-vulkan-drivers libvulkan1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/dawn
+          key: dawn-src-${{ hashFiles('third_party/dawn.lock.json') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/catalog
+          key: catalog-${{ hashFiles('parity/reference.json') }}
+      - name: Prepare Dawn
+        run: python tools/fetch_dawn.py
+      - name: Build parity driver
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target nm-dump --parallel
+      - name: Run push parity smoke
+        if: github.event_name == 'push'
+        run: |
+          export NM_REFERENCE_ROOT="$(scripts/reference)"
+          export NM_RENDER="$PWD/build/nm-dump"
+          node parity/check_frontend.mjs tokens ast --programs parity/programs/*.dsl
+      - name: Run full parity gates
+        if: github.event_name != 'push'
+        run: scripts/gates
+
   build:
     name: ${{ matrix.name }}
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +64,8 @@ jobs:
           - { name: linux-arm64,     os: ubuntu-24.04-arm, generator: Ninja }
           - { name: windows-x64,     os: windows-2025,     generator: "Visual Studio 17 2022", arch: x64 }
           - { name: windows-arm64,   os: windows-11-arm,   generator: "Visual Studio 17 2022", arch: ARM64 }
-          - { name: macos-universal, os: macos-15,         generator: Ninja, osx_arch: "arm64;x86_64" }
+          - { name: macos-arm64,     os: macos-15,         generator: Ninja, osx_arch: arm64 }
+          - { name: macos-x86_64,    os: macos-15,         generator: Ninja, osx_arch: x86_64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
@@ -34,6 +75,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
       - name: Install Linux packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ninja-build mesa-vulkan-drivers libvulkan1
@@ -44,6 +88,10 @@ jobs:
         with:
           path: .cache/dawn
           key: dawn-src-${{ hashFiles('third_party/dawn.lock.json') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/catalog
+          key: catalog-${{ hashFiles('parity/reference.json') }}
       - name: Fetch Dawn
         run: python tools/fetch_dawn.py
       - name: Tool tests
@@ -58,10 +106,8 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
       - name: Test
+        if: matrix.osx_arch != 'x86_64'
         run: ctest --test-dir build --build-config Release --output-on-failure
-      - name: Test the x86_64 slice under Rosetta
-        if: runner.os == 'macOS'
-        run: |
-          arch -x86_64 /usr/bin/true
-          arch -x86_64 build/tests/test_device
-          arch -x86_64 build/tests/test_context
+      - name: Test under Rosetta
+        if: matrix.osx_arch == 'x86_64'
+        run: arch -x86_64 ctest --test-dir build --build-config Release --output-on-failure
