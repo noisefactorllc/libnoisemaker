@@ -1,0 +1,9 @@
+/build*/
+/.cache/
+/parity/out/
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+docs/superpowers/
+docs/plans/
