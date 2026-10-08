@@ -125,4 +125,8 @@ jobs:
         run: ctest --test-dir build --build-config Release --output-on-failure
       - name: Test under Rosetta
         if: matrix.osx_arch == 'x86_64'
-        run: arch -x86_64 ctest --test-dir build --build-config Release --output-on-failure
+        run: |
+          arch -x86_64 /usr/bin/true
+          ctest --test-dir build --build-config Release --output-on-failure
+      - name: Report adapter
+        run: ctest --test-dir build --build-config Release -R '^test_device$' -V

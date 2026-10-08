@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -68,7 +69,14 @@ let sourceReady = false
 try { sourceReady = (await readFile(sourceStamp, 'utf8')).trim() === lock.commit } catch {}
 if (!sourceReady) {
   if (offline) throw new Error(`pinned shader source is absent from cache: ${sourceCache}`)
-  const reference = execFileSync(join(root, 'scripts/reference'), { encoding: 'utf8' }).trim()
+  const reference = resolve(process.env.NM_REFERENCE_ROOT || join(root, '.cache/reference'))
+  if (!existsSync(join(reference, '.git'))) {
+    await mkdir(dirname(reference), { recursive: true })
+    execFileSync('git', ['clone', '--filter=blob:none', '--no-checkout', lock.repository, reference], { stdio: 'inherit' })
+    execFileSync('git', ['-C', reference, 'checkout', '--detach', lock.commit], { stdio: 'inherit' })
+  }
+  const actual = execFileSync('git', ['-C', reference, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+  if (actual !== lock.commit) throw new Error(`reference checkout is ${actual}; expected ${lock.commit}`)
   const sourceRoot = join(reference, 'shaders/effects')
   await rm(sourceCache, { recursive: true, force: true })
   async function copyShaders (relative = '') {
