@@ -15,10 +15,18 @@ add_library(noisemaker_gpu STATIC src/gpu/device.cpp)
 target_include_directories(noisemaker_gpu PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(noisemaker_gpu PUBLIC dawn::webgpu_dawn)
 
-add_library(noisemaker_core STATIC src/capi/error.cpp)
+add_library(noisemaker_core STATIC
+  src/capi/error.cpp
+  src/core/value/js_string.cpp
+  src/core/value/js_number.cpp
+  src/core/value/value.cpp
+  src/core/value/json.cpp)
 target_include_directories(noisemaker_core
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   PRIVATE ${PROJECT_SOURCE_DIR}/src)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(noisemaker_core PRIVATE -ffp-contract=off)
+endif()
 add_library(noisemaker::core ALIAS noisemaker_core)
 
 add_library(noisemaker STATIC src/capi/context.cpp)
