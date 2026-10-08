@@ -15,6 +15,17 @@ add_library(noisemaker_gpu STATIC src/gpu/device.cpp)
 target_include_directories(noisemaker_gpu PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(noisemaker_gpu PUBLIC dawn::webgpu_dawn)
 
+add_library(noisemaker_core STATIC src/capi/error.cpp)
+target_include_directories(noisemaker_core
+  PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_library(noisemaker::core ALIAS noisemaker_core)
+
+add_library(noisemaker STATIC src/capi/context.cpp)
+target_include_directories(noisemaker PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(noisemaker PUBLIC noisemaker_core PRIVATE noisemaker_gpu)
+add_library(noisemaker::noisemaker ALIAS noisemaker)
+
 if(NM_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
