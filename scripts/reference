@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+pin="$(node -e 'process.stdout.write(require(process.argv[1]).commit)' "$repo_root/parity/reference.json")"
+if [[ -n "${NM_REFERENCE_ROOT:-}" ]]; then
+  checkout="$NM_REFERENCE_ROOT"
+else
+  checkout="$repo_root/.cache/reference"
+  if [[ ! -d "$checkout/.git" ]]; then
+    git clone --filter=blob:none --no-checkout \
+      https://github.com/noisefactorllc/noisemaker "$checkout" >&2
+    git -C "$checkout" checkout --detach "$pin" >&2
+  fi
+fi
+actual="$(git -C "$checkout" rev-parse HEAD)"
+if [[ "$actual" != "$pin" ]]; then
+  echo "reference checkout is $actual; expected $pin" >&2
+  exit 1
+fi
+printf '%s\n' "$checkout"

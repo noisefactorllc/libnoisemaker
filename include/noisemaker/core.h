@@ -37,6 +37,7 @@ typedef enum nm_status {
 } nm_status;
 
 NM_API uint32_t nm_abi_version(void);
+NM_API const char* nm_engine_version(void);
 /* The message for the last failed call on this thread. Never NULL.
  * Valid until the next libnoisemaker call on this thread. */
 NM_API const char* nm_last_error(void);
