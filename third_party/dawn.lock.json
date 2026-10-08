@@ -1,0 +1,16 @@
+{
+  "dawn": {
+    "repository": "https://dawn.googlesource.com/dawn",
+    "commit": "50c9f7b4ee3fef0bdc9166056098271ea85ef9fc",
+    "provenance": "third_party/dawn of Chromium 153.0.8010.12 (DEPS), the Chromium of Playwright 1.63.0"
+  },
+  "dependencies": [
+    {"path": "third_party/abseil-cpp", "repository": "https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp", "commit": "dd67f5ca84f65ebb88ac0ea0fe2c1d58663e519f"},
+    {"path": "third_party/jinja2", "repository": "https://chromium.googlesource.com/chromium/src/third_party/jinja2", "commit": "c3027d884967773057bf74b957e3fea87e5df4d7"},
+    {"path": "third_party/markupsafe", "repository": "https://chromium.googlesource.com/chromium/src/third_party/markupsafe", "commit": "4256084ae14175d38a3ff7d739dca83ae49ccec6"},
+    {"path": "third_party/spirv-headers/src", "repository": "https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Headers", "commit": "0d25db97cb9b8f725e4c95e4553001710e7fc39d"},
+    {"path": "third_party/spirv-tools/src", "repository": "https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Tools", "commit": "e39e5c5838bc4b4162c349f2a2e5f163efe5432f"},
+    {"path": "third_party/vulkan-headers/src", "repository": "https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Headers", "commit": "0b7f383797fa7be53ae28213e001ae60668ee511"},
+    {"path": "third_party/vulkan-utility-libraries/src", "repository": "https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Utility-Libraries", "commit": "245b48c522b5375c0acd5377d52bef5e4917f31e"}
+  ]
+}
