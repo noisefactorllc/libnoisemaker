@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x64,       os: ubuntu-24.04,     generator: Ninja }
+          - { name: linux-arm64,     os: ubuntu-24.04-arm, generator: Ninja }
+          - { name: windows-x64,     os: windows-2025,     generator: "Visual Studio 17 2022", arch: x64 }
+          - { name: windows-arm64,   os: windows-11-arm,   generator: "Visual Studio 17 2022", arch: ARM64 }
+          - { name: macos-universal, os: macos-15,         generator: Ninja, osx_arch: "arm64;x86_64" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      NM_ALLOW_FALLBACK_ADAPTER: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build mesa-vulkan-drivers libvulkan1
+      - name: Install macOS packages
+        if: runner.os == 'macOS'
+        run: brew install ninja
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/dawn
+          key: dawn-src-${{ hashFiles('third_party/dawn.lock.json') }}
+      - name: Fetch Dawn
+        run: python tools/fetch_dawn.py
+      - name: Tool tests
+        run: python -m unittest -v tests.tools.test_fetch_dawn
+      - name: Configure
+        shell: bash
+        run: |
+          args=(-S . -B build -G "${{ matrix.generator }}" -DCMAKE_BUILD_TYPE=Release)
+          if [ -n "${{ matrix.arch }}" ]; then args+=(-A "${{ matrix.arch }}"); fi
+          if [ -n "${{ matrix.osx_arch }}" ]; then args+=("-DCMAKE_OSX_ARCHITECTURES=${{ matrix.osx_arch }}"); fi
+          cmake "${args[@]}"
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure
+      - name: Test the x86_64 slice under Rosetta
+        if: runner.os == 'macOS'
+        run: |
+          arch -x86_64 /usr/bin/true
+          arch -x86_64 build/tests/test_device
+          arch -x86_64 build/tests/test_context
