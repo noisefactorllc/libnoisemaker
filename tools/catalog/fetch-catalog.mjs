@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -14,6 +15,7 @@ if (cacheArg >= 0 && !args[cacheArg + 1]) throw new Error('--cache requires a di
 const cache = resolve(cacheArg < 0 ? join(root, '.cache/catalog') : args[cacheArg + 1])
 const lock = JSON.parse(await readFile(lockPath, 'utf8'))
 const versionDir = join(cache, lock.version)
+const sourceCache = join(versionDir, 'source', lock.commit)
 
 async function bytes (path) {
   if (offline) return readFile(join(versionDir, path))
@@ -57,5 +59,30 @@ if (update) {
 } else {
   const extra = Object.keys(lock.files).filter(path => !paths.includes(path))
   if (extra.length) throw new Error(`lock has unexpected files: ${extra.join(', ')}`)
+}
+
+// Published effect bundles omit some shader source files. Cache the missing
+// bytes from the exact source commit so the catalog builder only reads cache.
+const sourceStamp = join(sourceCache, '.ready')
+let sourceReady = false
+try { sourceReady = (await readFile(sourceStamp, 'utf8')).trim() === lock.commit } catch {}
+if (!sourceReady) {
+  if (offline) throw new Error(`pinned shader source is absent from cache: ${sourceCache}`)
+  const reference = execFileSync(join(root, 'scripts/reference'), { encoding: 'utf8' }).trim()
+  const sourceRoot = join(reference, 'shaders/effects')
+  await rm(sourceCache, { recursive: true, force: true })
+  async function copyShaders (relative = '') {
+    for (const entry of await readdir(join(sourceRoot, relative), { withFileTypes: true })) {
+      const path = join(relative, entry.name)
+      if (entry.isDirectory()) await copyShaders(path)
+      else if (entry.isFile() && /\.(wgsl|glsl)$/.test(entry.name)) {
+        const destination = join(sourceCache, 'shaders/effects', path)
+        await mkdir(dirname(destination), { recursive: true })
+        await writeFile(destination, await readFile(join(sourceRoot, path)))
+      }
+    }
+  }
+  await copyShaders()
+  await writeFile(sourceStamp, lock.commit + '\n')
 }
 console.log(`CATALOG FETCH: ${paths.length} files, ${lock.version}, ${lock.commit}`)

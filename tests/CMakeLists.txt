@@ -7,16 +7,25 @@ add_executable(test_context capi/test_context.c)
 target_link_libraries(test_context PRIVATE noisemaker)
 add_test(NAME test_context COMMAND test_context)
 
+add_executable(test_compile capi/test_compile.c)
+target_link_libraries(test_compile PRIVATE noisemaker_core)
+add_test(NAME test_compile COMMAND test_compile)
+
+add_executable(test_unparse capi/test_unparse.c)
+target_link_libraries(test_unparse PRIVATE noisemaker_core)
+add_test(NAME test_unparse COMMAND test_unparse)
+
 add_library(noisemaker_core_internal INTERFACE)
 target_include_directories(noisemaker_core_internal INTERFACE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(noisemaker_core_internal INTERFACE noisemaker_core)
 
-foreach(name test_value test_json test_js_number test_js_syntax test_catalog)
+foreach(name test_value test_json test_js_number test_js_syntax test_catalog test_error_formatter test_lexer test_parser test_registry test_validator test_effect_validator test_expander test_resources test_program_state)
   add_executable(${name} core/${name}.cpp)
   target_link_libraries(${name} PRIVATE noisemaker_core_internal)
   target_include_directories(${name} PRIVATE ${PROJECT_BINARY_DIR}/generated)
   add_test(NAME ${name} COMMAND ${name})
 endforeach()
+set_tests_properties(test_effect_validator PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
 foreach(name test_midi_state test_obj_parser)
   add_executable(${name} host/${name}.cpp)

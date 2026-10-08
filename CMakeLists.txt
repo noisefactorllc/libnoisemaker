@@ -43,12 +43,36 @@ target_include_directories(noisemaker_gpu PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(noisemaker_gpu PUBLIC dawn::webgpu_dawn)
 
 add_library(noisemaker_core STATIC
+  src/capi/compile.cpp
   src/capi/error.cpp
   src/core/catalog/catalog.cpp
   ${_nm_catalog_cpp}
+  src/core/edit/error_formatter.cpp
+  src/core/edit/jsv.cpp
+  src/core/edit/transform.cpp
+  src/core/edit/unparser.cpp
+  src/core/edit/program_state/console.cpp
+  src/core/edit/program_state/dsl_utils.cpp
+  src/core/edit/program_state/emitter.cpp
+  src/core/edit/program_state/host.cpp
+  src/core/edit/program_state/js_map.cpp
+  src/core/edit/program_state/palette.cpp
+  src/core/edit/program_state/program_state.cpp
+  src/core/graph/dsl_compiler.cpp
+  src/core/graph/expander.cpp
+  src/core/graph/graph.cpp
+  src/core/graph/resources.cpp
   src/core/js/js_unicode.cpp
   src/core/js/js_regexp.cpp
   src/core/js/js_syntax.cpp
+  src/core/lang/diagnostics.cpp
+  src/core/lang/dim.cpp
+  src/core/lang/enums.cpp
+  src/core/lang/effect_registry.cpp
+  src/core/lang/validator.cpp
+  src/core/lang/effect_validator.cpp
+  src/core/lang/lexer.cpp
+  src/core/lang/parser.cpp
   src/core/value/js_string.cpp
   src/core/value/js_number.cpp
   src/core/value/value.cpp

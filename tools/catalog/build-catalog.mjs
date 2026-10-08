@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Projection copied from noisemaker-for-qt 4058164:tools/convert-definitions.mjs.
-// Inputs are the sha256-locked published ES modules, never a moving source checkout.
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+// Inputs are the sha256-locked published ES modules and pinned shader bytes in cache.
+import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -17,18 +17,18 @@ const outDir = option('--out')
 const lock = JSON.parse(readFileSync(join(root, 'parity/reference.json'), 'utf8'))
 const effectsDir = join(cache, lock.version, 'effects')
 const manifest = JSON.parse(readFileSync(join(effectsDir, 'manifest.json'), 'utf8'))
+// fetch-catalog caches shader files omitted from published bundles at the
+// reference commit. Generation reads no source checkout or network resource.
+const sourceEffects = join(cache, lock.version, 'source', lock.commit, 'shaders/effects')
 
 // ---------------------------------------------------------------------------
 // Field projection. We copy only the fields the C++ definition loader reads, in a
 // stable order, so the output is byte-stable across runs and minimally diffs.
 // ---------------------------------------------------------------------------
 
-// Project one global/param spec. Drops UI-only metadata (ui, category, label,
-// enabledBy) which the renderer never reads; keeps everything that influences
-// uniforms, defines, defaults, ranges and enum mappings. The exception is
-// `ui.control: false` and `ui.hidden: true`: the demo host shows no control for
-// such a param, so it does not coerce the param's function value
-// (nm::hasHostControl).
+// Project one global/param spec. Drops display-only UI metadata (category,
+// label, enabledBy), while retaining UI fields consumed by the host and DSL
+// unparser. `ui.format: 'vector'` preserves lossless vec4 coordinates.
 function projectGlobal (spec) {
   const out = {}
   if (spec.type !== undefined) out.type = spec.type
@@ -46,10 +46,11 @@ function projectGlobal (spec) {
   if (spec.zero !== undefined) out.zero = spec.zero
   if (spec.choices !== undefined) out.choices = spec.choices
   if (spec.colorModeUniform !== undefined) out.colorModeUniform = spec.colorModeUniform
-  if (spec.ui?.control === false || spec.ui?.hidden === true) {
+  if (spec.ui?.control !== undefined || spec.ui?.hidden === true || spec.ui?.format !== undefined) {
     out.ui = {}
-    if (spec.ui.control === false) out.ui.control = false
+    if (spec.ui.control !== undefined) out.ui.control = spec.ui.control
     if (spec.ui.hidden === true) out.ui.hidden = true
+    if (spec.ui.format !== undefined) out.ui.format = spec.ui.format
   }
   return out
 }
@@ -73,6 +74,7 @@ function projectPass (pass) {
   // Execution modifiers (mostly used by agent/compute effects).
   if (pass.drawMode !== undefined) out.drawMode = pass.drawMode
   if (pass.drawBuffers !== undefined) out.drawBuffers = pass.drawBuffers
+  if (pass.viewport !== undefined) out.viewport = pass.viewport
   if (pass.count !== undefined) out.count = pass.count
   if (pass.countUniform !== undefined) out.countUniform = pass.countUniform
   if (pass.repeat !== undefined) out.repeat = pass.repeat
@@ -108,7 +110,7 @@ function projectTextures (textures, is3D) {
     if (spec.mipmaps !== undefined) t.mipmaps = spec.mipmaps
     if (spec.persistent !== undefined) t.persistent = spec.persistent
     if (spec.filter !== undefined) t.filter = spec.filter
-    t.format = spec.format || 'rgba16f'
+    if (spec.format !== undefined) t.format = spec.format
     out[id] = t
   }
   return out
@@ -121,6 +123,9 @@ function convertEffect (instance, namespace, name) {
     namespace: instance.namespace || namespace,
     func
   }
+  // The bundle may omit namespace. The registry still needs the path namespace,
+  // while graph JSON must preserve the original null effect namespace.
+  def.sourceNamespace = instance.namespace === undefined ? null : instance.namespace
   // Authoritative starter flag from the manifest (NOT re-derived). The manifest is
   // keyed "<namespace>/<dirname>"; default false (an effect absent from the manifest
   // is not a registered starter, matching canvas.js loadManifest).
@@ -218,15 +223,27 @@ async function main () {
     const outPath = join(outDir, 'effects', namespace, `${func}.json`)
     mkdirSync(dirname(outPath), { recursive: true })
     writeFileSync(outPath, JSON.stringify(def, null, 2) + '\n')
-    for (const [program, shaders] of Object.entries(instance.shaders || {})) {
-      for (const lang of ['wgsl', 'glsl']) {
-        if (typeof shaders[lang] !== 'string') continue
-        const shaderPath = join(outDir, lang, namespace, func, `${program}.${lang}`)
+    for (const lang of ['wgsl', 'glsl']) {
+      const sourceDir = join(sourceEffects, namespace, name, lang)
+      const sourcePrograms = readdirSync(sourceDir).filter(file => file.endsWith(`.${lang}`))
+      for (const file of sourcePrograms) {
+        const program = file.slice(0, -lang.length - 1)
+        const attached = instance.shaders?.[program]?.[lang]
+        const bytes = typeof attached === 'string' ? attached : readFileSync(join(sourceDir, file))
+        const shaderPath = join(outDir, lang, namespace, func, file)
         mkdirSync(dirname(shaderPath), { recursive: true })
-        writeFileSync(shaderPath, shaders[lang])
+        writeFileSync(shaderPath, bytes)
       }
     }
     written++
+  }
+  for (const lang of ['wgsl', 'glsl']) {
+    const sourceDir = join(sourceEffects, 'filter/_shared', lang)
+    for (const file of readdirSync(sourceDir).filter(file => file.endsWith(`.${lang}`))) {
+      const dest = join(outDir, lang, 'filter/_shared', file)
+      mkdirSync(dirname(dest), { recursive: true })
+      writeFileSync(dest, readFileSync(join(sourceDir, file)))
+    }
   }
   console.log(`CATALOG BUILD: ${written} effects`)
 }

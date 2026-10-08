@@ -49,6 +49,15 @@ function recordDifference (label, a, b, location = '') {
 }
 
 for (const lang of ['wgsl', 'glsl']) {
+  const sourceFiles = files(join(reference, 'shaders/effects')).filter(path => {
+    const rel = relative(join(reference, 'shaders/effects'), path).replaceAll('\\', '/')
+    return rel.includes(`/${lang}/`) && rel.endsWith(`.${lang}`)
+  })
+  for (const path of sourceFiles) {
+    const rel = relative(join(reference, 'shaders/effects'), path).replaceAll('\\', '/')
+    const outputRel = rel.replace(`/${lang}/`, '/')
+    if (!existsSync(join(out, lang, outputRel))) errors.push(`${lang}/${outputRel}: missing from catalog`)
+  }
   for (const path of files(join(out, lang))) {
     const rel = relative(join(out, lang), path)
     const pieces = rel.split('/')
@@ -70,6 +79,15 @@ for (const path of files(join(out, 'effects'))) {
   if (actual.jsHooks) hooks[key] = actual.jsHooks
   delete actual.jsHooks
   delete actual.uniformLayouts
+  delete actual.sourceNamespace
+  for (const pass of actual.passes || []) delete pass.viewport
+  for (const spec of Object.values(actual.globals || {})) {
+    if (spec.ui) {
+      delete spec.ui.format
+      if (spec.ui.control !== false) delete spec.ui.control
+      if (Object.keys(spec.ui).length === 0) delete spec.ui
+    }
+  }
   const qtPath = `qt/noisemaker/effects/${rel}`
   let expected
   try {
@@ -79,6 +97,11 @@ for (const path of files(join(out, 'effects'))) {
     continue
   }
   delete expected.uniformLayouts
+  // The older Qt projection supplied a default format even when the pinned
+  // definition omitted one. Preserve that absence for frontend graph parity.
+  for (const [id, spec] of Object.entries(expected.textures || {})) {
+    if (spec.format === 'rgba16f' && actual.textures?.[id]?.format === undefined) delete spec.format
+  }
   recordDifference(`effects/${rel}`, actual, expected)
   definitions++
 }

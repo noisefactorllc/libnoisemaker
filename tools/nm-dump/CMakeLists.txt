@@ -1,4 +1,4 @@
-add_executable(nm-dump main.cpp host_commands.cpp)
+add_executable(nm-dump main.cpp host_commands.cpp frontend_commands.cpp dsl_commands.cpp program_state_commands.cpp program_state_runner.cpp)
 target_include_directories(nm-dump PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(nm-dump PRIVATE noisemaker_host)
 set_target_properties(nm-dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

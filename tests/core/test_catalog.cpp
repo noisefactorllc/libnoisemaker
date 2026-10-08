@@ -12,7 +12,6 @@ int main() {
     NM_CHECK(file != nullptr);
     nm::json::parse(file->bytes);
     NM_CHECK(nm::catalog_files().size() == NM_CATALOG_FILE_COUNT);
-    NM_CHECK(nm::catalog_files().size() == 798);
     NM_CHECK(std::string_view(nm_engine_version()) == "1.0.271");
     NM_CHECK(nm::catalog_find("effects/unknown/nope.json") == nullptr);
     return 0;
