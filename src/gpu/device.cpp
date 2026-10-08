@@ -88,6 +88,10 @@ bool wait(WGPUInstance instance, WGPUFuture future) {
     return status == WGPUWaitStatus_Success && info.completed;
 }
 
+bool adapter_type_allowed(WGPUAdapterType type, bool allow_fallback) {
+    return allow_fallback || type == WGPUAdapterType_DiscreteGPU || type == WGPUAdapterType_IntegratedGPU;
+}
+
 DeviceResult create_device(const DeviceOptions& options) {
     DeviceResult result;
     Device& d = result.device;
@@ -114,12 +118,20 @@ DeviceResult create_device(const DeviceOptions& options) {
     }
 
     WGPUAdapterInfo info = {};
-    if (wgpuAdapterGetInfo(d.adapter, &info) == WGPUStatus_Success) {
-        d.adapter_name = to_string(info.device);
-        if (d.adapter_name.empty()) d.adapter_name = to_string(info.description);
-        if (d.adapter_name.empty()) d.adapter_name = to_string(info.vendor);
-        d.is_fallback = info.adapterType == WGPUAdapterType_CPU;
-        wgpuAdapterInfoFreeMembers(info);
+    if (wgpuAdapterGetInfo(d.adapter, &info) != WGPUStatus_Success) {
+        result.message = "could not read WebGPU adapter information";
+        return result;
+    }
+    d.adapter_name = to_string(info.device);
+    if (d.adapter_name.empty()) d.adapter_name = to_string(info.description);
+    if (d.adapter_name.empty()) d.adapter_name = to_string(info.vendor);
+    d.is_fallback = info.adapterType == WGPUAdapterType_CPU;
+    const bool allowed = adapter_type_allowed(info.adapterType, options.allow_fallback);
+    wgpuAdapterInfoFreeMembers(info);
+    if (!allowed) {
+        result.status = Status::NoAdapter;
+        result.message = "no hardware WebGPU adapter is available; software or unknown adapter requires explicit fallback";
+        return result;
     }
 
     WGPUDeviceDescriptor device_desc = {};

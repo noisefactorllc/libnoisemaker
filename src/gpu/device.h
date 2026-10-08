@@ -48,6 +48,7 @@ struct DeviceResult {
 };
 
 DeviceResult create_device(const DeviceOptions& options);
+bool adapter_type_allowed(WGPUAdapterType type, bool allow_fallback);
 bool wait(WGPUInstance instance, WGPUFuture future);
 Status read_rgba8(Device& device, WGPUTexture texture, uint32_t width, uint32_t height,
                   std::vector<uint8_t>& out, std::string& message);

@@ -43,6 +43,14 @@ void test_reports_a_missing_adapter() {
     NM_CHECK(!result.message.empty());
 }
 
+void test_cpu_adapter_requires_explicit_fallback() {
+    NM_CHECK(!nm::gpu::adapter_type_allowed(WGPUAdapterType_CPU, false));
+    NM_CHECK(nm::gpu::adapter_type_allowed(WGPUAdapterType_CPU, true));
+    NM_CHECK(nm::gpu::adapter_type_allowed(WGPUAdapterType_DiscreteGPU, false));
+    NM_CHECK(nm::gpu::adapter_type_allowed(WGPUAdapterType_IntegratedGPU, false));
+    NM_CHECK(!nm::gpu::adapter_type_allowed(WGPUAdapterType_Unknown, false));
+}
+
 void test_clears_and_reads_back() {
     auto result = nm::gpu::create_device(options_from_env());
     NM_CHECK(result.status == nm::gpu::Status::Ok);
@@ -114,6 +122,7 @@ void test_round_trips_an_unaligned_texture() {
 int main() {
     test_creates_a_device();
     test_reports_a_missing_adapter();
+    test_cpu_adapter_requires_explicit_fallback();
     test_clears_and_reads_back();
     test_round_trips_an_unaligned_texture();
     std::printf("test_device: ok\n");
