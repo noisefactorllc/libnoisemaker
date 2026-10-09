@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(NM_BUILD_TESTS "Build the libnoisemaker tests" ${PROJECT_IS_TOP_LEVEL})
+option(NM_BUILD_GPU "Build the Dawn executor. OFF builds only the GPU-free core and host helpers, with no Dawn tree" ON)
 set(NM_DAWN_SOURCE_DIR "${PROJECT_SOURCE_DIR}/.cache/dawn/src" CACHE PATH
     "Dawn source tree prepared by tools/fetch_dawn.py")
 set(NM_CATALOG_CACHE_DIR "" CACHE PATH "Prefilled, verified catalog cache for offline builds")
@@ -36,11 +37,13 @@ add_custom_command(
   VERBATIM)
 add_custom_target(noisemaker_catalog_generated DEPENDS "${_nm_catalog_cpp}" "${_nm_catalog_header}")
 
-include(cmake/Dawn.cmake)
+if(NM_BUILD_GPU)
+  include(cmake/Dawn.cmake)
 
-add_library(noisemaker_gpu STATIC src/gpu/device.cpp)
-target_include_directories(noisemaker_gpu PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(noisemaker_gpu PUBLIC dawn::webgpu_dawn)
+  add_library(noisemaker_gpu STATIC src/gpu/device.cpp)
+  target_include_directories(noisemaker_gpu PUBLIC ${PROJECT_SOURCE_DIR}/src)
+  target_link_libraries(noisemaker_gpu PUBLIC dawn::webgpu_dawn)
+endif()
 
 add_library(noisemaker_core STATIC
   src/capi/compile.cpp
@@ -102,10 +105,12 @@ endif()
 add_library(noisemaker::host ALIAS noisemaker_host)
 add_subdirectory(tools/nm-dump)
 
-add_library(noisemaker STATIC src/capi/context.cpp)
-target_include_directories(noisemaker PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(noisemaker PUBLIC noisemaker_core PRIVATE noisemaker_gpu)
-add_library(noisemaker::noisemaker ALIAS noisemaker)
+if(NM_BUILD_GPU)
+  add_library(noisemaker STATIC src/capi/context.cpp)
+  target_include_directories(noisemaker PRIVATE ${PROJECT_SOURCE_DIR}/src)
+  target_link_libraries(noisemaker PUBLIC noisemaker_core PRIVATE noisemaker_gpu)
+  add_library(noisemaker::noisemaker ALIAS noisemaker)
+endif()
 
 if(NM_BUILD_TESTS)
   enable_testing()

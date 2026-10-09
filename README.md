@@ -30,7 +30,7 @@ the version locked in `parity/reference.json`.
 ## Requirements
 
 CMake 3.22 or later, a C++20 compiler, Python 3.12 or later, Node.js 26, Git and Ninja (or Visual
-Studio 2022 on Windows).
+Studio 2026 on Windows).
 
 ## Building
 
@@ -40,6 +40,9 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+To build only the GPU-free compiler core and host helpers, with no Dawn tree, configure with
+`-DNM_BUILD_GPU=OFF` and skip `fetch_dawn.py`.
 
 ## Contributing
 
