@@ -29,7 +29,6 @@ public:
     static LangString fromUtf16(const char16_t* s) { return LangString(s); }
     bool startsWith(char16_t ch) const { return !empty() && front() == ch; }
     static LangString number(int n) { return LangString(js::JsText::fromLatin1(std::to_string(n).c_str())); }
-    static LangString number(double n) { return LangString(js::JsText::fromLatin1(std::to_string(n).c_str())); }
     int length() const { return static_cast<int>(size()); }
     bool isEmpty() const { return empty(); }
     LangString mid(std::ptrdiff_t start, std::ptrdiff_t length = -1) const { return LangString(js::JsText::mid(start, length)); }
@@ -75,37 +74,32 @@ public:
     LangString arg(const JsString& a, const JsString& b) const { return format_args({a, b}); }
     LangString arg(const JsString& a, const JsString& b, const JsString& c, const JsString& d) const { return format_args({a, b, c, d}); }
 };
-using QString = LangString;
-using QChar = char16_t;
-using qsizetype = std::ptrdiff_t;
-#define QStringLiteral(s) ::nm::LangString(u##s)
-#define QLatin1Char(c) u##c
 
-class QStringList : public std::vector<QString> {
+class LangStringList : public std::vector<LangString> {
 public:
-    using std::vector<QString>::vector;
-    QStringList(std::initializer_list<QString> init) : std::vector<QString>(init) {}
-    void append(const QString& s) { push_back(s); }
-    void append(const QStringList& other) { insert(end(), other.begin(), other.end()); }
+    using std::vector<LangString>::vector;
+    LangStringList(std::initializer_list<LangString> init) : std::vector<LangString>(init) {}
+    void append(const LangString& s) { push_back(s); }
+    void append(const LangStringList& other) { insert(end(), other.begin(), other.end()); }
     bool isEmpty() const { return empty(); }
-    bool contains(const QString& s) const { return std::find(begin(), end(), s) != end(); }
-    QString first() const { return front(); }
-    QString last() const { return back(); }
-    QString join(const QString& delim) const {
-        QString out;
+    bool contains(const LangString& s) const { return std::find(begin(), end(), s) != end(); }
+    LangString first() const { return front(); }
+    LangString last() const { return back(); }
+    LangString join(const LangString& delim) const {
+        LangString out;
         for (const auto& part : *this) { if (!out.empty()) out += delim; out += part; }
         return out;
     }
-    QString join(char16_t delim) const { return join(QString(1, delim)); }
+    LangString join(char16_t delim) const { return join(LangString(1, delim)); }
 };
-template<class T> class QVector : public std::vector<T> {
+template<class T> class LangVector : public std::vector<T> {
 public:
     using std::vector<T>::vector;
     bool isEmpty() const { return this->empty(); }
     const T& last() const { return this->back(); }
     void append(const T& value) { this->push_back(value); }
 };
-template<class T> using QSet = std::unordered_set<T>;
+template<class T> using LangSet = std::unordered_set<T>;
 
 class JsonObject;
 class JsonArray;
@@ -117,7 +111,7 @@ public:
     JsonValue(Value value) : value_(std::move(value)) {}
     JsonValue(const JsonObject& obj);
     JsonValue(const JsonArray& arr);
-    JsonValue(const QString& s) : value_(Value(JsString(s))) {}
+    JsonValue(const LangString& s) : value_(Value(JsString(s))) {}
     JsonValue(const JsString& s) : value_(Value(s)) {}
     JsonValue(const char16_t* s) : value_(Value(s)) {}
     JsonValue(bool b) : value_(Value(b)) {}
@@ -129,7 +123,7 @@ public:
     bool isArray() const { return value_.is_array(); }
     bool isDouble() const { return value_.is_number(); }
     bool isString() const { return value_.is_string(); }
-    QString toString() const { return value_.is_string() ? QString(value_.as_string()) : QString(); }
+    LangString toString() const { return value_.is_string() ? LangString(value_.as_string()) : LangString(); }
     int toInt() const { return value_.is_number() ? static_cast<int>(value_.as_number()) : 0; }
     double toDouble() const { return value_.is_number() ? value_.as_number() : 0; }
     bool toBool() const { return value_.is_bool() ? value_.as_bool() : false; }
@@ -154,15 +148,15 @@ class JsonObject {
 public:
     JsonObject() = default;
     explicit JsonObject(const Object& obj) : object_(obj) {}
-    JsonObject(std::initializer_list<std::pair<const QString, JsonValue>> pairs) {
+    JsonObject(std::initializer_list<std::pair<const LangString, JsonValue>> pairs) {
         for (const auto& p : pairs) insert(p.first, p.second);
     }
-    void insert(const QString& key, const JsonValue& value) { object_.set(key, value.native()); }
-    JsonValue value(const QString& key) const { const Value* v = object_.find(key); return v ? JsonValue(*v) : JsonValue(); }
-    bool contains(const QString& key) const { return object_.has(key); }
-    void remove(const QString& key) { object_.erase(key); }
+    void insert(const LangString& key, const JsonValue& value) { object_.set(key, value.native()); }
+    JsonValue value(const LangString& key) const { const Value* v = object_.find(key); return v ? JsonValue(*v) : JsonValue(); }
+    bool contains(const LangString& key) const { return object_.has(key); }
+    void remove(const LangString& key) { object_.erase(key); }
     bool isEmpty() const { return object_.size() == 0; }
-    QStringList keys() const { QStringList out; for (const auto& k : object_.keys()) out.append(QString(k)); return out; }
+    LangStringList keys() const { LangStringList out; for (const auto& k : object_.keys()) out.append(LangString(k)); return out; }
     const Object& native_object() const { return object_; }
     Value native() const { return Value(object_); }
 private:

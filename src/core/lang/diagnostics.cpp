@@ -33,7 +33,7 @@ const std::unordered_map<JsString, DiagnosticInfo>& table() {
 }
 }
 DslSyntaxError DslSyntaxError::at(const JsString& core, int line, int col) {
-    return DslSyntaxError(QStringLiteral("%1 at line %2 col %3").arg(core).arg(line).arg(col), line, col);
+    return DslSyntaxError(LangString(u"%1 at line %2 col %3").arg(core).arg(line).arg(col), line, col);
 }
 JsString diagStage(const JsString& code) { auto it = table().find(code); return it == table().end() ? u"unknown" : utf8_to_js(it->second.stage); }
 JsString diagSeverity(const JsString& code) { auto it = table().find(code); return it == table().end() ? u"error" : utf8_to_js(it->second.severity); }

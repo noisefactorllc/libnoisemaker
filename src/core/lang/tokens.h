@@ -4,58 +4,58 @@
 namespace nm {
 namespace TokenType {
 // literals / identifiers
-inline const JsString NUMBER = QStringLiteral("NUMBER");
-inline const JsString STRING = QStringLiteral("STRING");
-inline const JsString HEX = QStringLiteral("HEX");
-inline const JsString FUNC = QStringLiteral("FUNC");
-inline const JsString IDENT = QStringLiteral("IDENT");
+inline const JsString NUMBER = LangString(u"NUMBER");
+inline const JsString STRING = LangString(u"STRING");
+inline const JsString HEX = LangString(u"HEX");
+inline const JsString FUNC = LangString(u"FUNC");
+inline const JsString IDENT = LangString(u"IDENT");
 
 // surface refs
-inline const JsString OUTPUT_REF = QStringLiteral("OUTPUT_REF");
-inline const JsString SOURCE_REF = QStringLiteral("SOURCE_REF");
-inline const JsString VOL_REF = QStringLiteral("VOL_REF");
-inline const JsString GEO_REF = QStringLiteral("GEO_REF");
-inline const JsString XYZ_REF = QStringLiteral("XYZ_REF");
-inline const JsString VEL_REF = QStringLiteral("VEL_REF");
-inline const JsString RGBA_REF = QStringLiteral("RGBA_REF");
-inline const JsString MESH_REF = QStringLiteral("MESH_REF");
+inline const JsString OUTPUT_REF = LangString(u"OUTPUT_REF");
+inline const JsString SOURCE_REF = LangString(u"SOURCE_REF");
+inline const JsString VOL_REF = LangString(u"VOL_REF");
+inline const JsString GEO_REF = LangString(u"GEO_REF");
+inline const JsString XYZ_REF = LangString(u"XYZ_REF");
+inline const JsString VEL_REF = LangString(u"VEL_REF");
+inline const JsString RGBA_REF = LangString(u"RGBA_REF");
+inline const JsString MESH_REF = LangString(u"MESH_REF");
 
 // punctuation
-inline const JsString DOT = QStringLiteral("DOT");
-inline const JsString LPAREN = QStringLiteral("LPAREN");
-inline const JsString RPAREN = QStringLiteral("RPAREN");
-inline const JsString LBRACE = QStringLiteral("LBRACE");
-inline const JsString RBRACE = QStringLiteral("RBRACE");
-inline const JsString LBRACKET = QStringLiteral("LBRACKET");
-inline const JsString RBRACKET = QStringLiteral("RBRACKET");
-inline const JsString COMMA = QStringLiteral("COMMA");
-inline const JsString COLON = QStringLiteral("COLON");
-inline const JsString EQUAL = QStringLiteral("EQUAL");
-inline const JsString SEMICOLON = QStringLiteral("SEMICOLON");
-inline const JsString PLUS = QStringLiteral("PLUS");
-inline const JsString MINUS = QStringLiteral("MINUS");
-inline const JsString STAR = QStringLiteral("STAR");
-inline const JsString SLASH = QStringLiteral("SLASH");
+inline const JsString DOT = LangString(u"DOT");
+inline const JsString LPAREN = LangString(u"LPAREN");
+inline const JsString RPAREN = LangString(u"RPAREN");
+inline const JsString LBRACE = LangString(u"LBRACE");
+inline const JsString RBRACE = LangString(u"RBRACE");
+inline const JsString LBRACKET = LangString(u"LBRACKET");
+inline const JsString RBRACKET = LangString(u"RBRACKET");
+inline const JsString COMMA = LangString(u"COMMA");
+inline const JsString COLON = LangString(u"COLON");
+inline const JsString EQUAL = LangString(u"EQUAL");
+inline const JsString SEMICOLON = LangString(u"SEMICOLON");
+inline const JsString PLUS = LangString(u"PLUS");
+inline const JsString MINUS = LangString(u"MINUS");
+inline const JsString STAR = LangString(u"STAR");
+inline const JsString SLASH = LangString(u"SLASH");
 
 // keywords (RESERVED_KEYWORDS — reference/01 §1.3)
-inline const JsString LET = QStringLiteral("LET");
-inline const JsString RENDER = QStringLiteral("RENDER");
-inline const JsString WRITE = QStringLiteral("WRITE");
-inline const JsString WRITE3D = QStringLiteral("WRITE3D");
-inline const JsString TRUE = QStringLiteral("TRUE");
-inline const JsString FALSE = QStringLiteral("FALSE");
-inline const JsString IF = QStringLiteral("IF");
-inline const JsString ELIF = QStringLiteral("ELIF");
-inline const JsString ELSE = QStringLiteral("ELSE");
-inline const JsString BREAK = QStringLiteral("BREAK");
-inline const JsString CONTINUE = QStringLiteral("CONTINUE");
-inline const JsString RETURN = QStringLiteral("RETURN");
-inline const JsString SEARCH = QStringLiteral("SEARCH");
-inline const JsString SUBCHAIN = QStringLiteral("SUBCHAIN");
+inline const JsString LET = LangString(u"LET");
+inline const JsString RENDER = LangString(u"RENDER");
+inline const JsString WRITE = LangString(u"WRITE");
+inline const JsString WRITE3D = LangString(u"WRITE3D");
+inline const JsString TRUE = LangString(u"TRUE");
+inline const JsString FALSE = LangString(u"FALSE");
+inline const JsString IF = LangString(u"IF");
+inline const JsString ELIF = LangString(u"ELIF");
+inline const JsString ELSE = LangString(u"ELSE");
+inline const JsString BREAK = LangString(u"BREAK");
+inline const JsString CONTINUE = LangString(u"CONTINUE");
+inline const JsString RETURN = LangString(u"RETURN");
+inline const JsString SEARCH = LangString(u"SEARCH");
+inline const JsString SUBCHAIN = LangString(u"SUBCHAIN");
 
 // trivia / end
-inline const JsString COMMENT = QStringLiteral("COMMENT");
-inline const JsString EOF_ = QStringLiteral("EOF"); // identifier dodges the <cstdio> EOF macro
+inline const JsString COMMENT = LangString(u"COMMENT");
+inline const JsString EOF_ = LangString(u"EOF"); // identifier dodges the <cstdio> EOF macro
 } // namespace TokenType
 
 struct Token {
@@ -117,7 +117,7 @@ inline Token tokenFromJson(const Value& value) {
                 raw = LangString::number(target);
             }
         } else if (v.is_string()) raw = LangString(v.as_string());
-        else raw = v.is_null() ? QStringLiteral("null") : QStringLiteral("undefined");
+        else raw = v.is_null() ? LangString(u"null") : LangString(u"undefined");
     };
     coord(u"line", t.line, t.hasLine, t.rawLine);
     coord(u"col", t.col, t.hasCol, t.rawCol);
