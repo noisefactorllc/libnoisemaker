@@ -68,6 +68,9 @@ Device& Device::operator=(Device&& other) noexcept {
         std::swap(device, other.device);
         std::swap(queue, other.queue);
         std::swap(adapter_name, other.adapter_name);
+        std::swap(adapter_type, other.adapter_type);
+        std::swap(vendor_id, other.vendor_id);
+        std::swap(device_id, other.device_id);
         std::swap(is_fallback, other.is_fallback);
         std::swap(errors, other.errors);
     }
@@ -88,8 +91,19 @@ bool wait(WGPUInstance instance, WGPUFuture future) {
     return status == WGPUWaitStatus_Success && info.completed;
 }
 
-bool adapter_type_allowed(WGPUAdapterType type, bool allow_fallback) {
-    return allow_fallback || type == WGPUAdapterType_DiscreteGPU || type == WGPUAdapterType_IntegratedGPU;
+bool adapter_is_software(WGPUAdapterType type, uint32_t vendor_id, uint32_t device_id) {
+    if (type == WGPUAdapterType_CPU) return true;
+    // Dawn reports CPU only when DXGI sets DXGI_ADAPTER_FLAG_SOFTWARE. Hosted
+    // Windows runners expose WARP without that flag, and Dawn calls it a GPU.
+    constexpr uint32_t kMicrosoftVendor = 0x1414;
+    constexpr uint32_t kBasicRenderDriver = 0x8c;
+    return vendor_id == kMicrosoftVendor && device_id == kBasicRenderDriver;
+}
+
+bool adapter_allowed(WGPUAdapterType type, uint32_t vendor_id, uint32_t device_id, bool allow_fallback) {
+    if (allow_fallback) return true;
+    const bool gpu = type == WGPUAdapterType_DiscreteGPU || type == WGPUAdapterType_IntegratedGPU;
+    return gpu && !adapter_is_software(type, vendor_id, device_id);
 }
 
 DeviceResult create_device(const DeviceOptions& options) {
@@ -125,8 +139,11 @@ DeviceResult create_device(const DeviceOptions& options) {
     d.adapter_name = to_string(info.device);
     if (d.adapter_name.empty()) d.adapter_name = to_string(info.description);
     if (d.adapter_name.empty()) d.adapter_name = to_string(info.vendor);
-    d.is_fallback = info.adapterType == WGPUAdapterType_CPU;
-    const bool allowed = adapter_type_allowed(info.adapterType, options.allow_fallback);
+    d.adapter_type = info.adapterType;
+    d.vendor_id = info.vendorID;
+    d.device_id = info.deviceID;
+    d.is_fallback = adapter_is_software(info.adapterType, info.vendorID, info.deviceID);
+    const bool allowed = adapter_allowed(info.adapterType, info.vendorID, info.deviceID, options.allow_fallback);
     wgpuAdapterInfoFreeMembers(info);
     if (!allowed) {
         result.status = Status::NoAdapter;

@@ -32,7 +32,9 @@ void test_creates_a_device() {
     NM_CHECK(result.status == nm::gpu::Status::Ok);
     NM_CHECK(result.device.device != nullptr);
     NM_CHECK(!result.device.adapter_name.empty());
-    std::printf("adapter: %s%s\n", result.device.adapter_name.c_str(), result.device.is_fallback ? " (fallback)" : "");
+    std::printf("adapter: %s%s (type %d, vendor 0x%04x, device 0x%04x)\n", result.device.adapter_name.c_str(),
+                result.device.is_fallback ? " (fallback)" : "", static_cast<int>(result.device.adapter_type),
+                static_cast<unsigned>(result.device.vendor_id), static_cast<unsigned>(result.device.device_id));
 }
 
 void test_reports_a_missing_adapter() {
@@ -44,11 +46,20 @@ void test_reports_a_missing_adapter() {
 }
 
 void test_cpu_adapter_requires_explicit_fallback() {
-    NM_CHECK(!nm::gpu::adapter_type_allowed(WGPUAdapterType_CPU, false));
-    NM_CHECK(nm::gpu::adapter_type_allowed(WGPUAdapterType_CPU, true));
-    NM_CHECK(nm::gpu::adapter_type_allowed(WGPUAdapterType_DiscreteGPU, false));
-    NM_CHECK(nm::gpu::adapter_type_allowed(WGPUAdapterType_IntegratedGPU, false));
-    NM_CHECK(!nm::gpu::adapter_type_allowed(WGPUAdapterType_Unknown, false));
+    using nm::gpu::adapter_allowed;
+    using nm::gpu::adapter_is_software;
+    NM_CHECK(!adapter_allowed(WGPUAdapterType_CPU, 0x10005, 0, false));
+    NM_CHECK(adapter_allowed(WGPUAdapterType_CPU, 0x10005, 0, true));
+    NM_CHECK(adapter_allowed(WGPUAdapterType_DiscreteGPU, 0x10de, 0x2684, false));
+    NM_CHECK(adapter_allowed(WGPUAdapterType_IntegratedGPU, 0x106b, 0, false));
+    NM_CHECK(!adapter_allowed(WGPUAdapterType_Unknown, 0, 0, false));
+    // WARP reported as a GPU, as on hosted Windows runners.
+    NM_CHECK(adapter_is_software(WGPUAdapterType_DiscreteGPU, 0x1414, 0x8c));
+    NM_CHECK(adapter_is_software(WGPUAdapterType_IntegratedGPU, 0x1414, 0x8c));
+    NM_CHECK(!adapter_allowed(WGPUAdapterType_DiscreteGPU, 0x1414, 0x8c, false));
+    NM_CHECK(adapter_allowed(WGPUAdapterType_DiscreteGPU, 0x1414, 0x8c, true));
+    // Other Microsoft adapters are not WARP.
+    NM_CHECK(!adapter_is_software(WGPUAdapterType_DiscreteGPU, 0x1414, 0x8d));
 }
 
 void test_clears_and_reads_back() {
