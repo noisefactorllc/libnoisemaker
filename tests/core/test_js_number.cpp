@@ -3,8 +3,19 @@
 #include "core/value/js_string.h"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <limits>
+#include <string>
+
+// std::to_chars for double is the reference for the shortest digits. Apple
+// declares it unavailable below macOS 13.3, where only the library's own path
+// is checked.
+#if !defined(__APPLE__) || __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ >= 130300
+#include <charconv>
+#define NM_HAVE_FLOAT_TO_CHARS 1
+#endif
 
 namespace {
 void check(double value, const char* expected) {
@@ -12,6 +23,54 @@ void check(double value, const char* expected) {
     if (actual != expected) std::fprintf(stderr, "expected %s, got %s\n", expected, actual.c_str());
     NM_CHECK(actual == expected);
 }
+
+#ifdef NM_HAVE_FLOAT_TO_CHARS
+std::string to_chars_scientific(double magnitude) {
+    char buffer[40];
+    const auto result = std::to_chars(buffer, buffer + sizeof(buffer), magnitude, std::chars_format::scientific);
+    return std::string(buffer, result.ptr);
+}
+
+// Same digits and exponent, ignoring how the exponent is padded ("e-07" or "e-7").
+bool same_scientific(const std::string& a, const std::string& b) {
+    const auto ea = a.find('e'), eb = b.find('e');
+    return a.substr(0, ea) == b.substr(0, eb) && std::stoi(a.substr(ea + 1)) == std::stoi(b.substr(eb + 1));
+}
+
+void check_shortest_against_to_chars() {
+    uint64_t state = 0x9E3779B97F4A7C15ull;
+    auto next = [&state]() {
+        uint64_t z = (state += 0x9E3779B97F4A7C15ull);
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+        return z ^ (z >> 31);
+    };
+    int compared = 0;
+    auto compare = [&compared](double magnitude) {
+        if (!(magnitude > 0) || std::isinf(magnitude)) return;
+        const std::string ours = nm::js::detail::shortest_scientific(magnitude);
+        const std::string reference = to_chars_scientific(magnitude);
+        if (!same_scientific(ours, reference))
+            std::fprintf(stderr, "%a: expected %s, got %s\n", magnitude, reference.c_str(), ours.c_str());
+        NM_CHECK(same_scientific(ours, reference));
+        ++compared;
+    };
+    for (int i = 0; i < 200000; ++i) {
+        const uint64_t bits = next() & 0x7FFFFFFFFFFFFFFFull;
+        double magnitude;
+        std::memcpy(&magnitude, &bits, sizeof magnitude);
+        compare(magnitude);
+    }
+    // Short decimals, powers of ten and the subnormal and normal limits.
+    for (int i = 1; i < 100000; ++i) compare(i / 1000.0);
+    for (int e = -323; e <= 308; ++e) compare(std::pow(10.0, e));
+    compare(std::numeric_limits<double>::denorm_min());
+    compare(std::numeric_limits<double>::min());
+    compare(std::numeric_limits<double>::max());
+    compare(0.1 + 0.2);
+    std::printf("shortest digits agree with std::to_chars on %d doubles\n", compared);
+}
+#endif
 }
 
 int main() {
@@ -53,5 +112,8 @@ int main() {
     check(std::numeric_limits<double>::quiet_NaN(), "NaN");
     check(std::numeric_limits<double>::infinity(), "Infinity");
     check(-std::numeric_limits<double>::infinity(), "-Infinity");
+#ifdef NM_HAVE_FLOAT_TO_CHARS
+    check_shortest_against_to_chars();
+#endif
     return 0;
 }
