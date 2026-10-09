@@ -157,10 +157,10 @@ int main() {
     // Whitespace: JS trim and \s include NBSP, U+2003, U+3000, BOM; CR is
     // whitespace but only LF splits lines.
     {
-        const auto mesh = parse(u"﻿ v 1\t2　3\r\n"
+        const auto mesh = parse(u"\uFEFF\u00A0v\u20031\t2\u30003\r\n"
                                 u"v 4\u000B5\u000C6 v 7 8 9\rv 1 1 1\n"
                                 u"   # v 9 9 9\n\n"
-                                u"v 0 1 0\n"
+                                u"v\u202F0 1 0\n"
                                 u"f 1 2 3\n");
         check(mesh.vertexCount == 3, "whitespace: three vertices parsed");
         check(equals(mesh.positions, {1, 2, 3, 0, 1, 0, 4, 5, 6}),

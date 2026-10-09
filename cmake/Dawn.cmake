@@ -29,6 +29,12 @@ nm_dawn_set(DAWN_USE_X11 OFF)
 nm_dawn_set(DAWN_USE_WAYLAND OFF)
 nm_dawn_set(DAWN_ENABLE_SWIFTSHADER OFF)
 nm_dawn_set(DAWN_USE_BUILT_DXC OFF)
+if(WIN32)
+  # Dawn copies an x64 SDK compiler DLL to the build root, while test and
+  # consumer executables may live elsewhere or target ARM64. Load the
+  # architecture-matched Windows system component instead.
+  nm_dawn_set(DAWN_FORCE_SYSTEM_COMPONENT_LOAD ON)
+endif()
 nm_dawn_set(DAWN_ENABLE_D3D11 OFF)
 nm_dawn_set(DAWN_ENABLE_DESKTOP_GL OFF)
 nm_dawn_set(DAWN_ENABLE_OPENGLES OFF)
