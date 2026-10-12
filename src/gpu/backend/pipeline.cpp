@@ -1089,12 +1089,15 @@ bool Pipeline::shouldSkipPass(const Value& pass) const {
     };
     if (jsv::truthy(skipIf)) {
         for (const Value& condition : jsv::iterate(skipIf, u"skipIf")) {
-            if (jsv::strict_equals(valueOf(condition), jsv::get(condition, u"equals"))) return true;
+            // The value is read before equals: C++ leaves argument order unspecified.
+            const Value value = valueOf(condition);
+            if (jsv::strict_equals(value, jsv::get(condition, u"equals"))) return true;
         }
     }
     if (jsv::truthy(runIf)) {
         for (const Value& condition : jsv::iterate(runIf, u"runIf")) {
-            if (!jsv::strict_equals(valueOf(condition), jsv::get(condition, u"equals"))) return true;
+            const Value value = valueOf(condition);
+            if (!jsv::strict_equals(value, jsv::get(condition, u"equals"))) return true;
         }
     }
     return false;
