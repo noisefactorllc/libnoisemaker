@@ -196,10 +196,12 @@ int pipeline(int, char**) {
                     pipeline = std::make_unique<be::Pipeline>(field(op, u"graph"), *backend, options);
                 } else if (!pipeline) {
                     throw nm::JsError(u"TypeError", u"Cannot read properties of null (reading '" + kind + u"')");
-                } else if (kind == u"init") {
-                    pipeline->init(number(field(op, u"width"), u"width"), number(field(op, u"height"), u"height"));
-                } else if (kind == u"resize") {
-                    pipeline->resize(number(field(op, u"width"), u"width"), number(field(op, u"height"), u"height"));
+                } else if (kind == u"init" || kind == u"resize") {
+                    // Each read is its own statement: C++ leaves argument order unspecified.
+                    const double width = number(field(op, u"width"), u"width");
+                    const double height = number(field(op, u"height"), u"height");
+                    if (kind == u"init") pipeline->init(width, height);
+                    else pipeline->resize(width, height);
                 } else if (kind == u"recompile") {
                     pipeline->recompile(field(op, u"graph"));
                 } else if (kind == u"updateParameterTextures") {
@@ -214,10 +216,12 @@ int pipeline(int, char**) {
                         const nm::Value value = field(op, key);
                         return std::array<double, 2>{number(nm::jsv::get(value, u"0"), key), number(nm::jsv::get(value, u"1"), key)};
                     };
+                    const std::array<double, 2> offset = pair(u"offset");
+                    const std::array<double, 2> fullResolution = pair(u"fullResolution");
                     const nm::Value renderScale = field(op, u"renderScale");
-                    pipeline->setTileRegion(pair(u"offset"), pair(u"fullResolution"),
-                                            renderScale.is_undefined() || renderScale.is_null() ? std::nullopt
-                                                                                                : std::optional<double>(number(renderScale, u"renderScale")));
+                    const std::optional<double> scale = renderScale.is_undefined() || renderScale.is_null()
+                        ? std::nullopt : std::optional<double>(number(renderScale, u"renderScale"));
+                    pipeline->setTileRegion(offset, fullResolution, scale);
                 } else if (kind == u"clearTileRegion") {
                     pipeline->clearTileRegion();
                 } else if (kind == u"getFrameState") {
