@@ -1,0 +1,90 @@
+{
+ "note": "WGSL sources that reach branches of the reference backend's analysis the catalog shaders do not; parity/check_wgsl.mjs runs them on both sides.",
+ "cases": [
+  {
+   "id": "empty",
+   "source": ""
+  },
+  {
+   "id": "nested-comments",
+   "source": "/* outer /* inner */ still outer */\n@group(0) @binding(0) var<uniform> u: Uniforms; // trailing @binding(9)\nstruct Uniforms { a: f32, /* b: f32, */ }\n@fragment fn main() -> @location(0) vec4f { return vec4f(u.a); }\n"
+  },
+  {
+   "id": "unused-bindings",
+   "source": "@group(0) @binding(0) var unusedTex: texture_2d<f32>;\n@group(0) @binding(1) var samp: sampler;\n@group(0) @binding(2) var inputTex: texture_2d<f32>;\n@group(0) @binding(3) var<storage, read_write> buf: array<f32>;\n@group(0) @binding(4) var outTex: texture_storage_2d<rgba16float, write>;\n@group(1) @binding(0) var inputTex2: texture_2d<f32>;\n@fragment fn main(@location(0) uv: vec2f) -> @location(0) vec4f { return textureSample(inputTex, samp, uv); }\n"
+  },
+  {
+   "id": "entry-point-reach",
+   "source": "@group(0) @binding(0) var texA: texture_2d<f32>;\n@group(0) @binding(1) var texB: texture_2d<f32>;\n@group(0) @binding(2) var s: sampler;\n@group(0) @binding(3) var<uniform> u: U;\nstruct U { t: f32 }\nfn helper(texB: f32) -> f32 { return texB + u.t; }\nfn sampleA(p: vec2f) -> vec4f { return textureSample(texA, s, p); }\nfn shadow() -> f32 { let texA = 1.0; for (var i = 0; i < 3; i++) { let texB = 2.0; } return texA + x.texB; }\n@fragment\nfn main(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let a = sampleA(pos.xy) + vec4f(helper(1.0));\n  var<function> texB: f32 = shadow();\n  return a * texB;\n}\n@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f { return vec4f(textureLoad(texB, vec2i(0), 0).x); }\n"
+  },
+  {
+   "id": "compute-entries",
+   "source": "@group(0) @binding(0) var<storage, read_write> data: array<vec4f>;\n@group(0) @binding(1) var outTex: texture_storage_2d<rgba16float, write>;\n@compute @workgroup_size(8, 8, 1)\nfn first(@builtin(global_invocation_id) id: vec3u) { data[id.x] = vec4f(0.0); }\n@compute\n@workgroup_size(64)\nfn second(@builtin(global_invocation_id) gid: vec3<u32>) { textureStore(outTex, vec2i(gid.xy), data[gid.x]); }\n"
+  },
+  {
+   "id": "byte-layout",
+   "source": "struct Params { time: f32, resolution: vec2f, _pad0: f32, color: vec3<f32>, count: i32, padding: vec2<u32>, tint: VEC4F }\n@group(0) @binding(0) var<uniform> p: Params;\n@fragment fn main() -> @location(0) vec4f { return vec4f(p.color * p.time, f32(p.count)); }\n"
+  },
+  {
+   "id": "byte-layout-unused",
+   "source": "struct Params { time: f32 }\n@group(0) @binding(0) var<uniform> p: Params;\n@fragment fn main() -> @location(0) vec4f { return vec4f(1.0); }\n"
+  },
+  {
+   "id": "named-struct",
+   "source": "struct FooParams {\n    dims : vec4<f32>,  // (width, height, _, pad0)\n    settings : vec4<f32>,   // (octaves, unused1, speed, seed)\n    count : i32,\n    extra : vec2<f32>, // (a)\n    table : array<vec4<f32>, 4>,\n}\n@group(0) @binding(0) var<uniform> params: FooParams;\n@fragment fn main() -> @location(0) vec4f { return params.dims; }\n"
+  },
+  {
+   "id": "params-access",
+   "source": "struct BarParams { a: vec4<f32>, b: vec4<f32>, c: f32 }\n@group(0) @binding(0) var<uniform> params: BarParams;\n@fragment fn main() -> @location(0) vec4f {\n  let speed = params.b.y;\n  let freq: f32 = params.a.w;\n  octaves = i32( params.a.x);\n  let missing = params.zz.x;\n  return vec4f(speed, freq, 0.0, 1.0);\n}\n"
+  },
+  {
+   "id": "uniforms-data",
+   "source": "struct Uniforms { data: array<vec4<f32>, 4> }\n@group(0) @binding(0) var<uniform> uniforms: Uniforms;\n@fragment fn main() -> @location(0) vec4f {\n  let scale = uniforms.data[2].w;\n  resolution = uniforms.data[0].xy;\n  let count: i32 = max(1, i32(uniforms.data[1].z));\n  let mode = i32(uniforms.data[1].x);\n  let flag = uniforms.data[0].z > 0.5;\n  return vec4f(scale);\n}\n"
+  },
+  {
+   "id": "case-insensitive-struct",
+   "source": "struct myPARAMS { Speed: F32, Count: I32 }\n@group(0) @binding(0) var<uniform> m: myPARAMS;\n@fragment fn main() -> @location(0) vec4f { return vec4f(m.Speed); }\n"
+  },
+  {
+   "id": "unicode-text",
+   "source": "// π ≈ 3.14159 — comment with non-ASCII\n@group(0) @binding(1) var tex: texture_2d<f32>;\n@group(0) @binding(2) var s: sampler;\n/* ∑ é */ @fragment fn main(@location(0) uv: vec2f) -> @location(0) vec4f { return textureSample(tex, s, uv); }\n"
+  },
+  {
+   "id": "sampler-reuse",
+   "source": "@group(0) @binding(0) var a: texture_2d<f32>;\n@group(0) @binding(1) var b: texture_2d<f32>;\n@group(0) @binding(2) var shared: sampler;\n@group(0) @binding(3) var only: sampler;\n@fragment fn main(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let x = textureSample(a, shared, uv) + textureSampleLevel(b, shared, uv, 0.0);\n  return x + textureSample(a, only, uv) + textureSampleBias( a , only , uv, 1.0);\n}\n"
+  },
+  {
+   "id": "declared-sizes",
+   "source": "struct Big { m: mat4x4<f32>, v: vec3f, arr: array<vec2<f32>, 3>, h: f16, b: bool }\nstruct Small { x: f32 }\n@group(0) @binding(0) var<uniform> big: Big;\n@group(0) @binding(1) var<uniform> small: Small;\n@fragment fn main() -> @location(0) vec4f { return vec4f(big.v, small.x); }\n"
+  },
+  {
+   "id": "defines-types",
+   "source": "@fragment fn main() -> @location(0) vec4f { return vec4f(1.0); }\n",
+   "defines": {
+    "INT": 3,
+    "FLOAT": 0.5,
+    "BOOL": true,
+    "FALSE": false,
+    "BIG": 1e+21,
+    "TINY": 1e-07,
+    "NEGATIVE": -2,
+    "STRING": "vec3f(1.0)",
+    "NULL": null,
+    "ARRAY": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "id": "defines-empty",
+   "source": "@fragment fn main() -> @location(0) vec4f { return vec4f(1.0); }\n",
+   "defines": {}
+  },
+  {
+   "id": "defines-null",
+   "source": "@fragment fn main() -> @location(0) vec4f { return vec4f(1.0); }\n",
+   "defines": null
+  }
+ ]
+}

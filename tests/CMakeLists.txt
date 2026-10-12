@@ -35,6 +35,11 @@ foreach(name test_value test_json test_js_number test_js_syntax test_catalog tes
 endforeach()
 set_tests_properties(test_effect_validator PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
+add_executable(test_jsre wgsl/test_jsre.cpp)
+target_include_directories(test_jsre PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_jsre PRIVATE noisemaker_wgsl)
+add_test(NAME test_jsre COMMAND test_jsre)
+
 foreach(name test_midi_state test_obj_parser)
   add_executable(${name} host/${name}.cpp)
   target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})

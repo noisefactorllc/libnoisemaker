@@ -145,6 +145,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   target_compile_options(noisemaker_host PRIVATE -ffp-contract=off)
 endif()
 add_library(noisemaker::host ALIAS noisemaker_host)
+
+# The reference backend's WGSL source analysis. It needs no GPU, so it builds
+# and is gated in every configuration.
+add_library(noisemaker_wgsl STATIC src/gpu/wgsl/jsre.cpp src/gpu/wgsl/wgsl.cpp)
+target_include_directories(noisemaker_wgsl PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(noisemaker_wgsl PUBLIC noisemaker_core_impl)
 add_subdirectory(tools/nm-dump)
 
 if(NM_BUILD_GPU)
