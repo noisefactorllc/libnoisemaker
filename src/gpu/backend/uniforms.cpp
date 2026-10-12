@@ -65,10 +65,18 @@ double js_min(double a, double b) {
 }
 
 // a + b: string concatenation when either side is a string or an object.
+// Each conversion is its own statement: C++ leaves the order of operands and
+// arguments unspecified, and JavaScript converts a before b.
 Value js_add(const Value& a, const Value& b) {
     auto stringish = [](const Value& v) { return v.is_string() || v.is_array() || v.is_object() || v.is_function(); };
-    if (stringish(a) || stringish(b)) return Value(jsv::to_string(a) + jsv::to_string(b));
-    return Value(jsv::to_number(a) + jsv::to_number(b));
+    if (stringish(a) || stringish(b)) {
+        const JsString left = jsv::to_string(a);
+        const JsString right = jsv::to_string(b);
+        return Value(left + right);
+    }
+    const double left = jsv::to_number(a);
+    const double right = jsv::to_number(b);
+    return Value(left + right);
 }
 
 double number(const Value& value) { return jsv::to_number(value); }
@@ -113,6 +121,12 @@ struct View {
         for (int i = 0; i < 4; ++i) bytes[index + i] = uint8_t(bits >> (8 * i));
     }
     void setFloat32(double offset, double value) { put(check(offset, 4), float_bits(value)); }
+    // setFloat32(offset, value) with a value not yet a number: DataView reads
+    // the index before it converts the value.
+    void setFloat32(double offset, const Value& value) {
+        const size_t index = check(offset, 4);
+        put(index, float_bits(jsv::to_number(value)));
+    }
     void setInt32(double offset, double value) { put(check(offset, 4), to_uint32(value)); }
     void setUint32(double offset, double value) { put(check(offset, 4), to_uint32(value)); }
 };
@@ -231,31 +245,31 @@ std::vector<uint8_t> UniformPacker::packUniforms() {
             const size_t n = a.size();
             if (n == 2) {
                 offset = alignTo(offset, 8);
-                view.setFloat32(offset, number(a[0]));
-                view.setFloat32(offset + 4, number(a[1]));
+                view.setFloat32(offset, a[0]);
+                view.setFloat32(offset + 4, a[1]);
                 offset += 8;
             } else if (n == 3) {
                 offset = alignTo(offset, 16);
-                for (size_t i = 0; i < 3; ++i) view.setFloat32(offset + double(i) * 4, number(a[i]));
+                for (size_t i = 0; i < 3; ++i) view.setFloat32(offset + double(i) * 4, a[i]);
                 offset += 16;
             } else if (n == 4) {
                 offset = alignTo(offset, 16);
-                for (size_t i = 0; i < 4; ++i) view.setFloat32(offset + double(i) * 4, number(a[i]));
+                for (size_t i = 0; i < 4; ++i) view.setFloat32(offset + double(i) * 4, a[i]);
                 offset += 16;
             } else if (n == 9) {
                 offset = alignTo(offset, 16);
                 for (size_t col = 0; col < 3; ++col) {
-                    for (size_t row = 0; row < 3; ++row) view.setFloat32(offset + double(row) * 4, number(a[col * 3 + row]));
+                    for (size_t row = 0; row < 3; ++row) view.setFloat32(offset + double(row) * 4, a[col * 3 + row]);
                     offset += 16;
                 }
             } else if (n == 16) {
                 offset = alignTo(offset, 16);
-                for (size_t i = 0; i < 16; ++i) view.setFloat32(offset + double(i) * 4, number(a[i]));
+                for (size_t i = 0; i < 16; ++i) view.setFloat32(offset + double(i) * 4, a[i]);
                 offset += 64;
             } else {
                 for (size_t i = 0; i < n; ++i) {
                     offset = alignTo(offset, 4);
-                    view.setFloat32(offset, number(a[i]));
+                    view.setFloat32(offset, a[i]);
                     offset += 4;
                 }
             }
@@ -320,7 +334,7 @@ std::vector<uint8_t> UniformPacker::packUniformsWithLayout(const Value& layout, 
         const double offset = width == 4 ? slotOffset : slotOffset + component_offset(element(components, 0));
         if (value.is_array()) {
             const double n = js_min(double(value.as_array().size()), width);
-            for (double i = 0; i < n; ++i) view.setFloat32(offset + i * 4, number(element(value, i)));
+            for (double i = 0; i < n; ++i) view.setFloat32(offset + i * 4, element(value, i));
         } else if (value.is_number()) {
             view.setFloat32(offset, value.as_number());
         }
@@ -333,7 +347,9 @@ std::vector<uint8_t> UniformPacker::packUniformsWithByteLayout(const Value& layo
     if (std::isnan(totalSize) || totalSize == 0) {
         totalSize = 0;
         for (const Value& entry : layout.as_array()) {
-            totalSize = js_max(totalSize, number(js_add(jsv::get(entry, u"offset"), jsv::get(entry, u"size"))));
+            const Value entryOffset = jsv::get(entry, u"offset");
+            const Value entrySize = jsv::get(entry, u"size");
+            totalSize = js_max(totalSize, number(js_add(entryOffset, entrySize)));
         }
     }
     const double bufferSize = std::ceil(totalSize / 16) * 16;
@@ -347,23 +363,32 @@ std::vector<uint8_t> UniformPacker::packUniformsWithByteLayout(const Value& layo
         const Value components = jsv::get(entry, u"components");
         const bool isInt = jsv::strict_equals(type, Value(u"int"));
         const bool isUint = jsv::strict_equals(type, Value(u"uint"));
-        auto write = [&](const Value& at, double v) {
-            if (isInt) view.setInt32(number(at), js_round(v));
-            else if (isUint) view.setUint32(number(at), js_round(v));
-            else view.setFloat32(number(at), v);
+        // An integer is rounded (Math.round converts it) before setInt32 reads
+        // the index; a float is converted by setFloat32 after it.
+        auto write = [&](const Value& at, const Value& raw) {
+            if (isInt || isUint) {
+                const double rounded = js_round(number(raw));
+                if (isInt) view.setInt32(number(at), rounded);
+                else view.setUint32(number(at), rounded);
+            } else {
+                view.setFloat32(number(at), raw);
+            }
         };
         if (jsv::strict_equals(components, Value(1.0))) {
             if (value.is_bool()) {
                 if (isInt || isUint) view.setInt32(number(offset), value.as_bool() ? 1 : 0);
                 else view.setFloat32(number(offset), value.as_bool() ? 1.0 : 0.0);
             } else if (value.is_number()) {
-                write(offset, value.as_number());
+                write(offset, value);
             }
         } else if (value.is_array()) {
             const double n = js_min(double(value.as_array().size()), number(components));
-            for (double i = 0; i < n; ++i) write(js_add(offset, Value(i * 4)), number(element(value, i)));
+            for (double i = 0; i < n; ++i) {
+                const Value compOffset = js_add(offset, Value(i * 4));
+                write(compOffset, element(value, i));
+            }
         } else if (value.is_number()) {
-            write(offset, value.as_number());
+            write(offset, value);
         }
     }
     return buffer;

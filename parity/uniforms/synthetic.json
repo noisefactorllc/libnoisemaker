@@ -2166,6 +2166,169 @@
           ]
         }
       ]
+    },
+    {
+      "id": "conversion-order",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "v": [
+              {
+                "toString": 1
+              },
+              2
+            ]
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": "v",
+              "slot": -1,
+              "components": "xy"
+            }
+          ]
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "v": [
+              {
+                "toString": 1
+              },
+              2
+            ]
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": [
+              {
+                "name": "v",
+                "offset": -4,
+                "size": 8,
+                "type": "int",
+                "components": 2
+              }
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "v": [
+              {
+                "toString": 1
+              },
+              2
+            ]
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": [
+              {
+                "name": "v",
+                "offset": -4,
+                "size": 8,
+                "type": "float",
+                "components": 2
+              }
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "v": [
+              2,
+              {
+                "toString": 1
+              }
+            ]
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": [
+              {
+                "name": "v",
+                "offset": 12,
+                "size": 8,
+                "type": "uint",
+                "components": 2
+              }
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "v": [
+              2,
+              {
+                "toString": 1
+              }
+            ]
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": [
+              {
+                "name": "v",
+                "offset": 12,
+                "size": 8,
+                "type": "float",
+                "components": 2
+              }
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": [
+              {
+                "name": "a",
+                "offset": {
+                  "toString": 1
+                },
+                "size": {
+                  "valueOf": 1
+                },
+                "type": "float",
+                "components": 1
+              }
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "v": [
+              {
+                "toString": 1
+              },
+              1,
+              2
+            ]
+          },
+          "globalUniforms": {}
+        }
+      ]
     }
   ]
 }
