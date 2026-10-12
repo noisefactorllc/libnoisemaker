@@ -289,6 +289,27 @@
      "$resultOf": "let/audio-identity"
     }
    }
+  },
+  {
+   "id": "let/osc-number-kind-6",
+   "op": "unparse",
+   "compiled": {
+    "$compile": "search synth\n\nlet wobble = osc(type: 6, min: 0, max: 360)\n\nnoise(rotation: wobble)\n  .write(o0)\n\nrender(o0)"
+   }
+  },
+  {
+   "id": "let/osc-member-osctype-linear",
+   "op": "unparse",
+   "compiled": {
+    "$compile": "search synth\n\nlet wobble = osc(type: oscType.linear, min: 0, max: 360)\n\nnoise(rotation: wobble)\n  .write(o0)\n\nrender(o0)"
+   }
+  },
+  {
+   "id": "let/osc-member-osctype-noise2d",
+   "op": "unparse",
+   "compiled": {
+    "$compile": "search synth\n\nlet wobble = osc(type: oscType.noise2d, min: 0, max: 360, seed: 4)\n\nnoise(rotation: wobble)\n  .write(o0)\n\nrender(o0)"
+   }
   }
  ]
 }

@@ -1,9 +1,11 @@
 #include "core/edit/unparser.h"
+#include "core/lang/enums.h"
 #include "core/value/json.h"
 #include "core/value/js_number.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <iterator>
 #include <limits>
 
 namespace nm {
@@ -129,7 +131,9 @@ Value format_oscillator(const Value& v) {
     for (const auto& [key, def] : std::initializer_list<std::pair<const char16_t*, double>>{
              {u"min", 0}, {u"max", 1}, {u"speed", 1}, {u"offset", 0}, {u"seed", 1}}) {
         Value val = jsv::get(v, key);
-        if (!jsv::strict_equals(val, Value(def)) && (JsString(key) != u"seed" || jsv::strict_equals(kind, Value(5))))
+        // Only the noise kinds (5 and 6) read the seed.
+        bool seeded = jsv::strict_equals(kind, Value(5)) || jsv::strict_equals(kind, Value(6));
+        if (!jsv::strict_equals(val, Value(def)) && (JsString(key) != u"seed" || seeded))
             parts.push_back(JsString(key) + u": " + text(val));
     }
     return Value(u"osc(" + join_text(parts, u", ") + u")");
@@ -605,14 +609,26 @@ void push_if_non_default(std::vector<JsString>& parts, const char16_t* name, con
 Value format_let_oscillator(const Value& expr, const UnparseOptions& options) {
     Value kind = field(expr, u"oscType");
     JsString type = u"oscKind.sine";
-    if (is(kind, u"Member") && jsv::truthy(field(kind, u"path")))
-        type = u"oscKind." + text(last_segment(field(kind, u"path")));
-    else if (is(kind, u"Ident"))
+    if (is(kind, u"Member") && jsv::truthy(field(kind, u"path"))) {
+        // Rewrite the namespace to oscKind only where oscKind has the same name
+        // (oscType.linear has no oscKind.linear); otherwise keep the path as
+        // written so it resolves to the same kind.
+        static const Enums standard;
+        Value path = field(kind, u"path");
+        Value name = last_segment(path);
+        if (standard.std().value(u"oscKind").toObject().contains(jsv::to_property_key(name)))
+            type = u"oscKind." + text(name);
+        else if (path.is_array())
+            type = jsv::join(path.as_array(), u".");
+        else
+            throw jsv::not_a_function(u"expr.oscType.path.join");
+    } else if (is(kind, u"Ident"))
         type = text(field(kind, u"name"));
     else if (is(kind, u"Number")) {
         Value n = field(kind, u"value");
-        static const char16_t* names[] = {u"sine", u"tri", u"saw", u"sawInv", u"square", u"noise1d"};
-        if (n.is_number() && n.as_number() >= 0 && n.as_number() <= 5 && std::floor(n.as_number()) == n.as_number())
+        static const char16_t* names[] = {u"sine", u"tri", u"saw", u"sawInv", u"square", u"noise1d", u"noise2d"};
+        constexpr double count = std::size(names);
+        if (n.is_number() && n.as_number() >= 0 && n.as_number() < count && std::floor(n.as_number()) == n.as_number())
             type = u"oscKind." + JsString(names[static_cast<int>(n.as_number())]);
     }
     std::vector<JsString> parts{u"type: " + type};

@@ -1328,6 +1328,19 @@
     "offset": 0.25,
     "seed": 3
    }
+  },
+  {
+   "id": "osc/config-kind-6-seed",
+   "op": "formatValue",
+   "value": {
+    "type": "Oscillator",
+    "oscType": 6,
+    "min": 0,
+    "max": 1,
+    "speed": 1,
+    "offset": 0,
+    "seed": 3
+   }
   }
  ]
 }
