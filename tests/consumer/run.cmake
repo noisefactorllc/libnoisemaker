@@ -1,25 +1,36 @@
 # ctest driver: install this build to a fresh prefix, then configure, build
-# and run tests/consumer against the installed package alone.
-#   cmake -DBUILD_DIR=... -DWORK_DIR=... -DSOURCE_DIR=... -DCONFIG=... -DGENERATOR=...
-#         [-DPLATFORM=...] [-DC_COMPILER=...] [-DCXX_COMPILER=...] [-DOSX_ARCHITECTURES=...]
-#         -P run.cmake
+# and run tests/consumer against the installed package alone. With PREFIX,
+# it uses an existing install, such as an extracted release archive, instead.
+#   cmake (-DBUILD_DIR=... | -DPREFIX=...) -DWORK_DIR=... -DSOURCE_DIR=... -DCONFIG=...
+#         -DGENERATOR=... [-DPLATFORM=...] [-DC_COMPILER=...] [-DCXX_COMPILER=...]
+#         [-DOSX_ARCHITECTURES=arm64,x86_64] [-DROSETTA=ON] -P run.cmake
+# ROSETTA=ON also runs each program's x86_64 slice with arch -x86_64.
 file(REMOVE_RECURSE "${WORK_DIR}")
-set(prefix "${WORK_DIR}/prefix")
-execute_process(COMMAND "${CMAKE_COMMAND}" --install "${BUILD_DIR}" --config "${CONFIG}" --prefix "${prefix}"
-  RESULT_VARIABLE result)
-if(result)
-  message(FATAL_ERROR "install failed: ${result}")
+if(PREFIX)
+  set(prefix "${PREFIX}")
+else()
+  set(prefix "${WORK_DIR}/prefix")
+  execute_process(COMMAND "${CMAKE_COMMAND}" --install "${BUILD_DIR}" --config "${CONFIG}" --prefix "${prefix}"
+    RESULT_VARIABLE result)
+  if(result)
+    message(FATAL_ERROR "install failed: ${result}")
+  endif()
 endif()
 set(args -S "${SOURCE_DIR}" -B "${WORK_DIR}/build" -G "${GENERATOR}" "-DCMAKE_PREFIX_PATH=${prefix}"
   "-DCMAKE_BUILD_TYPE=${CONFIG}")
 if(PLATFORM)
   list(APPEND args -A "${PLATFORM}")
 endif()
-foreach(var C_COMPILER CXX_COMPILER OSX_ARCHITECTURES)
+foreach(var C_COMPILER CXX_COMPILER)
   if(${var})
     list(APPEND args "-DCMAKE_${var}=${${var}}")
   endif()
 endforeach()
+# Architectures arrive comma-separated; an escaped ; keeps them one argument.
+if(OSX_ARCHITECTURES)
+  string(REPLACE "," "\\;" archs "${OSX_ARCHITECTURES}")
+  list(APPEND args "-DCMAKE_OSX_ARCHITECTURES=${archs}")
+endif()
 execute_process(COMMAND "${CMAKE_COMMAND}" ${args} RESULT_VARIABLE result)
 if(result)
   message(FATAL_ERROR "consumer configure failed: ${result}")
@@ -40,5 +51,11 @@ foreach(exe consumer_c consumer_cxx20 consumer_cxx17)
   execute_process(COMMAND "${path}" RESULT_VARIABLE result)
   if(result)
     message(FATAL_ERROR "${exe} failed: ${result}")
+  endif()
+  if(ROSETTA)
+    execute_process(COMMAND arch -x86_64 "${path}" RESULT_VARIABLE result)
+    if(result)
+      message(FATAL_ERROR "${exe} under Rosetta failed: ${result}")
+    endif()
   endif()
 endforeach()

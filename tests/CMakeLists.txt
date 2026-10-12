@@ -43,9 +43,10 @@ foreach(name test_midi_state test_obj_parser)
 endforeach()
 
 # Install this build and use it from a separate project, as qt and the kit will.
+string(REPLACE ";" "," _nm_consumer_archs "${CMAKE_OSX_ARCHITECTURES}")
 add_test(NAME consumer COMMAND "${CMAKE_COMMAND}"
   "-DBUILD_DIR=${PROJECT_BINARY_DIR}" "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/consumer"
   "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/consumer" "-DCONFIG=$<CONFIG>" "-DGENERATOR=${CMAKE_GENERATOR}"
   "-DPLATFORM=${CMAKE_GENERATOR_PLATFORM}" "-DC_COMPILER=${CMAKE_C_COMPILER}"
-  "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}" "-DOSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}"
+  "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}" "-DOSX_ARCHITECTURES=${_nm_consumer_archs}"
   -P "${CMAKE_CURRENT_SOURCE_DIR}/consumer/run.cmake")

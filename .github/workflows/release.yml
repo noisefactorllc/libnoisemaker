@@ -1,0 +1,151 @@
+name: Release
+
+# Publishes libnoisemaker's shared libraries as a GitHub Release: one archive
+# per target, SHA256SUMS, and the tag v<version>. Dispatch it on main; a
+# published version is never rebuilt, so bump project(VERSION) first.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { target: linux-x64,       os: ubuntu-24.04,     generator: Ninja }
+          - { target: linux-arm64,     os: ubuntu-24.04-arm, generator: Ninja }
+          - { target: macos-universal, os: macos-15,         generator: Ninja, osx_archs: "arm64,x86_64" }
+          - { target: windows-x64,     os: windows-2025,     generator: "Visual Studio 18 2026", arch: x64 }
+          - { target: windows-arm64,   os: windows-11-arm,   generator: "Visual Studio 18 2026", arch: ARM64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+      - name: Install CMake for Visual Studio 2026
+        if: runner.os == 'Windows'
+        run: python -m pip install cmake==4.4.4
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Install macOS packages
+        if: runner.os == 'macOS'
+        run: brew install ninja
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/catalog
+          key: catalog-${{ hashFiles('parity/reference.json') }}
+      - name: Select CMake
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            python -c 'import cmake, os; print("CMAKE=" + os.path.join(cmake.CMAKE_BIN_DIR, "cmake.exe").replace("\\", "/"))' >> "$GITHUB_ENV"
+          else
+            echo "CMAKE=cmake" >> "$GITHUB_ENV"
+          fi
+      - name: Configure
+        shell: bash
+        run: |
+          args=(-S . -B build -G "${{ matrix.generator }}" -DCMAKE_BUILD_TYPE=Release -DNM_BUILD_GPU=OFF -DNM_BUILD_SHARED=ON)
+          if [ -n "${{ matrix.arch }}" ]; then args+=(-A "${{ matrix.arch }}"); fi
+          if [ -n "${{ matrix.osx_archs }}" ]; then
+            archs=$(echo "${{ matrix.osx_archs }}" | tr , ';')
+            args+=("-DCMAKE_OSX_ARCHITECTURES=$archs" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0)
+          fi
+          "$CMAKE" "${args[@]}"
+      - name: Build
+        shell: bash
+        run: '"$CMAKE" --build build --config Release --parallel'
+      - name: Test
+        shell: bash
+        run: ctest --test-dir build --build-config Release --output-on-failure
+      - name: Package
+        shell: bash
+        run: |
+          args=(--build build --target "${{ matrix.target }}" --out dist --cmake "$CMAKE")
+          if [ -n "${{ matrix.osx_archs }}" ]; then args+=(--expect-archs "arm64 x86_64" --expect-minos 13.0); fi
+          python tools/package_release.py "${args[@]}"
+      - name: Test the archive from a separate project
+        shell: bash
+        run: |
+          mkdir extracted
+          if [ "$RUNNER_OS" = Windows ]; then
+            python -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall("extracted")' dist/*.zip
+          else
+            tar -xzf dist/*.tar.gz -C extracted
+          fi
+          prefix="$(cd extracted/libnoisemaker-* && pwd)"
+          args=(-DPREFIX="$prefix" -DWORK_DIR="$PWD/consumer" -DSOURCE_DIR="$PWD/tests/consumer" -DCONFIG=Release
+                -DGENERATOR="${{ matrix.generator }}")
+          if [ -n "${{ matrix.arch }}" ]; then args+=(-DPLATFORM="${{ matrix.arch }}"); fi
+          if [ -n "${{ matrix.osx_archs }}" ]; then args+=(-DOSX_ARCHITECTURES="${{ matrix.osx_archs }}" -DROSETTA=ON); fi
+          "$CMAKE" "${args[@]}" -P tests/consumer/run.cmake
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.target }}
+          path: dist/libnoisemaker-*.*
+          if-no-files-found: error
+
+  publish:
+    name: publish
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require a passing CI run of this commit
+        run: |
+          passed=$(gh run list --workflow CI --commit "$GITHUB_SHA" --event push --json conclusion \
+            --jq '[.[] | select(.conclusion == "success")] | length')
+          if [ "$passed" -lt 1 ]; then
+            echo "CI has not passed on $GITHUB_SHA; nothing is published." >&2
+            exit 1
+          fi
+      - name: Read the version
+        run: |
+          version=$(sed -nE 's/^project\(libnoisemaker VERSION ([0-9]+\.[0-9]+\.[0-9]+) .*/\1/p' CMakeLists.txt)
+          if [ -z "$version" ]; then echo "no version in CMakeLists.txt" >&2; exit 1; fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already published; bump project(VERSION)." >&2
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          count=$(find . -maxdepth 1 -name "libnoisemaker-$VERSION-*" | wc -l)
+          if [ "$count" -ne 5 ]; then echo "expected 5 archives, found $count" >&2; ls >&2; exit 1; fi
+          sha256sum libnoisemaker-"$VERSION"-* > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          cat SHA256SUMS
+      - name: Publish
+        run: |
+          engine=$(tar -xzOf dist/libnoisemaker-"$VERSION"-linux-x64.tar.gz "libnoisemaker-$VERSION-linux-x64/share/noisemaker/ENGINE")
+          notes=$(printf 'libnoisemaker %s, built from %s.\n\nEngine: %s\n\nShared libraries for linux-x64, linux-arm64, macos-universal (arm64 and x86_64, macOS 13.0 or later), windows-x64 and windows-arm64. A C++ consumer must use the toolchain each archive names in share/noisemaker/TOOLCHAIN. Verify downloads with SHA256SUMS.\n' \
+            "$VERSION" "$GITHUB_SHA" "$engine")
+          gh release create "v$VERSION" dist/libnoisemaker-"$VERSION"-* dist/SHA256SUMS \
+            --target "$GITHUB_SHA" --title "libnoisemaker $VERSION" --notes "$notes"

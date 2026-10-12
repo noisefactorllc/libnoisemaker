@@ -73,6 +73,11 @@ target_link_libraries(app PRIVATE noisemaker::core)
 
 The installed headers need C++17. The C++ API passes standard-library types across the library
 boundary, so a C++ consumer must use the same compiler and standard library as the build.
+`share/noisemaker/TOOLCHAIN` names them, and `share/noisemaker/ENGINE` names the Noisemaker release
+the embedded catalog comes from.
+
+Releases are published by the `Release` workflow: one archive per platform (Linux x64 and arm64,
+macOS universal for 13.0 and later, Windows x64 and arm64) and a `SHA256SUMS` file.
 
 ## Testing
 

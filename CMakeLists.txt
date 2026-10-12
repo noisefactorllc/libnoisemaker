@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(libnoisemaker VERSION 0.1.0 LANGUAGES C CXX)
+project(libnoisemaker VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -167,6 +167,43 @@ install(TARGETS noisemaker_core EXPORT noisemakerTargets
 install(FILES include/noisemaker/core.h include/noisemaker/core.hpp include/noisemaker/value.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/noisemaker)
 install(FILES LICENSE src/core/js/acorn-LICENSE.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/noisemaker)
+# ENGINE names the Noisemaker release the catalog and the parity gates come
+# from; TOOLCHAIN names the build a C++ consumer must match (see README).
+file(READ "${PROJECT_SOURCE_DIR}/parity/reference.json" _nm_reference)
+string(JSON _nm_engine_version GET "${_nm_reference}" version)
+string(JSON _nm_engine_commit GET "${_nm_reference}" commit)
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ENGINE"
+  CONTENT "Noisemaker ${_nm_engine_version} ${_nm_engine_commit}\n")
+if(MSVC)
+  if(CMAKE_MSVC_RUNTIME_LIBRARY)
+    set(_nm_runtime "${CMAKE_MSVC_RUNTIME_LIBRARY}")
+  else()
+    set(_nm_runtime "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+  endif()
+  set(_nm_runtime "MSVC ${MSVC_TOOLSET_VERSION} toolset, ${_nm_runtime} runtime")
+elseif(APPLE)
+  set(_nm_archs "${CMAKE_OSX_ARCHITECTURES}")
+  if(NOT _nm_archs)
+    set(_nm_archs "${CMAKE_SYSTEM_PROCESSOR}")
+  endif()
+  set(_nm_minimum "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+  if(NOT _nm_minimum)
+    set(_nm_minimum "the SDK's default")
+  endif()
+  set(_nm_runtime "libc++, minimum macOS ${_nm_minimum}, architectures ${_nm_archs}")
+else()
+  set(_nm_runtime "libstdc++ of ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+endif()
+# One file per configuration: the MSVC runtime differs between them.
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/TOOLCHAIN" CONTENT
+"libnoisemaker ${PROJECT_VERSION}
+compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}
+system: ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}
+runtime: ${_nm_runtime}
+C++ standard: library C++${CMAKE_CXX_STANDARD}, headers C++17
+")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/ENGINE" "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/TOOLCHAIN"
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/noisemaker)
 install(EXPORT noisemakerTargets NAMESPACE noisemaker:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/noisemaker)
 configure_package_config_file(cmake/noisemakerConfig.cmake.in
   "${CMAKE_CURRENT_BINARY_DIR}/noisemakerConfig.cmake"
