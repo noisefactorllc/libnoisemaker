@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "38064f6c61f5bd77c88a5ee967e1865b70157c9b",
-  "version": "1.0.287",
+  "commit": "3f5775c64d55c31906eab114087e09827cb2a1cc",
+  "version": "1.0.288",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "af7d2268f7b7a14793b0815adf36bf9a4141605e05602c4c03c9b50fecb9df3a",
@@ -170,7 +170,7 @@
     "effects/render/loopEnd.js": "494a0f00fa59da1eaeeaa43ff4a37e70c052e89e91bef52bcfe4bd492d14567b",
     "effects/render/meshLoader.js": "4aa4ec7ddf73f139a00159d1a053d5e6722d0553a1742144cb1a68be0159f435",
     "effects/render/meshRender.js": "50f2651499bf877fc5004c32ef1710714bd8bd084556cde3266fe2d2e76ce193",
-    "effects/render/pointsBillboardRender.js": "7219d9ce1784b215a3c57a69a3b42b0a37ac501e72f0c768df5ae251eda70b76",
+    "effects/render/pointsBillboardRender.js": "af9c353e6d258090a3c53138dacc4d6d0032a376d0700fef4734216897b5fc48",
     "effects/render/pointsEmit.js": "2ecc8f002319b89d63da258b0317149924c2d04befb019b3ba5c5228da66d4f6",
     "effects/render/pointsRender.js": "70d63d316960039dac9b4f18347e5daa7505994e78190dc88895452e065b392e",
     "effects/render/render3d.js": "bdf6a03257a6f6b47bcafe8540cd990cf90a9f1965b63ead61108f6ab00205f2",

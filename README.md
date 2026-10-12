@@ -24,7 +24,7 @@ That language is Noisemaker's **DSL**. The original engine runs in the browser a
 [noisedeck.app](https://noisedeck.app).
 
 **libnoisemaker** is a native C++ library, with a C API, that runs [Noisemaker](https://noisemaker.app)
-programs on the GPU through [Dawn](https://dawn.googlesource.com/dawn). It tracks Noisemaker 1.0.287,
+programs on the GPU through [Dawn](https://dawn.googlesource.com/dawn). It tracks Noisemaker 1.0.288,
 the version locked in `parity/reference.json`.
 
 ## Requirements

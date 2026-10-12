@@ -12,7 +12,7 @@ int main() {
     NM_CHECK(file != nullptr);
     libnoisemaker::json::parse(file->bytes);
     NM_CHECK(libnoisemaker::catalog_files().size() == NM_CATALOG_FILE_COUNT);
-    NM_CHECK(std::string_view(nm_engine_version()) == "1.0.287");
+    NM_CHECK(std::string_view(nm_engine_version()) == "1.0.288");
     NM_CHECK(libnoisemaker::catalog_find("effects/unknown/nope.json") == nullptr);
     return 0;
 }
