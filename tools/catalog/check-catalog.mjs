@@ -137,60 +137,146 @@ execFileSync(process.execPath, [join(root, 'tools/catalog/extract-runtime-shader
 // Every createShaderModule call in the runtime's source text either compiles a
 // program's own source (`code: source` or `code: vertexSource` inside
 // WebGPUBackend's compileComputeProgram and compileRenderProgram) or is one the
-// extractor captured. A small lexer blanks comments, strings, template text and
-// regular expressions first, so a call is found however it is spaced or split
-// across lines, and any other use of the name is an error.
+// extractor captured. An acorn-style tokenizer (codeOnly) blanks comments,
+// strings, template text and regular expressions first, so a call is found
+// however it is spaced or split across lines; any other use of the name is an
+// error.
 const capturedSites = new Set(Object.values(JSON.parse(readFileSync(join(runtimeOut, 'sites.json'), 'utf8'))))
+// Tokenizes JavaScript the way acorn's tokenizer does (tokencontext.js): a
+// stack of brace, paren, template and function contexts and the exprAllowed
+// flag decide whether a slash starts a regular expression or divides.
+// Returns the text with comments, strings, template text and regular
+// expressions blanked, so only code remains.
 function codeOnly (text) {
   const out = text.split('')
-  const blank = (from, to) => { for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' ' }
-  const templates = [] // brace depth of each open template substitution
+  const blank = (from, to) => { for (let k = from; k < to && k < out.length; k++) if (!'\n\r\u2028\u2029'.includes(out[k])) out[k] = ' ' }
+  const ctx = (name, isExpr, token = null) => ({ name, isExpr, token })
+  const B_STAT = ctx('b_stat', false); const B_EXPR = ctx('b_expr', true); const B_TMPL = ctx('b_tmpl', true)
+  const P_STAT = ctx('p_stat', false); const P_EXPR = ctx('p_expr', true); const Q_TMPL = ctx('q_tmpl', true)
+  const F_EXPR = ctx('f_expr', true, 'function'); const F_STAT = ctx('f_stat', false, 'function')
+  const stack = [B_STAT]
+  const cur = () => stack[stack.length - 1]
+  // Keywords acorn marks beforeExpr; after them an expression (and so a regex) may start.
+  const beforeExprKeywords = new Set(['case', 'default', 'do', 'else', 'return', 'throw', 'new', 'in', 'instanceof', 'typeof', 'void', 'delete', 'extends'])
+  const otherKeywords = new Set(['break', 'catch', 'continue', 'debugger', 'finally', 'for', 'function', 'if', 'switch', 'while', 'with', 'null', 'true', 'false', 'this', 'const', 'class', 'super', 'import', 'export', 'try', 'var'])
+  const punctuators = ['>>>=', '...', '===', '!==', '**=', '<<=', '>>=', '>>>', '&&=', '||=', '??=', '=>', '==', '!=', '<=', '>=', '&&', '||', '??', '?.',
+    '++', '--', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '**', '<<', '>>']
+  const beforeExprPunct = new Set(['[', '{', '(', ',', ';', ':', '?', '=>', '...', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '**=', '<<=', '>>=', '>>>=',
+    '&&=', '||=', '??=', '==', '!=', '===', '!==', '<', '>', '<=', '>=', '+', '-', '*', '/', '%', '**', '<<', '>>', '>>>', '&', '|', '^', '&&', '||', '??', '!', '~', '?.'])
+  let exprAllowed = true
+  let prev = { type: 'start', value: '' }
+  let lastEnd = 0
   let i = 0
-  let previous = '' // last significant code character, for regex detection
-  while (i < text.length) {
-    const c = text[i]
-    const d = text[i + 1]
-    if (c === '/' && d === '/') { const j = text.indexOf('\n', i); const end = j < 0 ? text.length : j; blank(i, end); i = end; continue }
-    if (c === '/' && d === '*') { const j = text.indexOf('*/', i + 2); const end = j < 0 ? text.length : j + 2; blank(i, end); i = end; continue }
-    if (c === "'" || c === '"') {
-      let j = i + 1
-      while (j < text.length && text[j] !== c) j += text[j] === '\\' ? 2 : 1
-      blank(i, j + 1); i = j + 1; previous = 'a'; continue
+  const lineBreakSince = from => /[\n\r\u2028\u2029]/.test(text.slice(from, i))
+  const isIdentStart = c => /[A-Za-z_$\u0080-\uffff\\]/.test(c)
+  const isIdentPart = c => /[\w$\u0080-\uffff\\]/.test(c)
+  function braceIsBlock (tokenStart) {
+    const parent = cur()
+    if (parent === F_EXPR || parent === F_STAT) return true
+    if (prev.type === ':' && (parent === B_STAT || parent === B_EXPR)) return !parent.isExpr
+    if (prev.type === 'return' || (prev.type === 'name' && exprAllowed)) return /[\n\r\u2028\u2029]/.test(text.slice(lastEnd, tokenStart))
+    if (['else', ';', 'start', ')', '=>'].includes(prev.type)) return true
+    if (prev.type === '{') return parent === B_STAT
+    if (['var', 'const', 'name'].includes(prev.type)) return false
+    return !exprAllowed
+  }
+  function update (type, value, tokenStart) {
+    if (type === '}' || type === ')') {
+      if (stack.length === 1) { exprAllowed = true; return }
+      let out = stack.pop()
+      if (out === B_STAT && cur().token === 'function') out = stack.pop()
+      exprAllowed = !out.isExpr
+    } else if (type === '{') {
+      stack.push(braceIsBlock(tokenStart) ? B_STAT : B_EXPR); exprAllowed = true
+    } else if (type === '${') {
+      stack.push(B_TMPL); exprAllowed = true
+    } else if (type === '(') {
+      stack.push(['if', 'for', 'with', 'while'].includes(prev.type) ? P_STAT : P_EXPR); exprAllowed = true
+    } else if (type === '++' || type === '--') {
+      // exprAllowed is unchanged
+    } else if (type === 'function' || type === 'class') {
+      const beforeExpr = beforeExprPunct.has(prev.type) || beforeExprKeywords.has(prev.type)
+      if (beforeExpr && prev.type !== 'else' && !(prev.type === ';' && cur() !== P_STAT) &&
+          !(prev.type === 'return' && /[\n\r\u2028\u2029]/.test(text.slice(lastEnd, tokenStart))) &&
+          !((prev.type === ':' || prev.type === '{') && cur() === B_STAT)) stack.push(F_EXPR)
+      else stack.push(F_STAT)
+      exprAllowed = false
+    } else if (type === '`') {
+      if (cur() === Q_TMPL) stack.pop(); else stack.push(Q_TMPL)
+      exprAllowed = false
+    } else if (type === 'name') {
+      exprAllowed = prev.type !== '.' && ((value === 'of' && !exprAllowed) || value === 'yield' || value === 'await')
+    } else {
+      exprAllowed = beforeExprPunct.has(type) || beforeExprKeywords.has(type)
     }
-    if (c === '`' || (c === '}' && templates.length && templates[templates.length - 1] === 0)) {
-      if (c === '}') templates.pop()
-      let j = i + 1
-      while (j < text.length && text[j] !== '`' && !(text[j] === '$' && text[j + 1] === '{')) j += text[j] === '\\' ? 2 : 1
-      blank(i, text[j] === '`' ? j + 1 : j + 2)
-      if (text[j] === '$') { templates.push(0); i = j + 2; previous = '(' } else { i = j + 1; previous = 'a' }
+    prev = { type, value }
+  }
+  while (i < text.length) {
+    if (cur() === Q_TMPL) {
+      const from = i
+      while (i < text.length && text[i] !== '`' && !(text[i] === '$' && text[i + 1] === '{')) i += text[i] === '\\' ? 2 : 1
+      blank(from, i)
+      if (i >= text.length) break
+      const tokenStart = i
+      if (text[i] === '`') { blank(i, i + 1); i++; update('`', '`', tokenStart) } else { blank(i, i + 2); i += 2; update('${', '${', tokenStart) }
+      lastEnd = i
       continue
     }
-    if (c === '/' && (previous === '' || '(,=:[!&|?{};+-*%<>~^'.includes(previous))) {
-      let j = i + 1
+    const c = text[i]
+    if (/\s/.test(c) || c === '\ufeff') { i++; continue }
+    if (c === '/' && text[i + 1] === '/') { const from = i; while (i < text.length && !'\n\r\u2028\u2029'.includes(text[i])) i++; blank(from, i); continue }
+    if (c === '/' && text[i + 1] === '*') { const j = text.indexOf('*/', i + 2); const end = j < 0 ? text.length : j + 2; blank(i, end); i = end; continue }
+    const tokenStart = i
+    if (isIdentStart(c)) {
+      while (i < text.length && isIdentPart(text[i])) i += text[i] === '\\' ? 2 : 1
+      const word = text.slice(tokenStart, i)
+      const type = beforeExprKeywords.has(word) || otherKeywords.has(word) || word === 'let' && false ? word : 'name'
+      update(type, word, tokenStart)
+    } else if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(text[i + 1] ?? ''))) {
+      const m = text.slice(i).match(/^(?:0[xXoObB][0-9a-fA-F_]+n?|[0-9][0-9_]*n|(?:[0-9][0-9_]*\.?[0-9_]*|\.[0-9][0-9_]*)(?:[eE][+-]?[0-9_]+)?)/)
+      i += m[0].length
+      update('num', m[0], tokenStart)
+    } else if (c === '"' || c === "'") {
+      i++
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1
+      i++
+      blank(tokenStart, i)
+      update('string', '', tokenStart)
+    } else if (c === '`') {
+      blank(i, i + 1); i++
+      update('`', '`', tokenStart)
+    } else if (c === '/' && exprAllowed) {
+      i++
       let inClass = false
-      while (j < text.length && text[j] !== '\n' && (inClass || text[j] !== '/')) {
-        if (text[j] === '\\') j++
-        else if (text[j] === '[') inClass = true
-        else if (text[j] === ']') inClass = false
-        j++
+      while (i < text.length && !'\n\r\u2028\u2029'.includes(text[i])) {
+        if (text[i] === '\\') { i += 2; continue }
+        if (text[i] === '[') inClass = true
+        else if (text[i] === ']') inClass = false
+        else if (text[i] === '/' && !inClass) break
+        i++
       }
-      blank(i, j + 1); i = j + 1; previous = 'a'; continue
+      i++
+      while (i < text.length && isIdentPart(text[i])) i++
+      blank(tokenStart, i)
+      update('regexp', '', tokenStart)
+    } else {
+      const op = punctuators.find(p => text.startsWith(p, i)) ?? c
+      i += op.length
+      update(op, op, tokenStart)
     }
-    if (templates.length) {
-      if (c === '{') templates[templates.length - 1]++
-      else if (c === '}') templates[templates.length - 1]--
-    }
-    if (!/\s/.test(c)) previous = /[\w$]/.test(c) ? 'a' : c
-    i++
+    lastEnd = i
   }
-  return out.join('')
+  // Every brace, paren and template closes by the end of a module; a stack
+  // left open means the tokenizer lost its place.
+  return { code: out.join(''), balanced: stack.length === 1 }
 }
 const sourceSites = []
 const programSites = []
 for (const path of files(join(reference, 'shaders/src')).filter(path => path.endsWith('.js'))) {
   const rel = relative(join(reference, 'shaders/src'), path).replaceAll('\\', '/')
   const text = readFileSync(path, 'utf8')
-  const code = codeOnly(text)
+  const { code, balanced } = codeOnly(text)
+  if (!balanced) errors.push(`runtime: ${rel} did not tokenize cleanly`)
   const lineStarts = [0]
   for (let k = 0; k < text.length; k++) if (text[k] === '\n') lineStarts.push(k + 1)
   const lineOf = offset => { let lo = 0; let hi = lineStarts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (lineStarts[mid] <= offset) lo = mid; else hi = mid - 1 } return lo + 1 }
