@@ -11,8 +11,8 @@
 //
 // Writes <catalog dir>/runtime/shaders.json. The build reads the pinned source
 // cache (fetch-catalog.mjs); check-catalog.mjs runs it on the reference checkout
-// and, with --sites, gets the source line of each captured createShaderModule
-// call to compare with the call sites it finds in the source text.
+// and, with --sites, gets the source line and column of each captured
+// createShaderModule call to compare with the calls it finds in the source.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -55,8 +55,8 @@ const device = new Proxy({}, {
       return ({ code }) => {
         // The caller's frame: "at Class.method (file:///…/shaders/src/<path>:<line>:<column>)".
         const caller = new Error().stack.split('\n')[2] ?? ''
-        const match = caller.match(/\((.*):(\d+):\d+\)$/) ?? caller.match(/at (.*):(\d+):\d+$/)
-        sites.push(match && match[1].startsWith(srcUrl) ? `${match[1].slice(srcUrl.length)}:${match[2]}` : caller.trim())
+        const match = caller.match(/\((.*):(\d+):(\d+)\)$/) ?? caller.match(/at (.*):(\d+):(\d+)$/)
+        sites.push(match && match[1].startsWith(srcUrl) ? `${match[1].slice(srcUrl.length)}:${match[2]}:${match[3]}` : caller.trim())
         codes.push(code)
         return stub()
       }

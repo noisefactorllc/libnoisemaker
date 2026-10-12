@@ -157,24 +157,33 @@ for (const path of files(join(reference, 'shaders/src')).filter(path => path.end
     errors.push(`runtime: ${rel} does not parse: ${error.message}`)
     continue
   }
+  // The name as the code spells it: an identifier, or a string or
+  // substitution-free template used as a computed key.
+  const staticName = node => node?.type === 'Identifier' ? node.name
+    : node?.type === 'Literal' && typeof node.value === 'string' ? node.value
+      : node?.type === 'TemplateLiteral' && node.expressions.length === 0 ? node.quasis[0].value.cooked : null
   const calls = new Set()
   const visit = (node, method) => {
     if (!node || typeof node.type !== 'string') return
     if (node.type === 'MethodDefinition' && node.key?.type === 'Identifier') method = node.key.name
-    if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && !node.callee.computed &&
-        node.callee.property.name === 'createShaderModule') {
-      calls.add(node.callee.property)
-      const site = `${rel}:${node.callee.property.loc.start.line}`
+    if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression' &&
+        staticName(node.callee.property) === 'createShaderModule') {
+      const property = node.callee.property
+      calls.add(property)
+      const site = `${rel}:${property.loc.start.line}:${property.loc.start.column + 1}`
+      // compileProgram's own form: one argument, { code: source } or { code: vertexSource }.
       const [argument] = node.arguments
-      const code = argument?.type === 'ObjectExpression' && argument.properties.length === 1 ? argument.properties[0] : null
+      const code = node.arguments.length === 1 && argument.type === 'ObjectExpression' && argument.properties.length === 1
+        ? argument.properties[0] : null
+      const programForm = code?.type === 'Property' && !code.computed && !code.shorthand && !code.method && code.kind === 'init' &&
+        code.key.type === 'Identifier' && code.key.name === 'code' &&
+        code.value.type === 'Identifier' && ['source', 'vertexSource'].includes(code.value.name)
       if (rel === 'runtime/backends/webgpu.js' && ['compileComputeProgram', 'compileRenderProgram'].includes(method) &&
-          code?.type === 'Property' && code.key.name === 'code' && code.value.type === 'Identifier' &&
-          ['source', 'vertexSource'].includes(code.value.name)) programSites.push(site)
+          !node.callee.computed && programForm) programSites.push(site)
       else sourceSites.push(site)
     }
-    if ((node.type === 'Identifier' && node.name === 'createShaderModule') ||
-        (node.type === 'Literal' && node.value === 'createShaderModule')) {
-      if (!calls.has(node)) errors.push(`runtime: ${rel}:${node.loc.start.line} uses createShaderModule other than by calling it`)
+    if (['Identifier', 'Literal', 'TemplateLiteral'].includes(node.type) && staticName(node) === 'createShaderModule' && !calls.has(node)) {
+      errors.push(`runtime: ${rel}:${node.loc.start.line} uses createShaderModule other than by calling it`)
     }
     for (const key of Object.keys(node)) {
       if (key === 'loc') continue
