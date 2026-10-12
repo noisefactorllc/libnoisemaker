@@ -40,7 +40,7 @@ using namespace libnoisemaker;
 namespace {
 JsonArray lexJson(const JsString& src) {
     JsonArray out;
-    for (const auto& token : lex(src)) out.append(toJson(token));
+    for (const auto& token : lexTokens(src)) out.append(toJson(token));
     return out;
 }
 
@@ -428,7 +428,7 @@ int main() {
     }
 
     {
-        const auto astral = libnoisemaker::lex(u"\"\U0001F600\" x");
+        const auto astral = libnoisemaker::lexTokens(u"\"\U0001F600\" x");
         check(astral.size() >= 2 && astral[1].line == 1 && astral[1].col == 6,
               "astral string advances next token by two UTF-16 columns");
         const libnoisemaker::Value tokenJson = libnoisemaker::toJson(astral[1]);
@@ -442,7 +442,7 @@ int main() {
               "token JSON round-trip preserves position");
     }
     {
-        const auto inherited = libnoisemaker::lex(u"constructor __proto__ toString");
+        const auto inherited = libnoisemaker::lexTokens(u"constructor __proto__ toString");
         const libnoisemaker::Value functionToken = libnoisemaker::toJson(inherited[0]);
         const libnoisemaker::Value objectToken = libnoisemaker::toJson(inherited[1]);
         check(!functionToken.as_object().has(u"type")

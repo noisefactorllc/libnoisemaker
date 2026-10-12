@@ -17,9 +17,15 @@ add_executable(test_unparse capi/test_unparse.c)
 target_link_libraries(test_unparse PRIVATE noisemaker_core)
 add_test(NAME test_unparse COMMAND test_unparse)
 
+# The C++ API test sees only the installed headers and the exported symbols.
+add_executable(test_facade cxx/test_facade.cpp)
+target_link_libraries(test_facade PRIVATE noisemaker_core)
+add_test(NAME test_facade COMMAND test_facade)
+set_tests_properties(test_facade PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
 add_library(noisemaker_core_internal INTERFACE)
 target_include_directories(noisemaker_core_internal INTERFACE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(noisemaker_core_internal INTERFACE noisemaker_core)
+target_link_libraries(noisemaker_core_internal INTERFACE noisemaker_core_impl)
 
 foreach(name test_value test_json test_js_number test_js_syntax test_catalog test_error_formatter test_lexer test_parser test_registry test_validator test_effect_validator test_expander test_resources test_program_state)
   add_executable(${name} core/${name}.cpp)
@@ -35,3 +41,4 @@ foreach(name test_midi_state test_obj_parser)
   target_link_libraries(${name} PRIVATE noisemaker_host)
   add_test(NAME ${name} COMMAND ${name})
 endforeach()
+

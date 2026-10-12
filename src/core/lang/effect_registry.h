@@ -43,6 +43,9 @@ public:
     // Catalog entries are registered in sorted path order, while fields
     // within each definition keep their JSON declaration order.
     void loadEmbedded();
+    // Registers the definitions of {"<ns>/<func>": definition} in sorted key
+    // order, as loadEmbedded() registers the catalog's files.
+    void loadDefinitions(const Value& definitions);
     void applySetup(const Value& action);
     const OpSpec* getOp(const JsText& opName) const;
     JsObject getEffect(const JsText& key) const;

@@ -29,7 +29,7 @@ Value error_arg(const JsString& name, const JsString& message) {
 }  // namespace
 
 Value compile_state_dsl(const JsString& dsl, EffectRegistry& registry) {
-    return libnoisemaker::validate(JsObject(libnoisemaker::parse(libnoisemaker::lex(dsl))), registry).raw();
+    return libnoisemaker::validate(JsObject(libnoisemaker::parse(libnoisemaker::lexTokens(dsl))), registry).raw();
 }
 
 Value extract_effects_from_dsl(const JsString& dsl, EffectRegistry& registry) {

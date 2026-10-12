@@ -21,6 +21,8 @@ extern "C" {
 #else
 #  define NM_API
 #endif
+/* Classes and functions of the C++ API in core.hpp and value.hpp. */
+#define NM_CXX_API NM_API
 
 #define NM_ABI_VERSION 1u
 

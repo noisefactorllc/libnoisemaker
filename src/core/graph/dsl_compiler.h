@@ -57,12 +57,12 @@ JsString hashSource(const JsString& source);
 // / ERR_EXPANSION_FAILED (expand() returned errors); libnoisemaker::DslSyntaxError /
 // libnoisemaker::UnsupportedDsl propagate unchanged from the lex/parse/validate/
 // expand stages.
-Object compileGraphJson(const JsString& source, EffectRegistry& registry,
+Object compileGraphJson(const JsString& source, const EffectRegistry& registry,
                         const Object& options = {});
 
 // compileGraphJson() then libnoisemaker::Graph::fromJson() on the serialized bytes —
 // see file header for why this guarantees --dsl/--graph byte-identity.
-libnoisemaker::Graph compileGraph(const JsString& source, EffectRegistry& registry,
+libnoisemaker::Graph compileGraph(const JsString& source, const EffectRegistry& registry,
                        const Object& options = {});
 
 // Convenience overload using the embedded effect catalog.

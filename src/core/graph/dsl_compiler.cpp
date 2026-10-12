@@ -201,9 +201,9 @@ JsString hashSource(const JsString& source) {
     return toBase36(static_cast<int32_t>(hash));
 }
 
-Object compileGraphJson(const JsString& source, EffectRegistry& registry,
+Object compileGraphJson(const JsString& source, const EffectRegistry& registry,
                         const Object& options) {
-    const auto tokens = libnoisemaker::lex(source);
+    const auto tokens = libnoisemaker::lexTokens(source);
     const JsObject ast(libnoisemaker::parse(tokens, Value(options)));
     const JsObject validated = libnoisemaker::validate(ast, registry);
 
@@ -242,7 +242,7 @@ Object compileGraphJson(const JsString& source, EffectRegistry& registry,
                           expanded.programs, expanded.mediaSteps).raw().as_object();
 }
 
-libnoisemaker::Graph compileGraph(const JsString& source, EffectRegistry& registry,
+libnoisemaker::Graph compileGraph(const JsString& source, const EffectRegistry& registry,
                        const Object& options) {
     return libnoisemaker::Graph::fromJson(json::stringify(Value(compileGraphJson(source, registry, options))));
 }

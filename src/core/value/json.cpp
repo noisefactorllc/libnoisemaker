@@ -269,4 +269,5 @@ std::string stringify(const Value& value, int indent) {
     return out;
 }
 Value parse(std::string_view utf8) { return Parser(utf8).parse(); }
+ParseError::~ParseError() = default;
 }  // namespace libnoisemaker::json

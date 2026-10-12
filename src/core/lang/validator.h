@@ -44,7 +44,7 @@ public:
 // thrown (matches the reference -- validate() has exactly one throw site
 // of its own, "Missing required search directive", which libnoisemaker::parse
 // already guarantees can never reach here).
-Value validate(const Value& ast, EffectRegistry& registry);
-JsObject validate(const JsObject& ast, EffectRegistry& registry);
+Value validate(const Value& ast, const EffectRegistry& registry);
+JsObject validate(const JsObject& ast, const EffectRegistry& registry);
 
 } // namespace libnoisemaker

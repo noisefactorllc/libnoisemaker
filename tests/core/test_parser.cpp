@@ -27,7 +27,7 @@ using namespace libnoisemaker;
 namespace {
 JsonArray lexJson(const JsString& src) {
     JsonArray out;
-    for (const auto& token : lex(src)) out.append(toJson(token));
+    for (const auto& token : lexTokens(src)) out.append(toJson(token));
     return out;
 }
 JsonObject parseJson(const JsonArray& arr, const JsonObject& options = JsonObject()) {
@@ -1240,14 +1240,14 @@ int main() {
     }
 
     {
-        const libnoisemaker::Value native = libnoisemaker::parse(libnoisemaker::lex(u"search synth\nnoise().write(o0)\nrender(o0)\n"));
+        const libnoisemaker::Value native = libnoisemaker::parse(libnoisemaker::lexTokens(u"search synth\nnoise().write(o0)\nrender(o0)\n"));
         const libnoisemaker::Value* plans = native.is_object() ? native.as_object().find(u"plans") : nullptr;
         check(plans && plans->is_array() && plans->as_array().size() == 1,
               "native parse API returns a Value AST with one plan");
     }
     {
         bool matched = false;
-        try { libnoisemaker::parse(libnoisemaker::lex(u"search synth\nnoise(constructor)")); }
+        try { libnoisemaker::parse(libnoisemaker::lexTokens(u"search synth\nnoise(constructor)")); }
         catch (const libnoisemaker::DslSyntaxError& err) {
             matched = err.message() == u"Unexpected token function Object() { [native code] } at line 2 col 7";
         }

@@ -89,6 +89,13 @@ void EffectRegistry::loadEmbedded() {
     for (const auto* file : files) registerEffect(std::string(file->bytes));
 }
 
+void EffectRegistry::loadDefinitions(const Value& definitions) {
+    if (!definitions.is_object()) throw std::invalid_argument("effect definitions must be an object");
+    std::vector<JsString> keys = definitions.as_object().keys();
+    std::sort(keys.begin(), keys.end());
+    for (const JsString& key : keys) registerEffect(json::stringify(*definitions.as_object().find(key)));
+}
+
 void EffectRegistry::applySetup(const Value& actionValue) {
     const JsObject action(actionValue);
     const JsText op = action.value(JsText(u"op")).toString();

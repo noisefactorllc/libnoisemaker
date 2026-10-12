@@ -155,7 +155,7 @@ static nm_status unparse_impl(const nm_compiled* compiled,
     try {
         const libnoisemaker::Value overrides = overrides_json
             ? libnoisemaker::json::parse(overrides_json) : libnoisemaker::Value(libnoisemaker::Object{});
-        const libnoisemaker::Value validated = libnoisemaker::validate(libnoisemaker::parse(libnoisemaker::lex(compiled->source)), registry());
+        const libnoisemaker::Value validated = libnoisemaker::validate(libnoisemaker::parse(libnoisemaker::lexTokens(compiled->source)), registry());
         const libnoisemaker::JsString source = libnoisemaker::unparse(validated, overrides,
             libnoisemaker::UnparseOptions::from_value(libnoisemaker::Value(), &registry()), registry());
         const std::string utf8 = libnoisemaker::js_to_utf8(source);

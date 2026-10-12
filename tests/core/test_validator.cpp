@@ -56,7 +56,7 @@ libnoisemaker::EffectRegistry& registry() {
 }
 
 libnoisemaker::JsObject validateSrc(const libnoisemaker::JsText& src) {
-    return libnoisemaker::JsObject(libnoisemaker::validate(libnoisemaker::parse(libnoisemaker::lex(src)), registry()));
+    return libnoisemaker::JsObject(libnoisemaker::validate(libnoisemaker::parse(libnoisemaker::lexTokens(src)), registry()));
 }
 
 // One chain step out of plans[0].chain, by 0-based index.

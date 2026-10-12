@@ -110,7 +110,7 @@ JsText jsStringOf(const JsValue& v) {
 }
 
 // Ordered core objects preserve each effect definition's declaration order.
-JsList orderedGlobalKeys(EffectRegistry&, const JsText&, const JsObject& globals) {
+JsList orderedGlobalKeys(const EffectRegistry&, const JsText&, const JsObject& globals) {
     return globals.keys();
 }
 
@@ -136,7 +136,7 @@ namespace {
 
 class Expander {
 public:
-    Expander(EffectRegistry& registry, const JsObject& options)
+    Expander(const EffectRegistry& registry, const JsObject& options)
         : registry_(registry), shaderOverrides_(options.value(JsText(u"shaderOverrides")).toObject()) {}
 
     ExpandResult run(const JsArray& plans, const JsValue& renderDirective) {
@@ -165,7 +165,7 @@ public:
     }
 
 private:
-    EffectRegistry& registry_;
+    const EffectRegistry& registry_;
     JsObject shaderOverrides_;
     JsVector<ExpandedPass> passes_;
     JsArray errors_;
@@ -1407,7 +1407,7 @@ JsObject Expander::expandPaletteVectors(int index) {
 
 } // namespace
 
-ExpandResult expand(const JsObject& validated, EffectRegistry& registry, const JsObject& options) {
+ExpandResult expand(const JsObject& validated, const EffectRegistry& registry, const JsObject& options) {
     Expander expander(registry, options);
     const JsArray plans = validated.value(JsText(u"plans")).toArray();
     const JsValue render = validated.value(JsText(u"render"));

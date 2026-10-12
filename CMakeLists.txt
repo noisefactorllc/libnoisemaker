@@ -7,7 +7,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(NM_BUILD_TESTS "Build the libnoisemaker tests" ${PROJECT_IS_TOP_LEVEL})
 option(NM_BUILD_GPU "Build the Dawn executor. OFF builds only the GPU-free core and host helpers, with no Dawn tree" ON)
+option(NM_BUILD_SHARED "Build noisemaker_core as a shared library exporting only its C and C++ APIs" OFF)
 option(NM_WARNINGS_AS_ERRORS "Build libnoisemaker's own targets with -Wall -Wextra -Wpedantic -Werror, or /W4 /WX" OFF)
+if(WIN32 AND NM_BUILD_SHARED AND NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+  # Executables load noisemaker_core.dll from beside them.
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
 set(NM_DAWN_SOURCE_DIR "${PROJECT_SOURCE_DIR}/.cache/dawn/src" CACHE PATH
     "Dawn source tree prepared by tools/fetch_dawn.py")
 set(NM_CATALOG_CACHE_DIR "" CACHE PATH "Prefilled, verified catalog cache for offline builds")
@@ -58,9 +63,14 @@ if(NM_BUILD_GPU)
   target_link_libraries(noisemaker_gpu PUBLIC dawn::webgpu_dawn)
 endif()
 
-add_library(noisemaker_core STATIC
+# The core compiles once. noisemaker_core is a static library, or with
+# NM_BUILD_SHARED a shared library that exports only the C API and the C++ API
+# in include/noisemaker. noisemaker_core_impl links the same objects with their
+# internal symbols, for the tools, the host helpers and the internal tests.
+add_library(noisemaker_core_objects OBJECT
   src/capi/compile.cpp
   src/capi/error.cpp
+  src/capi/facade.cpp
   src/core/catalog/catalog.cpp
   ${_nm_catalog_cpp}
   src/core/edit/error_formatter.cpp
@@ -94,12 +104,30 @@ add_library(noisemaker_core STATIC
   src/core/value/js_number.cpp
   src/core/value/value.cpp
   src/core/value/json.cpp)
-target_include_directories(noisemaker_core
+target_include_directories(noisemaker_core_objects
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   PRIVATE ${PROJECT_SOURCE_DIR}/src "${CMAKE_CURRENT_BINARY_DIR}/generated")
-add_dependencies(noisemaker_core noisemaker_catalog_generated)
+add_dependencies(noisemaker_core_objects noisemaker_catalog_generated)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
-  target_compile_options(noisemaker_core PRIVATE -ffp-contract=off)
+  target_compile_options(noisemaker_core_objects PRIVATE -ffp-contract=off)
+endif()
+if(NM_BUILD_SHARED)
+  target_compile_definitions(noisemaker_core_objects PRIVATE NM_SHARED NM_BUILDING)
+  set_target_properties(noisemaker_core_objects PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON)
+  add_library(noisemaker_core SHARED $<TARGET_OBJECTS:noisemaker_core_objects>)
+  target_compile_definitions(noisemaker_core INTERFACE NM_SHARED)
+  add_library(noisemaker_core_impl STATIC $<TARGET_OBJECTS:noisemaker_core_objects>)
+else()
+  add_library(noisemaker_core STATIC $<TARGET_OBJECTS:noisemaker_core_objects>)
+  add_library(noisemaker_core_impl ALIAS noisemaker_core)
+endif()
+target_include_directories(noisemaker_core PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
+if(NM_BUILD_SHARED)
+  target_include_directories(noisemaker_core_impl PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
 endif()
 add_library(noisemaker::core ALIAS noisemaker_core)
 
@@ -112,7 +140,7 @@ add_library(noisemaker_host STATIC
   src/host/midi_state.cpp
   src/host/obj_parser.cpp)
 target_include_directories(noisemaker_host PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(noisemaker_host PUBLIC noisemaker_core)
+target_link_libraries(noisemaker_host PUBLIC noisemaker_core_impl)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   target_compile_options(noisemaker_host PRIVATE -ffp-contract=off)
 endif()
@@ -122,7 +150,7 @@ add_subdirectory(tools/nm-dump)
 if(NM_BUILD_GPU)
   add_library(noisemaker STATIC src/capi/context.cpp)
   target_include_directories(noisemaker PRIVATE ${PROJECT_SOURCE_DIR}/src)
-  target_link_libraries(noisemaker PUBLIC noisemaker_core PRIVATE noisemaker_gpu)
+  target_link_libraries(noisemaker PUBLIC noisemaker_core_impl PRIVATE noisemaker_gpu)
   add_library(noisemaker::noisemaker ALIAS noisemaker)
 endif()
 

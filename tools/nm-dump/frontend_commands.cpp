@@ -108,17 +108,17 @@ libnoisemaker::Value result_for(const std::string& stage, const libnoisemaker::J
         return libnoisemaker::normalizeGraphJson(libnoisemaker::Value(graph), registry_instance().defineMap().raw());
     }
     if (stage == "expanded") {
-        const libnoisemaker::Value validated = isolated ? *isolated : libnoisemaker::validate(libnoisemaker::parse(libnoisemaker::lex(source)), registry_instance());
+        const libnoisemaker::Value validated = isolated ? *isolated : libnoisemaker::validate(libnoisemaker::parse(libnoisemaker::lexTokens(source)), registry_instance());
         return expansion_json(libnoisemaker::expand(libnoisemaker::JsObject(validated), registry_instance()));
     }
     if (stage == "validated") {
-        libnoisemaker::Value ast = isolated ? *isolated : libnoisemaker::parse(libnoisemaker::lex(source));
-        if (isolated) restore_ast_sidecars(ast, libnoisemaker::parse(libnoisemaker::lex(source)));
+        libnoisemaker::Value ast = isolated ? *isolated : libnoisemaker::parse(libnoisemaker::lexTokens(source));
+        if (isolated) restore_ast_sidecars(ast, libnoisemaker::parse(libnoisemaker::lexTokens(source)));
         libnoisemaker::Value validated = libnoisemaker::validate(ast, registry_instance());
         plain_ast(validated);
         return validated;
     }
-    const auto tokens = libnoisemaker::lex(source);
+    const auto tokens = libnoisemaker::lexTokens(source);
     if (stage == "tokens") {
         libnoisemaker::Array result;
         result.reserve(tokens.size());

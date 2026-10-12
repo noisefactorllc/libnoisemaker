@@ -324,12 +324,12 @@ JsText nodeType(const JsValue& node) { return node.isObject() ? node.toObject().
 
 class Validator {
 public:
-    explicit Validator(EffectRegistry& reg) : reg_(reg) {}
+    explicit Validator(const EffectRegistry& reg) : reg_(reg) {}
 
     JsObject run(const JsObject& ast);
 
 private:
-    EffectRegistry& reg_;
+    const EffectRegistry& reg_;
     JsArray diagnostics_;
     JsMap<JsText, JsValue> symbols_;
     JsSet<JsText> reportedAutomationCycles_;
@@ -2393,12 +2393,12 @@ JsObject Validator::run(const JsObject& ast) {
 
 } // namespace
 
-JsObject validate(const JsObject& ast, EffectRegistry& registry) {
+JsObject validate(const JsObject& ast, const EffectRegistry& registry) {
     Validator v(registry);
     return v.run(ast);
 }
 
-Value validate(const Value& ast, EffectRegistry& registry) {
+Value validate(const Value& ast, const EffectRegistry& registry) {
     return validate(JsObject(ast), registry).raw();
 }
 

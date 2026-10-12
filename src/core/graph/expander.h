@@ -155,7 +155,7 @@ struct ExpandResult {
 //
 // Throws std::runtime_error("plan.chain is not iterable") for a plan with
 // no chain (control flow), as expander.js's for...of does.
-ExpandResult expand(const JsObject& validated, EffectRegistry& registry,
+ExpandResult expand(const JsObject& validated, const EffectRegistry& registry,
                     const JsObject& options = {});
 
 // Serializes one ExpandedPass to the exact RAW shape expander.js's own

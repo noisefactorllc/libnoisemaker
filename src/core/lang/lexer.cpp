@@ -86,7 +86,7 @@ const std::unordered_map<LangString, LangString>& keywords() {
 
 } // namespace
 
-std::vector<Token> lex(const JsString& source) {
+std::vector<Token> lexTokens(const JsString& source) {
     const LangString src(source);
     LangVector<Token> tokens;
     const int n = src.length();

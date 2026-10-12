@@ -60,7 +60,7 @@ libnoisemaker::EffectRegistry& registry() {
 }
 
 libnoisemaker::ExpandResult expandSrc(const libnoisemaker::JsText& src) {
-    const auto tokens = libnoisemaker::lex(src);
+    const auto tokens = libnoisemaker::lexTokens(src);
     const libnoisemaker::JsObject ast(libnoisemaker::parse(tokens));
     const libnoisemaker::JsObject validated = libnoisemaker::validate(ast, registry());
     return libnoisemaker::expand(validated, registry());
