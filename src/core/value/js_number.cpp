@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <limits>
 #include <string>
+#include <string_view>
 
 #ifdef __APPLE__
 #include <cstdio>
@@ -175,6 +176,185 @@ double stringToNumber(const JsString& text) {
         return nan;
     }
     return negative ? -value : value;
+}
+namespace {
+constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+constexpr double kInfinity = std::numeric_limits<double>::infinity();
+
+bool isAsciiDigit(char16_t c) { return c >= u'0' && c <= u'9'; }
+
+// Decimal digits -> value, saturating far above any exponent that matters
+// (2^53 is exact; larger values only need to stay larger).
+double accumulateDigits(std::u16string_view digits) {
+    double value = 0.0;
+    for (const char16_t c : digits) {
+        if (value < 9007199254740992.0) {
+            value = value * 10.0 + static_cast<double>(c - u'0');
+        } else {
+            value = 9007199254740992.0 * 10.0;
+        }
+    }
+    return value;
+}
+}  // namespace
+
+bool isWhiteSpaceOrLineTerminator(char16_t c) {
+    switch (c) {
+    case 0x0009: case 0x000A: case 0x000B: case 0x000C: case 0x000D:
+    case 0x0020: case 0x00A0: case 0x1680: case 0x2028: case 0x2029:
+    case 0x202F: case 0x205F: case 0x3000: case 0xFEFF:
+        return true;
+    default:
+        return c >= 0x2000 && c <= 0x200A;
+    }
+}
+
+// The value of the longest prefix of token that is a StrDecimalLiteral ([+-] Infinity | digits [. [digits]]
+// [exponent] | . digits [exponent]), or NaN when no prefix is one.
+double parseFloatPrefix(std::u16string_view token) {
+    const std::size_t n = token.size();
+    std::size_t i = 0;
+    bool negative = false;
+    if (i < n && (token[i] == u'+' || token[i] == u'-')) {
+        negative = token[i] == u'-';
+        ++i;
+    }
+    if (token.substr(i).starts_with(u"Infinity")) {
+        return negative ? -kInfinity : kInfinity;
+    }
+
+    const std::size_t intStart = i;
+    while (i < n && isAsciiDigit(token[i])) ++i;
+    const std::size_t intEnd = i;
+
+    std::size_t fracStart = i;
+    std::size_t fracEnd = i;
+    if (i < n && token[i] == u'.') {
+        std::size_t j = i + 1;
+        while (j < n && isAsciiDigit(token[j])) ++j;
+        if (intEnd > intStart || j > i + 1) {
+            fracStart = i + 1;
+            fracEnd = j;
+            i = j;
+        }
+    }
+    if (intEnd == intStart && fracEnd == fracStart) {
+        return kNaN;
+    }
+
+    bool hasExponent = false;
+    bool exponentNegative = false;
+    std::size_t expStart = 0;
+    std::size_t expEnd = 0;
+    if (i < n && (token[i] == u'e' || token[i] == u'E')) {
+        std::size_t k = i + 1;
+        bool expSignNegative = false;
+        if (k < n && (token[k] == u'+' || token[k] == u'-')) {
+            expSignNegative = token[k] == u'-';
+            ++k;
+        }
+        const std::size_t digitsStart = k;
+        while (k < n && isAsciiDigit(token[k])) ++k;
+        if (k > digitsStart) {
+            hasExponent = true;
+            exponentNegative = expSignNegative;
+            expStart = digitsStart;
+            expEnd = k;
+        }
+    }
+
+    const std::u16string_view intDigits = token.substr(intStart, intEnd - intStart);
+    const std::u16string_view fracDigits = token.substr(fracStart, fracEnd - fracStart);
+    const std::u16string_view expDigits = token.substr(expStart, expEnd - expStart);
+
+    // Canonical ASCII form for a correctly rounded, locale-independent
+    // conversion: [-]digits[.digits][e[-]digits].
+    std::string text;
+    text.reserve(intDigits.size() + fracDigits.size() + expDigits.size() + 4);
+    if (negative) text += '-';
+    const auto appendAscii = [&](std::u16string_view digits) {
+        for (char16_t digit : digits) text.push_back(static_cast<char>(digit));
+    };
+    if (intDigits.empty()) text += '0';
+    else appendAscii(intDigits);
+    if (!fracDigits.empty()) {
+        text += '.';
+        appendAscii(fracDigits);
+    }
+    if (hasExponent) {
+        text += 'e';
+        if (exponentNegative) text += '-';
+        appendAscii(expDigits);
+    }
+
+    double value = 0.0;
+    const auto parsed = parse_double(text.data(), text.data() + text.size(), value);
+    if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size()) {
+        return value;
+    }
+
+    // Out-of-range results here have valid syntax:
+    // overflow, which JavaScript rounds to +/-Infinity, and total underflow,
+    // which JavaScript rounds to +/-0. Decide from the decimal order of the
+    // leading non-zero digit.
+    double order = 0.0;
+    bool nonZero = false;
+    for (std::size_t p = 0; p < intDigits.size(); ++p) {
+        if (intDigits[p] != u'0') {
+            order = static_cast<double>(intDigits.size() - p - 1);
+            nonZero = true;
+            break;
+        }
+    }
+    if (!nonZero) {
+        for (std::size_t q = 0; q < fracDigits.size(); ++q) {
+            if (fracDigits[q] != u'0') {
+                order = -static_cast<double>(q + 1);
+                nonZero = true;
+                break;
+            }
+        }
+    }
+    if (hasExponent) {
+        const double exponent = accumulateDigits(expDigits);
+        order += exponentNegative ? -exponent : exponent;
+    }
+    const double magnitude = (nonZero && order > 0.0) ? kInfinity : 0.0;
+    return negative ? -magnitude : magnitude;
+}
+
+
+double parseFloat(const JsString& text) {
+    size_t i = 0;
+    while (i < text.size() && isWhiteSpaceOrLineTerminator(text[i])) ++i;
+    return parseFloatPrefix(std::u16string_view(text).substr(i));
+}
+
+double round(double x) {
+    if (!std::isfinite(x) || std::trunc(x) == x) return x;
+    if (x < 0 && x >= -0.5) return -0.0;
+    const double floor = std::floor(x);
+    return x - floor >= 0.5 ? floor + 1 : floor;
+}
+
+double max(double a, double b) {
+    if (std::isnan(a) || std::isnan(b)) return kNaN;
+    if (a == b) return std::signbit(a) ? b : a;
+    return a > b ? a : b;
+}
+
+double min(double a, double b) {
+    if (std::isnan(a) || std::isnan(b)) return kNaN;
+    if (a == b) return std::signbit(a) ? a : b;
+    return a < b ? a : b;
+}
+
+double pow(double base, double exponent) {
+    if (std::isnan(exponent)) return kNaN;
+    if (exponent == 0) return 1;
+    if (std::isnan(base)) return kNaN;
+    if (std::fabs(base) == 1 && std::isinf(exponent)) return kNaN;
+    return std::pow(base, exponent);
 }
 }  // namespace libnoisemaker::js
 

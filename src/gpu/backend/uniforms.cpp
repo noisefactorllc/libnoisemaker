@@ -44,26 +44,6 @@ uint32_t to_uint32(double value) {
     return uint32_t(m);
 }
 
-// Math.round: the nearest integer, halves toward +Infinity, -0 kept.
-double js_round(double x) {
-    if (!std::isfinite(x) || std::trunc(x) == x) return x;
-    if (x < 0 && x >= -0.5) return -0.0;
-    const double floor = std::floor(x);
-    return x - floor >= 0.5 ? floor + 1 : floor;
-}
-
-// Math.max and Math.min of two numbers: NaN wins, and +0 sorts above -0.
-double js_max(double a, double b) {
-    if (std::isnan(a) || std::isnan(b)) return std::nan("");
-    if (a == b) return std::signbit(a) ? b : a;
-    return a > b ? a : b;
-}
-double js_min(double a, double b) {
-    if (std::isnan(a) || std::isnan(b)) return std::nan("");
-    if (a == b) return std::signbit(a) ? a : b;
-    return a < b ? a : b;
-}
-
 // a + b: string concatenation when either side is a string or an object.
 // Each conversion is its own statement: C++ leaves the order of operands and
 // arguments unspecified, and JavaScript converts a before b.
@@ -206,7 +186,7 @@ std::optional<UniformWrite> UniformPacker::createUniformBuffer(const Value& pass
         : packUniforms();
     const double declaredMin = std::isnan(program.declaredUniformBufferSize) ? 0 : program.declaredUniformBufferSize;
     UniformWrite write;
-    write.bufferSize = js_max(js_max(double(data.size()), declaredMin), 16);
+    write.bufferSize = js::max(js::max(double(data.size()), declaredMin), 16);
     write.bytes = std::move(data);
     return write;
 }
@@ -220,7 +200,7 @@ std::vector<uint8_t> UniformPacker::packUniforms() {
         if (value.is_number() || value.is_bool()) estimatedSize += 4;
         else if (value.is_array()) estimatedSize += double(value.as_array().size()) * 4 + 12;
     }
-    const double bufferSize = js_max(256, std::ceil((estimatedSize + 64) / 16) * 16);
+    const double bufferSize = js::max(256, std::ceil((estimatedSize + 64) / 16) * 16);
     if (bufferSize > double(scratch_.size())) scratch_.assign(array_buffer_length(bufferSize), 0);
     View view{scratch_};
 
@@ -277,7 +257,7 @@ std::vector<uint8_t> UniformPacker::packUniforms() {
     }
     // new Uint8Array(buffer, 0, usedSize): every write stayed inside the
     // buffer, whose size is a multiple of 16, so usedSize fits it.
-    const size_t usedSize = size_t(js_max(256, alignTo(offset, 16)));
+    const size_t usedSize = size_t(js::max(256, alignTo(offset, 16)));
     return std::vector<uint8_t>(scratch_.begin(), scratch_.begin() + long(usedSize));
 }
 
@@ -310,7 +290,7 @@ std::vector<uint8_t> UniformPacker::packUniformsWithLayout(const Value& layout, 
         }
     }
     double maxSlot = 0;
-    for (const Value& entry : layoutArray) maxSlot = js_max(maxSlot, number(jsv::get(entry, u"slot")));
+    for (const Value& entry : layoutArray) maxSlot = js::max(maxSlot, number(jsv::get(entry, u"slot")));
 
     std::vector<uint8_t> buffer(array_buffer_length((maxSlot + 1) * 16), 0);
     View view{buffer};
@@ -333,7 +313,7 @@ std::vector<uint8_t> UniformPacker::packUniformsWithLayout(const Value& layout, 
         else continue;
         const double offset = width == 4 ? slotOffset : slotOffset + component_offset(element(components, 0));
         if (value.is_array()) {
-            const double n = js_min(double(value.as_array().size()), width);
+            const double n = js::min(double(value.as_array().size()), width);
             for (double i = 0; i < n; ++i) view.setFloat32(offset + i * 4, element(value, i));
         } else if (value.is_number()) {
             view.setFloat32(offset, value.as_number());
@@ -349,11 +329,11 @@ std::vector<uint8_t> UniformPacker::packUniformsWithByteLayout(const Value& layo
         for (const Value& entry : layout.as_array()) {
             const Value entryOffset = jsv::get(entry, u"offset");
             const Value entrySize = jsv::get(entry, u"size");
-            totalSize = js_max(totalSize, number(js_add(entryOffset, entrySize)));
+            totalSize = js::max(totalSize, number(js_add(entryOffset, entrySize)));
         }
     }
     const double bufferSize = std::ceil(totalSize / 16) * 16;
-    std::vector<uint8_t> buffer(array_buffer_length(js_max(bufferSize, 16)), 0);
+    std::vector<uint8_t> buffer(array_buffer_length(js::max(bufferSize, 16)), 0);
     View view{buffer};
     for (const Value& entry : layout.as_array()) {
         const Value value = resolveAlias(jsv::get(entry, u"name"), true);
@@ -367,7 +347,7 @@ std::vector<uint8_t> UniformPacker::packUniformsWithByteLayout(const Value& layo
         // the index; a float is converted by setFloat32 after it.
         auto write = [&](const Value& at, const Value& raw) {
             if (isInt || isUint) {
-                const double rounded = js_round(number(raw));
+                const double rounded = js::round(number(raw));
                 if (isInt) view.setInt32(number(at), rounded);
                 else view.setUint32(number(at), rounded);
             } else {
@@ -382,7 +362,7 @@ std::vector<uint8_t> UniformPacker::packUniformsWithByteLayout(const Value& layo
                 write(offset, value);
             }
         } else if (value.is_array()) {
-            const double n = js_min(double(value.as_array().size()), number(components));
+            const double n = js::min(double(value.as_array().size()), number(components));
             for (double i = 0; i < n; ++i) {
                 const Value compOffset = js_add(offset, Value(i * 4));
                 write(compOffset, element(value, i));
@@ -405,7 +385,7 @@ std::optional<UniformWrite> UniformPacker::createSingleUniformBuffer(const Value
     } else if (value.is_number()) {
         if (integerDecl) {
             data.resize(4);
-            View{data}.setInt32(0, js_round(value.as_number()));
+            View{data}.setInt32(0, js::round(value.as_number()));
         } else {
             put_float(data, value.as_number());
         }
@@ -463,7 +443,7 @@ std::optional<UniformWrite> UniformPacker::createSingleUniformBuffer(const Value
         return std::nullopt;
     }
     UniformWrite write;
-    write.bufferSize = js_max(double(data.size()), 16);
+    write.bufferSize = js::max(double(data.size()), 16);
     write.bytes = std::move(data);
     return write;
 }

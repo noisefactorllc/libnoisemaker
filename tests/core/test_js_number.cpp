@@ -148,6 +148,111 @@ const StringCase kStringCases[] = {
     {u"-9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999e-800", 0x8000000000000000ull},
 };
 
+constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+constexpr double kInf = std::numeric_limits<double>::infinity();
+
+// parseFloat(string) in V8 (Node 26.10.0), as IEEE 754 bits.
+const StringCase kParseFloatCases[] = {
+    {u"", 0x7ff8000000000000ull},
+    {u" 25%", 0x4039000000000000ull},
+    {u"50%", 0x4049000000000000ull},
+    {u"%", 0x7ff8000000000000ull},
+    {u"abc", 0x7ff8000000000000ull},
+    {u"12px", 0x4028000000000000ull},
+    {u"0x10", 0x0000000000000000ull},
+    {u"1e2x", 0x4059000000000000ull},
+    {u".5e1", 0x4014000000000000ull},
+    {u"5.", 0x4014000000000000ull},
+    {u".", 0x7ff8000000000000ull},
+    {u"-.5", 0xbfe0000000000000ull},
+    {u"+3", 0x4008000000000000ull},
+    {u"- 3", 0x7ff8000000000000ull},
+    {u"Infinity", 0x7ff0000000000000ull},
+    {u"-Infinityx", 0xfff0000000000000ull},
+    {u"+Infinity", 0x7ff0000000000000ull},
+    {u"infinity", 0x7ff8000000000000ull},
+    {u"1e", 0x3ff0000000000000ull},
+    {u"1e+", 0x3ff0000000000000ull},
+    {u"1e-2", 0x3f847ae147ae147bull},
+    {u"1e400", 0x7ff0000000000000ull},
+    {u"-1e400", 0xfff0000000000000ull},
+    {u"1e-400", 0x0000000000000000ull},
+    {u"\u00a0\u2028\ufeff 7", 0x401c000000000000ull},
+    {u"\u180e5", 0x7ff8000000000000ull},
+    {u"\u3000\u0009\u000a12", 0x4028000000000000ull},
+    {u"00.250", 0x3fd0000000000000ull},
+    {u"0.1e-1", 0x3f847ae147ae147bull},
+    {u"1.7976931348623159e308", 0x7ff0000000000000ull},
+    {u"4.9e-324", 0x0000000000000001ull},
+    {u"123456789012345678901234567890", 0x45f8ee90ff6c373eull},
+};
+// Math.round, Math.max, Math.min and Math.pow in V8, as IEEE 754 bits (exact
+// powers only: Math.pow is specified to agree where the result is exact).
+struct UnaryCase { double input; uint64_t bits; };
+const UnaryCase kRoundCases[] = {
+    {0.0, 0x0000000000000000ull},
+    {-0.0, 0x8000000000000000ull},
+    {0.5, 0x3ff0000000000000ull},
+    {-0.5, 0x8000000000000000ull},
+    {2.5, 0x4008000000000000ull},
+    {-2.5, 0xc000000000000000ull},
+    {0.49999999999999994, 0x0000000000000000ull},
+    {-0.49999999999999994, 0x8000000000000000ull},
+    {1.5, 0x4000000000000000ull},
+    {-1.5, 0xbff0000000000000ull},
+    {4503599627370495.5, 0x4330000000000000ull},
+    {-4503599627370495.5, 0xc32ffffffffffffeull},
+    {1e+300, 0x7e37e43c8800759cull},
+    {kNaN, 0x7ff8000000000000ull},
+    {kInf, 0x7ff0000000000000ull},
+    {-kInf, 0xfff0000000000000ull},
+};
+struct BinaryCase { double a; double b; uint64_t max; uint64_t min; uint64_t pow; };
+const BinaryCase kBinaryCases[] = {
+    {0.0, -0.0, 0x0000000000000000ull, 0x8000000000000000ull, 0x3ff0000000000000ull},
+    {-0.0, 0.0, 0x0000000000000000ull, 0x8000000000000000ull, 0x3ff0000000000000ull},
+    {1.0, kNaN, 0x7ff8000000000000ull, 0x7ff8000000000000ull, 0x7ff8000000000000ull},
+    {kNaN, 0.0, 0x7ff8000000000000ull, 0x7ff8000000000000ull, 0x3ff0000000000000ull},
+    {1.0, kInf, 0x7ff0000000000000ull, 0x3ff0000000000000ull, 0x7ff8000000000000ull},
+    {-1.0, -kInf, 0xbff0000000000000ull, 0xfff0000000000000ull, 0x7ff8000000000000ull},
+    {2.0, 10.0, 0x4024000000000000ull, 0x4000000000000000ull, 0x4090000000000000ull},
+    {64.0, 2.0, 0x4050000000000000ull, 0x4000000000000000ull, 0x40b0000000000000ull},
+    {-8.0, 0.3333333333333333, 0x3fd5555555555555ull, 0xc020000000000000ull, 0x7ff8000000000000ull},
+    {0.0, -1.0, 0x0000000000000000ull, 0xbff0000000000000ull, 0x7ff0000000000000ull},
+    {-0.0, -3.0, 0x8000000000000000ull, 0xc008000000000000ull, 0xfff0000000000000ull},
+    {kNaN, kNaN, 0x7ff8000000000000ull, 0x7ff8000000000000ull, 0x7ff8000000000000ull},
+    {kInf, -kInf, 0x7ff0000000000000ull, 0xfff0000000000000ull, 0x0000000000000000ull},
+    {1e+300, 2.0, 0x7e37e43c8800759cull, 0x4000000000000000ull, 0x7ff0000000000000ull},
+    {9.0, 0.5, 0x4022000000000000ull, 0x3fe0000000000000ull, 0x4008000000000000ull},
+    {3.0, 3.0, 0x4008000000000000ull, 0x4008000000000000ull, 0x403b000000000000ull},
+};
+
+// The same bits, or any NaN where V8 gives NaN.
+bool same_bits(double value, uint64_t expected) {
+    uint64_t bits = 0;
+    std::memcpy(&bits, &value, sizeof bits);
+    const bool expected_nan = (expected & 0x7ff0000000000000ull) == 0x7ff0000000000000ull && (expected & 0xfffffffffffffull);
+    return expected_nan ? std::isnan(value) : bits == expected;
+}
+
+void check_parse_float() {
+    for (const auto& c : kParseFloatCases) {
+        const bool same = same_bits(libnoisemaker::js::parseFloat(c.text), c.bits);
+        if (!same) std::fprintf(stderr, "parseFloat(\"%s\") differs\n", libnoisemaker::js_to_utf8(c.text).c_str());
+        NM_CHECK(same);
+    }
+}
+
+void check_math() {
+    namespace js = libnoisemaker::js;
+    for (const auto& c : kRoundCases) NM_CHECK(same_bits(js::round(c.input), c.bits));
+    for (const auto& c : kBinaryCases) {
+        NM_CHECK(same_bits(js::max(c.a, c.b), c.max));
+        NM_CHECK(same_bits(js::min(c.a, c.b), c.min));
+        NM_CHECK(same_bits(js::pow(c.a, c.b), c.pow));
+    }
+}
+
 void check_string_to_number() {
     for (const auto& c : kStringCases) {
         const double value = libnoisemaker::js::stringToNumber(c.text);
@@ -167,6 +272,8 @@ void check_string_to_number() {
 
 int main() {
     check_string_to_number();
+    check_parse_float();
+    check_math();
     check(0.0, "0");
     check(-0.0, "0");
     check(1.0, "1");

@@ -16,6 +16,7 @@
 #include "gpu/backend/uniforms.h"
 #include "gpu/wgsl/wgsl.h"
 
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -116,7 +117,14 @@ public:
     void copyTextureScaled(const JsString& srcId, const JsString& dstId);
     void generateMipmaps(const std::vector<JsString>& ids);
     void clearTexture(const JsString& id);
+    // this.textures: get, set (texture pooling names one record by several
+    // ids) and keys, in a Map's insertion order.
     const TextureRecord* texture(const JsString& id) const;
+    std::shared_ptr<TextureRecord> textureRecord(const JsString& id) const;
+    void setTexture(const JsString& id, std::shared_ptr<TextureRecord> record);
+    const std::vector<JsString>& textureIds() const { return textureOrder_; }
+    const Value& capabilities() const { return capabilities_; }
+    static JsString getName() { return u"WebGPU"; }
 
     // compileProgram(id, spec), spec being the graph's program spec.
     const ProgramInfo& compileProgram(const JsString& id, const Value& spec);
@@ -184,7 +192,8 @@ private:
 
     Device& device_;
     Value capabilities_;
-    std::unordered_map<JsString, TextureRecord> textures_;
+    std::unordered_map<JsString, std::shared_ptr<TextureRecord>> textures_;
+    std::vector<JsString> textureOrder_;
     std::unordered_map<JsString, ProgramInfo> programs_;
     std::vector<std::pair<JsString, Handle>> samplers_;
     Handle dummyTextureView_ = 0;

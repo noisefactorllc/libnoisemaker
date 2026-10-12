@@ -1,4 +1,5 @@
 #include "obj_parser.h"
+#include "core/value/js_number.h"
 #include "core/value/parse_double.h"
 
 
@@ -21,22 +22,6 @@ namespace libnoisemaker {
 namespace {
 
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
-constexpr double kInfinity = std::numeric_limits<double>::infinity();
-
-// ECMAScript WhiteSpace and LineTerminator code points: the set shared by
-// String.prototype.trim, the regular-expression class \s, parseFloat and
-// parseInt. The Zs members are listed explicitly (U+0020, U+00A0, U+1680,
-// U+2000..U+200A, U+202F, U+205F, U+3000).
-bool isJsWhitespace(char16_t c) {
-    switch (c) {
-    case 0x0009: case 0x000A: case 0x000B: case 0x000C: case 0x000D:
-    case 0x0020: case 0x00A0: case 0x1680: case 0x2028: case 0x2029:
-    case 0x202F: case 0x205F: case 0x3000: case 0xFEFF:
-        return true;
-    default:
-        return c >= 0x2000 && c <= 0x200A;
-    }
-}
 
 bool isAsciiDigit(char16_t c) {
     return c >= u'0' && c <= u'9';
@@ -62,120 +47,8 @@ double accumulateDigits(std::u16string_view digits) {
     return value;
 }
 
-// parseFloat(token) for a token with no whitespace: the value of the longest
-// prefix that is a StrDecimalLiteral ([+-] Infinity | digits [. [digits]]
-// [exponent] | . digits [exponent]), or NaN when no prefix is one.
-double jsParseFloat(std::u16string_view token) {
-    const std::size_t n = token.size();
-    std::size_t i = 0;
-    bool negative = false;
-    if (i < n && (token[i] == u'+' || token[i] == u'-')) {
-        negative = token[i] == u'-';
-        ++i;
-    }
-    if (token.substr(i).starts_with(u"Infinity")) {
-        return negative ? -kInfinity : kInfinity;
-    }
-
-    const std::size_t intStart = i;
-    while (i < n && isAsciiDigit(token[i])) ++i;
-    const std::size_t intEnd = i;
-
-    std::size_t fracStart = i;
-    std::size_t fracEnd = i;
-    if (i < n && token[i] == u'.') {
-        std::size_t j = i + 1;
-        while (j < n && isAsciiDigit(token[j])) ++j;
-        if (intEnd > intStart || j > i + 1) {
-            fracStart = i + 1;
-            fracEnd = j;
-            i = j;
-        }
-    }
-    if (intEnd == intStart && fracEnd == fracStart) {
-        return kNaN;
-    }
-
-    bool hasExponent = false;
-    bool exponentNegative = false;
-    std::size_t expStart = 0;
-    std::size_t expEnd = 0;
-    if (i < n && (token[i] == u'e' || token[i] == u'E')) {
-        std::size_t k = i + 1;
-        bool expSignNegative = false;
-        if (k < n && (token[k] == u'+' || token[k] == u'-')) {
-            expSignNegative = token[k] == u'-';
-            ++k;
-        }
-        const std::size_t digitsStart = k;
-        while (k < n && isAsciiDigit(token[k])) ++k;
-        if (k > digitsStart) {
-            hasExponent = true;
-            exponentNegative = expSignNegative;
-            expStart = digitsStart;
-            expEnd = k;
-        }
-    }
-
-    const std::u16string_view intDigits = token.substr(intStart, intEnd - intStart);
-    const std::u16string_view fracDigits = token.substr(fracStart, fracEnd - fracStart);
-    const std::u16string_view expDigits = token.substr(expStart, expEnd - expStart);
-
-    // Canonical ASCII form for a correctly rounded, locale-independent
-    // conversion: [-]digits[.digits][e[-]digits].
-    std::string text;
-    text.reserve(intDigits.size() + fracDigits.size() + expDigits.size() + 4);
-    if (negative) text += '-';
-    const auto appendAscii = [&](std::u16string_view digits) {
-        for (char16_t digit : digits) text.push_back(static_cast<char>(digit));
-    };
-    if (intDigits.empty()) text += '0';
-    else appendAscii(intDigits);
-    if (!fracDigits.empty()) {
-        text += '.';
-        appendAscii(fracDigits);
-    }
-    if (hasExponent) {
-        text += 'e';
-        if (exponentNegative) text += '-';
-        appendAscii(expDigits);
-    }
-
-    double value = 0.0;
-    const auto parsed = parse_double(text.data(), text.data() + text.size(), value);
-    if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size()) {
-        return value;
-    }
-
-    // Out-of-range results here have valid syntax:
-    // overflow, which JavaScript rounds to +/-Infinity, and total underflow,
-    // which JavaScript rounds to +/-0. Decide from the decimal order of the
-    // leading non-zero digit.
-    double order = 0.0;
-    bool nonZero = false;
-    for (std::size_t p = 0; p < intDigits.size(); ++p) {
-        if (intDigits[p] != u'0') {
-            order = static_cast<double>(intDigits.size() - p - 1);
-            nonZero = true;
-            break;
-        }
-    }
-    if (!nonZero) {
-        for (std::size_t q = 0; q < fracDigits.size(); ++q) {
-            if (fracDigits[q] != u'0') {
-                order = -static_cast<double>(q + 1);
-                nonZero = true;
-                break;
-            }
-        }
-    }
-    if (hasExponent) {
-        const double exponent = accumulateDigits(expDigits);
-        order += exponentNegative ? -exponent : exponent;
-    }
-    const double magnitude = (nonZero && order > 0.0) ? kInfinity : 0.0;
-    return negative ? -magnitude : magnitude;
-}
+// parseFloat(token) for a token with no whitespace.
+double jsParseFloat(std::u16string_view token) { return js::parseFloatPrefix(token); }
 
 // parseInt(token, 10) for a token with no whitespace: optional sign, then
 // the longest run of ASCII digits; NaN when there are none.
@@ -384,8 +257,8 @@ ObjMeshData parseOBJ(const JsString& objText) {
         // rawLine.trim()
         std::size_t b = lineStart;
         std::size_t e = lineEnd;
-        while (b < e && isJsWhitespace(text[b])) ++b;
-        while (e > b && isJsWhitespace(text[e - 1])) --e;
+        while (b < e && js::isWhiteSpaceOrLineTerminator(text[b])) ++b;
+        while (e > b && js::isWhiteSpaceOrLineTerminator(text[e - 1])) --e;
         const std::u16string_view line = text.substr(b, e - b);
         lineStart = lineEnd + 1;
 
@@ -395,7 +268,7 @@ ObjMeshData parseOBJ(const JsString& objText) {
         parts.clear();
         std::size_t tokenStart = 0;
         for (std::size_t k = 0; k <= line.size(); ++k) {
-            if (k == line.size() || isJsWhitespace(line[k])) {
+            if (k == line.size() || js::isWhiteSpaceOrLineTerminator(line[k])) {
                 if (k > tokenStart) parts.push_back(line.substr(tokenStart, k - tokenStart));
                 tokenStart = k + 1;
             }

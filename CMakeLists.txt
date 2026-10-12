@@ -149,11 +149,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
 endif()
 add_library(noisemaker::host ALIAS noisemaker_host)
 
-# The reference WebGPU backend over a device interface (src/gpu/backend/device.h)
-# and the parts it uses that need no GPU: WGSL source analysis and uniform
-# packing. With RecordingDevice it builds and is gated in every configuration.
+# The reference WebGPU backend and pipeline over a device interface
+# (src/gpu/backend/device.h) and the parts they use that need no GPU: WGSL
+# source analysis and uniform packing. With RecordingDevice it builds and is gated in every configuration.
 add_library(noisemaker_backend STATIC src/gpu/wgsl/jsre.cpp src/gpu/wgsl/wgsl.cpp src/gpu/backend/uniforms.cpp
-            src/gpu/backend/backend.cpp src/gpu/backend/recording_device.cpp)
+            src/gpu/backend/backend.cpp src/gpu/backend/pipeline.cpp src/gpu/backend/recording_device.cpp)
 target_include_directories(noisemaker_backend PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(noisemaker_backend PUBLIC noisemaker_core_impl)
 add_subdirectory(tools/nm-dump)

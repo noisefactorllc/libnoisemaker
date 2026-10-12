@@ -24,6 +24,7 @@ node parity/check_frontend.mjs validated expanded graph --isolated
 node parity/check_wgsl.mjs
 node parity/check_uniforms.mjs
 node parity/check_backend.mjs
+node parity/check_pipeline.mjs
 node parity/check_registry.mjs
 node parity/check_midi_state.mjs
 node parity/check_audio_state.mjs

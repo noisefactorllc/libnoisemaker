@@ -112,7 +112,25 @@ Value defaultUniform(const JsString& typeDecl) {
 
 }  // namespace
 
-WebGPUBackend::WebGPUBackend(Device& device) : device_(device) {}
+namespace {
+// Backend's capabilities ({isMobile, floatBlend, floatLinear, colorBufferFloat,
+// maxDrawBuffers, maxTextureSize, maxColorBytesPerSample, maxStateSize}).
+Value capabilitiesValue(double maxTextureSize, double maxColorBytesPerSample) {
+    Object capabilities;
+    capabilities.set(u"isMobile", Value(false));
+    capabilities.set(u"floatBlend", Value(true));
+    capabilities.set(u"floatLinear", Value(true));
+    capabilities.set(u"colorBufferFloat", Value(true));
+    capabilities.set(u"maxDrawBuffers", Value(8.0));
+    capabilities.set(u"maxTextureSize", Value(maxTextureSize));
+    capabilities.set(u"maxColorBytesPerSample", Value(maxColorBytesPerSample));
+    capabilities.set(u"maxStateSize", Value(2048.0));
+    return Value(std::move(capabilities));
+}
+}  // namespace
+
+// The base class's capabilities until init() reads the device's limits.
+WebGPUBackend::WebGPUBackend(Device& device) : device_(device), capabilities_(capabilitiesValue(4096, 64)) {}
 
 // The reference returns '' for "global_", which every caller treats as no
 // name; so does nullopt here.
@@ -132,9 +150,10 @@ std::optional<JsString> WebGPUBackend::parseGlobalName(const Value& texId) {
 }
 
 void WebGPUBackend::init() {
-    Object capabilities;
-    capabilities.set(u"maxTextureSize", Value(device_.maxTextureDimension2D()));
-    capabilities_ = Value(std::move(capabilities));
+    // detectMobile() is false off a mobile browser; `limit || fallback`.
+    const auto orElse = [](double limit, double fallback) { return limit == 0 || std::isnan(limit) ? fallback : limit; };
+    capabilities_ = capabilitiesValue(orElse(device_.maxTextureDimension2D(), 8192),
+                                      orElse(device_.maxColorAttachmentBytesPerSample(), 32));
 
     SamplerDescriptor linear;
     linear.minFilter = u"linear";
@@ -232,7 +251,7 @@ void WebGPUBackend::createTexture(const JsString& id, const Value& spec) {
     record.mipmaps = mipLevels > 1;
     record.mipLevels = mipLevels;
     record.persistent = jsv::truthy(jsv::get(spec, u"persistent"));
-    textures_[id] = std::move(record);
+    setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
 }
 
 void WebGPUBackend::createTexture3D(const JsString& id, const Value& spec) {
@@ -259,14 +278,26 @@ void WebGPUBackend::createTexture3D(const JsString& id, const Value& spec) {
     record.is3D = true;
     const Value filter = jsv::get(spec, u"filter");
     record.filter = jsv::truthy(filter) ? filter : Value(u"linear");
-    textures_[id] = std::move(record);
+    setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
 }
 
 void WebGPUBackend::destroyTexture(const JsString& id) {
     const auto it = textures_.find(id);
     if (it == textures_.end()) return;
-    device_.destroyTexture(it->second.handle);
+    device_.destroyTexture(it->second->handle);
     textures_.erase(it);
+    textureOrder_.erase(std::find(textureOrder_.begin(), textureOrder_.end(), id));
+}
+
+void WebGPUBackend::setTexture(const JsString& id, std::shared_ptr<TextureRecord> record) {
+    auto [it, inserted] = textures_.insert_or_assign(id, std::move(record));
+    (void)it;
+    if (inserted) textureOrder_.push_back(id);
+}
+
+std::shared_ptr<TextureRecord> WebGPUBackend::textureRecord(const JsString& id) const {
+    const auto it = textures_.find(id);
+    return it == textures_.end() ? nullptr : it->second;
 }
 
 void WebGPUBackend::createCubeTexture(const JsString& id, const Value& size) {
@@ -282,15 +313,15 @@ void WebGPUBackend::createCubeTexture(const JsString& id, const Value& size) {
     record.width = size;
     record.height = size;
     record.cube = true;
-    textures_[id] = std::move(record);
+    setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
 }
 
 void WebGPUBackend::uploadDataTexture(const JsString& id, const std::vector<float>& data, const Value& width,
                                       const Value& height) {
     auto it = textures_.find(id);
-    if (it == textures_.end() || !jsv::strict_equals(it->second.width, width) ||
-        !jsv::strict_equals(it->second.height, height)) {
-        if (it != textures_.end()) device_.destroyTexture(it->second.handle);
+    if (it == textures_.end() || !jsv::strict_equals(it->second->width, width) ||
+        !jsv::strict_equals(it->second->height, height)) {
+        if (it != textures_.end()) device_.destroyTexture(it->second->handle);
         TextureDescriptor descriptor;
         descriptor.size = extent(width, height);
         descriptor.format = u"rgba32float";
@@ -301,7 +332,7 @@ void WebGPUBackend::uploadDataTexture(const JsString& id, const std::vector<floa
         record.height = height;
         record.format = Value(u"rgba32float");
         record.view = device_.createView(record.handle, {});
-        textures_[id] = std::move(record);
+        setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
         it = textures_.find(id);
     }
     const double w = jsv::to_number(width);
@@ -324,12 +355,12 @@ void WebGPUBackend::uploadDataTexture(const JsString& id, const std::vector<floa
     TexelCopyBufferLayout layout;
     layout.bytesPerRow = alignedBytesPerRow;
     layout.rowsPerImage = h;
-    device_.writeTexture(TexelCopyTextureInfo{it->second.handle}, bytes, layout, extent(width, height));
+    device_.writeTexture(TexelCopyTextureInfo{it->second->handle}, bytes, layout, extent(width, height));
 }
 
 const TextureRecord* WebGPUBackend::texture(const JsString& id) const {
     const auto it = textures_.find(id);
-    return it == textures_.end() ? nullptr : &it->second;
+    return it == textures_.end() ? nullptr : it->second.get();
 }
 
 const TextureRecord* WebGPUBackend::textureFor(const Value& texId) const {
@@ -1413,9 +1444,9 @@ Value WebGPUBackend::uploadMeshData(const JsString& meshId, const std::vector<fl
                                     const Value& width, const Value& height, const Value& vertexCount) {
     auto upload = [&](const JsString& id, const std::vector<float>& data) {
         auto it = textures_.find(id);
-        if (it == textures_.end() || !jsv::strict_equals(it->second.width, width) ||
-            !jsv::strict_equals(it->second.height, height)) {
-            if (it != textures_.end()) device_.destroyTexture(it->second.handle);
+        if (it == textures_.end() || !jsv::strict_equals(it->second->width, width) ||
+            !jsv::strict_equals(it->second->height, height)) {
+            if (it != textures_.end()) device_.destroyTexture(it->second->handle);
             TextureDescriptor descriptor;
             descriptor.size = extent(width, height);
             descriptor.format = u"rgba32float";
@@ -1428,10 +1459,10 @@ Value WebGPUBackend::uploadMeshData(const JsString& meshId, const std::vector<fl
             record.height = height;
             record.format = Value(u"rgba32f");
             record.gpuFormat = Value(u"rgba32float");
-            textures_[id] = std::move(record);
+            setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
             it = textures_.find(id);
         }
-        writeTextureRows(it->second.handle, data, width, height, 16);
+        writeTextureRows(it->second->handle, data, width, height, 16);
     };
     upload(u"global_" + meshId + u"_positions", positions);
     upload(u"global_" + meshId + u"_normals", normals);
@@ -1516,7 +1547,7 @@ void WebGPUBackend::generateMipmaps(const std::vector<JsString>& ids) {
     for (const JsString& id : ids) {
         const auto it = textures_.find(id);
         if (it == textures_.end()) continue;
-        TextureRecord& tex = it->second;
+        TextureRecord& tex = *it->second;
         if (!tex.mipmaps || tex.is3D || tex.mipViews.empty()) continue;
         const Value dstFormat = jsv::truthy(tex.gpuFormat) ? tex.gpuFormat
             : resolveFormat(jsv::truthy(tex.format) ? tex.format : Value(u"rgba16float"));
