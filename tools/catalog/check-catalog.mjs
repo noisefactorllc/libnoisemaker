@@ -137,25 +137,91 @@ execFileSync(process.execPath, [join(root, 'tools/catalog/extract-runtime-shader
 // Every createShaderModule call in the runtime's source text either compiles a
 // program's own source (`code: source` or `code: vertexSource` inside
 // WebGPUBackend's compileComputeProgram and compileRenderProgram) or is one the
-// extractor captured. Comment lines are not calls.
+// extractor captured. A small lexer blanks comments, strings, template text and
+// regular expressions first, so a call is found however it is spaced or split
+// across lines, and any other use of the name is an error.
 const capturedSites = new Set(Object.values(JSON.parse(readFileSync(join(runtimeOut, 'sites.json'), 'utf8'))))
+function codeOnly (text) {
+  const out = text.split('')
+  const blank = (from, to) => { for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' ' }
+  const templates = [] // brace depth of each open template substitution
+  let i = 0
+  let previous = '' // last significant code character, for regex detection
+  while (i < text.length) {
+    const c = text[i]
+    const d = text[i + 1]
+    if (c === '/' && d === '/') { const j = text.indexOf('\n', i); const end = j < 0 ? text.length : j; blank(i, end); i = end; continue }
+    if (c === '/' && d === '*') { const j = text.indexOf('*/', i + 2); const end = j < 0 ? text.length : j + 2; blank(i, end); i = end; continue }
+    if (c === "'" || c === '"') {
+      let j = i + 1
+      while (j < text.length && text[j] !== c) j += text[j] === '\\' ? 2 : 1
+      blank(i, j + 1); i = j + 1; previous = 'a'; continue
+    }
+    if (c === '`' || (c === '}' && templates.length && templates[templates.length - 1] === 0)) {
+      if (c === '}') templates.pop()
+      let j = i + 1
+      while (j < text.length && text[j] !== '`' && !(text[j] === '$' && text[j + 1] === '{')) j += text[j] === '\\' ? 2 : 1
+      blank(i, text[j] === '`' ? j + 1 : j + 2)
+      if (text[j] === '$') { templates.push(0); i = j + 2; previous = '(' } else { i = j + 1; previous = 'a' }
+      continue
+    }
+    if (c === '/' && (previous === '' || '(,=:[!&|?{};+-*%<>~^'.includes(previous))) {
+      let j = i + 1
+      let inClass = false
+      while (j < text.length && text[j] !== '\n' && (inClass || text[j] !== '/')) {
+        if (text[j] === '\\') j++
+        else if (text[j] === '[') inClass = true
+        else if (text[j] === ']') inClass = false
+        j++
+      }
+      blank(i, j + 1); i = j + 1; previous = 'a'; continue
+    }
+    if (templates.length) {
+      if (c === '{') templates[templates.length - 1]++
+      else if (c === '}') templates[templates.length - 1]--
+    }
+    if (!/\s/.test(c)) previous = /[\w$]/.test(c) ? 'a' : c
+    i++
+  }
+  return out.join('')
+}
 const sourceSites = []
 const programSites = []
 for (const path of files(join(reference, 'shaders/src')).filter(path => path.endsWith('.js'))) {
   const rel = relative(join(reference, 'shaders/src'), path).replaceAll('\\', '/')
+  const text = readFileSync(path, 'utf8')
+  const code = codeOnly(text)
+  const lineStarts = [0]
+  for (let k = 0; k < text.length; k++) if (text[k] === '\n') lineStarts.push(k + 1)
+  const lineOf = offset => { let lo = 0; let hi = lineStarts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (lineStarts[mid] <= offset) lo = mid; else hi = mid - 1 } return lo + 1 }
+  // The method each line belongs to: definitions sit at four spaces of indentation.
+  const methods = []
   let method = null
-  readFileSync(path, 'utf8').split('\n').forEach((line, index) => {
+  for (const line of code.split('\n')) {
     const definition = line.match(/^ {4}(?:async )?([A-Za-z_$][\w$]*)\s*\(.*\)\s*\{\s*$/)
     if (definition) method = definition[1]
-    if (!/createShaderModule\s*\(/.test(line) || /^\s*(\/\/|\/\*|\*)/.test(line)) return
-    const site = `${rel}:${index + 1}`
-    if (rel === 'runtime/backends/webgpu.js' && (method === 'compileComputeProgram' || method === 'compileRenderProgram') &&
-        /createShaderModule\s*\(\s*\{\s*code:\s*(source|vertexSource)\s*\}\s*\)/.test(line)) {
+    methods.push(method)
+  }
+  for (const match of code.matchAll(/\bcreateShaderModule\b/g)) {
+    const line = lineOf(match.index)
+    const site = `${rel}:${line}`
+    const after = code.slice(match.index + match[0].length)
+    const open = after.match(/^\s*\(/)
+    if (!open) { errors.push(`runtime: ${site} uses createShaderModule other than by calling it`); continue }
+    let depth = 0
+    let k = open[0].length - 1
+    for (; k < after.length; k++) {
+      if (after[k] === '(') depth++
+      else if (after[k] === ')' && --depth === 0) break
+    }
+    const argument = text.slice(match.index + match[0].length + open[0].length, match.index + match[0].length + k).replace(/\s+/g, '')
+    if (rel === 'runtime/backends/webgpu.js' && ['compileComputeProgram', 'compileRenderProgram'].includes(methods[line - 1]) &&
+        /^\{code:(source|vertexSource)\}$/.test(argument)) {
       programSites.push(site)
-      return
+      continue
     }
     sourceSites.push(site)
-  })
+  }
 }
 if (programSites.length !== 3) errors.push(`runtime: expected 3 compileProgram shader sites, found ${programSites.length} (${programSites.join(', ')})`)
 for (const site of sourceSites) if (!capturedSites.has(site)) errors.push(`runtime: shader module at ${site} is not extracted`)
