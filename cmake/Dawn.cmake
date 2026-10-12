@@ -1,3 +1,20 @@
+if(NM_DAWN_PREBUILT_DIR)
+  # A Dawn that tools/build_dawn.py built and installed with cmake/DawnOptions.cmake.
+  file(READ "${PROJECT_SOURCE_DIR}/third_party/dawn.lock.json" _nm_lock)
+  string(JSON _nm_want GET "${_nm_lock}" dawn commit)
+  if(NOT EXISTS "${NM_DAWN_PREBUILT_DIR}/.nm-commit")
+    message(FATAL_ERROR "No prebuilt Dawn at ${NM_DAWN_PREBUILT_DIR}. Run: python3 tools/build_dawn.py --prefix ${NM_DAWN_PREBUILT_DIR}")
+  endif()
+  file(STRINGS "${NM_DAWN_PREBUILT_DIR}/.nm-commit" _nm_have LIMIT_COUNT 1)
+  if(NOT _nm_have STREQUAL _nm_want)
+    message(FATAL_ERROR "Prebuilt Dawn at ${NM_DAWN_PREBUILT_DIR} is ${_nm_have}; the lock wants ${_nm_want}")
+  endif()
+  # Dawn's exported link interface names Threads::Threads, which its DawnConfig.cmake does not find.
+  find_package(Threads REQUIRED)
+  find_package(Dawn CONFIG REQUIRED PATHS "${NM_DAWN_PREBUILT_DIR}" NO_DEFAULT_PATH)
+  return()
+endif()
+
 if(NOT EXISTS "${NM_DAWN_SOURCE_DIR}/.nm-commit")
   message(FATAL_ERROR "No Dawn tree at ${NM_DAWN_SOURCE_DIR}. Run: python3 tools/fetch_dawn.py")
 endif()
@@ -8,41 +25,6 @@ if(NOT _nm_have STREQUAL _nm_want)
   message(FATAL_ERROR "Dawn at ${NM_DAWN_SOURCE_DIR} is ${_nm_have}; the lock wants ${_nm_want}. Run: python3 tools/fetch_dawn.py")
 endif()
 
-macro(nm_dawn_set name value)
-  set(${name} ${value} CACHE BOOL "" FORCE)
-endmacro()
-
-set(DAWN_BUILD_MONOLITHIC_LIBRARY STATIC CACHE STRING "" FORCE)
-nm_dawn_set(DAWN_FETCH_DEPENDENCIES OFF)
-nm_dawn_set(DAWN_ENABLE_INSTALL OFF)
-nm_dawn_set(DAWN_BUILD_SAMPLES OFF)
-nm_dawn_set(DAWN_BUILD_TESTS OFF)
-nm_dawn_set(DAWN_BUILD_BENCHMARKS OFF)
-nm_dawn_set(DAWN_BUILD_FUZZERS OFF)
-nm_dawn_set(DAWN_BUILD_PROTOBUF OFF)
-nm_dawn_set(DAWN_BUILD_NODE_BINDINGS OFF)
-# Dawn's optional C++ module target cannot be generated with the Linux CI
-# compiler/CMake combination. libnoisemaker only uses the C WebGPU headers.
-nm_dawn_set(DAWN_SUPPORTS_CXX_MODULES OFF)
-nm_dawn_set(DAWN_USE_GLFW OFF)
-nm_dawn_set(DAWN_USE_X11 OFF)
-nm_dawn_set(DAWN_USE_WAYLAND OFF)
-nm_dawn_set(DAWN_ENABLE_SWIFTSHADER OFF)
-nm_dawn_set(DAWN_USE_BUILT_DXC OFF)
-if(WIN32)
-  # Dawn copies an x64 SDK compiler DLL to the build root, while test and
-  # consumer executables may live elsewhere or target ARM64. Load the
-  # architecture-matched Windows system component instead.
-  nm_dawn_set(DAWN_FORCE_SYSTEM_COMPONENT_LOAD ON)
-endif()
-nm_dawn_set(DAWN_ENABLE_D3D11 OFF)
-nm_dawn_set(DAWN_ENABLE_DESKTOP_GL OFF)
-nm_dawn_set(DAWN_ENABLE_OPENGLES OFF)
-nm_dawn_set(DAWN_ENABLE_NULL OFF)
-nm_dawn_set(TINT_BUILD_TESTS OFF)
-nm_dawn_set(TINT_BUILD_CMD_TOOLS OFF)
-nm_dawn_set(TINT_BUILD_BENCHMARKS OFF)
-nm_dawn_set(TINT_BUILD_FUZZERS OFF)
-nm_dawn_set(TINT_BUILD_IR_BINARY OFF)
+include("${PROJECT_SOURCE_DIR}/cmake/DawnOptions.cmake")
 
 add_subdirectory("${NM_DAWN_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/dawn" EXCLUDE_FROM_ALL)

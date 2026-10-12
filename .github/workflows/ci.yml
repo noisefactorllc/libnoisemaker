@@ -108,7 +108,20 @@ jobs:
       - name: Install macOS packages
         if: runner.os == 'macOS'
         run: brew install ninja
+      # Hosted runners export ImageVersion; the env context does not carry it into cache keys.
+      - name: Read the runner image version
+        id: image
+        shell: bash
+        run: echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+      # A prebuilt Dawn per leg, rebuilt when the lock, its options, its build tool or the
+      # runner image (and with it the compiler) changes.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: dawn-install
+        with:
+          path: .cache/dawn-install
+          key: dawn-install-${{ matrix.name }}-${{ steps.image.outputs.version }}-${{ hashFiles('third_party/dawn.lock.json', 'cmake/DawnOptions.cmake', 'tools/build_dawn.py') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.dawn-install.outputs.cache-hit != 'true'
         with:
           path: .cache/dawn
           key: dawn-src-${{ hashFiles('third_party/dawn.lock.json') }}
@@ -116,14 +129,27 @@ jobs:
         with:
           path: .cache/catalog
           key: catalog-${{ hashFiles('parity/reference.json') }}
-      - name: Fetch Dawn
-        run: python tools/fetch_dawn.py
       - name: Tool tests
-        run: python -m unittest -v tests.tools.test_fetch_dawn
+        run: python -m unittest discover -v -s tests/tools -t .
+      - name: Fetch Dawn
+        if: steps.dawn-install.outputs.cache-hit != 'true'
+        run: python tools/fetch_dawn.py
+      - name: Build Dawn
+        if: steps.dawn-install.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          args=(--prefix .cache/dawn-install --generator "${{ matrix.generator }}")
+          if [ -n "${{ matrix.arch }}" ]; then args+=(--arch "${{ matrix.arch }}"); fi
+          if [ -n "${{ matrix.osx_arch }}" ]; then args+=(--osx-arch "${{ matrix.osx_arch }}"); fi
+          if [ "$RUNNER_OS" = Windows ]; then
+            args+=(--cmake "$(python -c 'import cmake, os; print(os.path.join(cmake.CMAKE_BIN_DIR, "cmake"))')")
+          fi
+          python tools/build_dawn.py "${args[@]}"
       - name: Configure
         shell: bash
         run: |
           args=(-S . -B build -G "${{ matrix.generator }}" -DCMAKE_BUILD_TYPE=Release)
+          args+=("-DNM_DAWN_PREBUILT_DIR=$PWD/.cache/dawn-install")
           if [ -n "${{ matrix.arch }}" ]; then args+=(-A "${{ matrix.arch }}"); fi
           if [ -n "${{ matrix.osx_arch }}" ]; then args+=("-DCMAKE_OSX_ARCHITECTURES=${{ matrix.osx_arch }}"); fi
           if [ "$RUNNER_OS" = Windows ]; then

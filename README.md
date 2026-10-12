@@ -44,6 +44,16 @@ ctest --test-dir build --output-on-failure
 To build only the GPU-free compiler core and host helpers, with no Dawn tree, configure with
 `-DNM_BUILD_GPU=OFF` and skip `fetch_dawn.py`.
 
+To build Dawn once and reuse it in any number of build directories, install it with
+`tools/build_dawn.py` and configure with `NM_DAWN_PREBUILT_DIR`. CI caches one such install per
+platform.
+
+```sh
+python3 tools/fetch_dawn.py
+python3 tools/build_dawn.py --generator Ninja --prefix .cache/dawn-install/local
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNM_DAWN_PREBUILT_DIR=$PWD/.cache/dawn-install/local
+```
+
 ## Testing
 
 `scripts/test` builds the GPU-free tree, runs its unit tests and the tool tests, then runs every
@@ -67,7 +77,7 @@ src/capi/             C API implementation
 tests/                C API, core, GPU, host and tool tests
 parity/               reference lock, corpus and checks against the reference engine
 scripts/              test, gate and reference entry points
-tools/                Dawn fetch, catalog tools, reference oracles and dump tools
+tools/                Dawn fetch and build, catalog tools, reference oracles and dump tools
 cmake/, third_party/  Dawn build integration and its lock
 ```
 
