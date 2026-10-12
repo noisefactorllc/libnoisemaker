@@ -1347,4 +1347,224 @@ void WebGPUBackend::copyBufferToTexture(const FrameState& state, const Value& ou
     activeUniformBuffers_.push_back(Buffer{paramsBuffer, 16});
 }
 
+namespace {
+// mipLevelSize(dim, level): max(1, floor(dim / 2^level)).
+double mipLevelSize(const Value& dim, double level) {
+    const double size = std::floor(jsv::to_number(dim) / std::pow(2.0, level));
+    return std::isnan(size) ? std::nan("") : std::max(1.0, size);
+}
+std::vector<uint8_t> floatBytes(const std::vector<float>& values) {
+    std::vector<uint8_t> bytes(values.size() * 4);
+    if (!values.empty()) std::memcpy(bytes.data(), values.data(), bytes.size());
+    return bytes;
+}
+}  // namespace
+
+void WebGPUBackend::uploadCubeFace(const JsString& id, const Value& face, const Value& width, const Value& height,
+                                   const std::vector<uint8_t>& data) {
+    const TextureRecord* tex = texture(id);
+    if (!tex) throw JsError(u"TypeError", u"Cannot read properties of undefined (reading 'handle')");
+    const double w = jsv::to_number(width);
+    const double h = jsv::to_number(height);
+    const double unalignedBytesPerRow = w * 4;
+    const double bytesPerRow = std::ceil(unalignedBytesPerRow / 256) * 256;
+    std::vector<uint8_t> upload = data;
+    if (bytesPerRow != unalignedBytesPerRow) {
+        upload.assign(size_t(bytesPerRow * h), 0);
+        const size_t src = size_t(unalignedBytesPerRow);
+        for (size_t y = 0; y < size_t(h); ++y) {
+            for (size_t x = 0; x < src && y * src + x < data.size(); ++x) upload[y * size_t(bytesPerRow) + x] = data[y * src + x];
+        }
+    }
+    TexelCopyTextureInfo destination{tex->handle};
+    destination.origin = {0, 0, jsv::to_number(face)};
+    TexelCopyBufferLayout layout;
+    layout.bytesPerRow = bytesPerRow;
+    layout.rowsPerImage = h;
+    device_.writeTexture(destination, upload, layout, Extent3D{w, h, 1});
+}
+
+// Rows padded to 256 bytes, as uploadDataTexture and uploadMeshData write them.
+void WebGPUBackend::writeTextureRows(Handle textureHandle, const std::vector<float>& data, const Value& width,
+                                     const Value& height, double bytesPerPixel) {
+    const double w = jsv::to_number(width);
+    const double h = jsv::to_number(height);
+    const double unalignedBytesPerRow = w * bytesPerPixel;
+    const double bytesPerRow = std::ceil(unalignedBytesPerRow / 256) * 256;
+    std::vector<float> upload = data;
+    if (bytesPerRow != unalignedBytesPerRow) {
+        const size_t srcRowFloats = size_t(w * 4);
+        const size_t dstRowFloats = size_t(bytesPerRow / 4);
+        upload.assign(dstRowFloats * size_t(h), 0.0f);
+        for (size_t y = 0; y < size_t(h); ++y) {
+            for (size_t x = 0; x < srcRowFloats && y * srcRowFloats + x < data.size(); ++x) {
+                upload[y * dstRowFloats + x] = data[y * srcRowFloats + x];
+            }
+        }
+    }
+    TexelCopyBufferLayout layout;
+    layout.bytesPerRow = bytesPerRow;
+    layout.rowsPerImage = h;
+    device_.writeTexture(TexelCopyTextureInfo{textureHandle}, floatBytes(upload), layout, extent(width, height));
+}
+
+Value WebGPUBackend::uploadMeshData(const JsString& meshId, const std::vector<float>& positions,
+                                    const std::vector<float>& normals, const std::vector<float>& uvs,
+                                    const Value& width, const Value& height, const Value& vertexCount) {
+    auto upload = [&](const JsString& id, const std::vector<float>& data) {
+        auto it = textures_.find(id);
+        if (it == textures_.end() || !jsv::strict_equals(it->second.width, width) ||
+            !jsv::strict_equals(it->second.height, height)) {
+            if (it != textures_.end()) device_.destroyTexture(it->second.handle);
+            TextureDescriptor descriptor;
+            descriptor.size = extent(width, height);
+            descriptor.format = u"rgba32float";
+            descriptor.usage = TextureUsage::TextureBinding | TextureUsage::CopyDst | TextureUsage::RenderAttachment |
+                               TextureUsage::StorageBinding;
+            TextureRecord record;
+            record.handle = device_.createTexture(descriptor);
+            record.view = device_.createView(record.handle, {});
+            record.width = width;
+            record.height = height;
+            record.format = Value(u"rgba32f");
+            record.gpuFormat = Value(u"rgba32float");
+            textures_[id] = std::move(record);
+            it = textures_.find(id);
+        }
+        writeTextureRows(it->second.handle, data, width, height, 16);
+    };
+    upload(u"global_" + meshId + u"_positions", positions);
+    upload(u"global_" + meshId + u"_normals", normals);
+    upload(u"global_" + meshId + u"_uvs", uvs);
+    Object result;
+    result.set(u"success", Value(true));
+    result.set(u"vertexCount", vertexCount);
+    return Value(std::move(result));
+}
+
+void WebGPUBackend::copyTexture(const JsString& srcId, const JsString& dstId) {
+    const TextureRecord* srcTex = texture(srcId);
+    const TextureRecord* dstTex = texture(dstId);
+    if (!srcTex || !dstTex) return;  // the reference warns
+    if (!jsv::strict_equals(srcTex->width, dstTex->width) || !jsv::strict_equals(srcTex->height, dstTex->height) ||
+        srcTex->mipLevels > 1 || dstTex->mipLevels > 1) {
+        copyTextureScaled(srcId, dstId);
+        return;
+    }
+    const Handle commandEncoder = device_.createCommandEncoder();
+    device_.copyTextureToTexture(commandEncoder, TexelCopyTextureInfo{srcTex->handle}, TexelCopyTextureInfo{dstTex->handle},
+                                 extent(srcTex->width, srcTex->height));
+    const Handle commandBuffer = device_.finish(commandEncoder);
+    device_.submit({commandBuffer});
+}
+
+Handle WebGPUBackend::getResamplePipeline(const Value& gpuFormat, const JsString& entryPoint) {
+    const JsString key = jsv::to_string(gpuFormat) + u"|" + entryPoint;
+    for (const auto& [cached, pipeline] : resamplePipelines_) if (cached == key) return pipeline;
+    if (!resampleModule_) resampleModule_ = device_.createShaderModule(runtimeShader(u"resample"));
+    RenderPipelineDescriptor descriptor;
+    descriptor.vertexModule = resampleModule_;
+    descriptor.vertexEntryPoint = u"vs";
+    descriptor.fragmentModule = resampleModule_;
+    descriptor.fragmentEntryPoint = entryPoint;
+    descriptor.targets.push_back(ColorTargetState{jsv::to_string(gpuFormat), std::nullopt});
+    const Handle pipeline = device_.createRenderPipeline(descriptor);
+    resamplePipelines_.emplace_back(key, pipeline);
+    return pipeline;
+}
+
+void WebGPUBackend::copyTextureScaled(const JsString& srcId, const JsString& dstId) {
+    const TextureRecord* srcTex = texture(srcId);
+    const TextureRecord* dstTex = texture(dstId);
+    if (!srcTex || !dstTex || dstTex->is3D) return;  // the reference warns
+    const Handle srcView = srcTex->renderView ? *srcTex->renderView : srcTex->view;
+    const Value dstFormat = jsv::truthy(dstTex->gpuFormat) ? dstTex->gpuFormat
+        : resolveFormat(jsv::truthy(dstTex->format) ? dstTex->format : Value(u"rgba16float"));
+    const Handle pipeline = getResamplePipeline(dstFormat, u"fsScale");
+    const Handle dimsBuffer = device_.createBuffer(BufferDescriptor{16, BufferUsage::Uniform | BufferUsage::CopyDst});
+    // new Float32Array([srcWidth, srcHeight, dstWidth, dstHeight])
+    std::vector<uint8_t> dims;
+    for (const Value* v : {&srcTex->width, &srcTex->height, &dstTex->width, &dstTex->height}) {
+        const float f = static_cast<float>(jsv::to_number(*v));
+        uint32_t bits = 0;
+        std::memcpy(&bits, &f, 4);
+        if (std::isnan(f)) bits = 0x7FC00000u;
+        for (int i = 0; i < 4; ++i) dims.push_back(uint8_t(bits >> (8 * i)));
+    }
+    device_.writeBuffer(dimsBuffer, 0, dims);
+    const Handle commandEncoder = device_.createCommandEncoder();
+    RenderPassDescriptor descriptor;
+    RenderPassColorAttachment color;
+    color.view = dstTex->renderView ? *dstTex->renderView : dstTex->view;
+    color.loadOp = u"clear";
+    color.storeOp = u"store";
+    descriptor.colorAttachments.push_back(color);
+    const Handle renderPass = device_.beginRenderPass(commandEncoder, descriptor);
+    device_.setPipeline(renderPass, pipeline);
+    const Handle layout = device_.getBindGroupLayout(pipeline, 0);
+    const Handle bindGroup = device_.createBindGroup(layout, {BindGroupEntry{0, BindGroupEntry::Kind::TextureView, srcView},
+                                                             BindGroupEntry{1, BindGroupEntry::Kind::Buffer, dimsBuffer}});
+    device_.setBindGroup(renderPass, 0, bindGroup);
+    device_.draw(renderPass, 3, 1, 0, 0);
+    device_.end(renderPass);
+    const Handle commandBuffer = device_.finish(commandEncoder);
+    device_.submit({commandBuffer});
+    device_.destroyBuffer(dimsBuffer);
+}
+
+void WebGPUBackend::generateMipmaps(const std::vector<JsString>& ids) {
+    for (const JsString& id : ids) {
+        const auto it = textures_.find(id);
+        if (it == textures_.end()) continue;
+        TextureRecord& tex = it->second;
+        if (!tex.mipmaps || tex.is3D || tex.mipViews.empty()) continue;
+        const Value dstFormat = jsv::truthy(tex.gpuFormat) ? tex.gpuFormat
+            : resolveFormat(jsv::truthy(tex.format) ? tex.format : Value(u"rgba16float"));
+        const Handle pipeline = getResamplePipeline(dstFormat, u"fsMip");
+        for (double level = 1; level < tex.mipLevels; ++level) {
+            const size_t l = size_t(level);
+            if (tex.mipBindGroups.empty()) tex.mipBindGroups.assign(size_t(tex.mipLevels), 0);
+            Handle bindGroup = tex.mipBindGroups[l];
+            if (!bindGroup) {
+                const Handle layout = device_.getBindGroupLayout(pipeline, 0);
+                bindGroup = device_.createBindGroup(layout, {BindGroupEntry{0, BindGroupEntry::Kind::TextureView, tex.mipViews[l - 1]}});
+                tex.mipBindGroups[l] = bindGroup;
+            }
+            const Handle commandEncoder = device_.createCommandEncoder();
+            RenderPassDescriptor descriptor;
+            RenderPassColorAttachment color;
+            color.view = tex.mipViews[l];
+            color.loadOp = u"clear";
+            color.storeOp = u"store";
+            descriptor.colorAttachments.push_back(color);
+            const Handle renderPass = device_.beginRenderPass(commandEncoder, descriptor);
+            device_.setPipeline(renderPass, pipeline);
+            const double w = mipLevelSize(tex.width, level);
+            const double h = mipLevelSize(tex.height, level);
+            device_.setViewport(renderPass, 0, 0, w, h, 0, 1);
+            device_.setBindGroup(renderPass, 0, bindGroup);
+            device_.draw(renderPass, 3, 1, 0, 0);
+            device_.end(renderPass);
+            const Handle commandBuffer = device_.finish(commandEncoder);
+            device_.submit({commandBuffer});
+        }
+    }
+}
+
+void WebGPUBackend::clearTexture(const JsString& id) {
+    const TextureRecord* tex = texture(id);
+    if (!tex) return;
+    const Handle commandEncoder = device_.createCommandEncoder();
+    RenderPassDescriptor descriptor;
+    RenderPassColorAttachment color;
+    color.view = tex->renderView ? *tex->renderView : tex->view;
+    color.loadOp = u"clear";
+    color.storeOp = u"store";
+    descriptor.colorAttachments.push_back(color);
+    const Handle renderPass = device_.beginRenderPass(commandEncoder, descriptor);
+    device_.end(renderPass);
+    const Handle commandBuffer = device_.finish(commandEncoder);
+    device_.submit({commandBuffer});
+}
+
 }  // namespace libnoisemaker::backend

@@ -6,7 +6,8 @@
 // recording_device.h): objects numbered by creation order, WebGPU's static
 // defaults applied (view members whose default comes from the texture stay
 // null), extents as arrays, written bytes in hex. For each op it writes
-// {key, calls} or {key, calls, error: {name, message}}.
+// {key, calls}, with result for a method whose return value callers use, and
+// error: {name, message} (or {thrown}) when the op throws.
 //
 //   NM_REFERENCE_ROOT=<reference-checkout> node tools/reference-backend.mjs < ops.jsonl
 import { createInterface } from 'node:readline'
@@ -50,6 +51,7 @@ const hex = (data, offset = 0, size) => {
 }
 const blendComponent = c => ({ operation: def(c?.operation, 'add'), srcFactor: def(c?.srcFactor, 'one'), dstFactor: def(c?.dstFactor, 'zero') })
 
+const copyInfo = info => ({ texture: idOf(info.texture), mipLevel: num(def(info.mipLevel, 0)), origin: origin(info.origin), aspect: def(info.aspect, 'all') })
 const color = c => c === undefined ? [0, 0, 0, 0] : Array.isArray(c) ? c.map(num) : [num(c.r), num(c.g), num(c.b), num(c.a)]
 const passObject = kind => {
   const p = make(kind)
@@ -86,6 +88,9 @@ const encoder = () => {
     log.push({ call: 'beginComputePass', id: idOf(p), encoder: idOf(e) })
     return p
   }
+  e.copyTextureToTexture = (source, destination, size) => log.push({
+    call: 'copyTextureToTexture', encoder: idOf(e), source: copyInfo(source), destination: copyInfo(destination), size: extent(size)
+  })
   e.finish = () => { const b = make('commandBuffer'); log.push({ call: 'finish', id: idOf(b), encoder: idOf(e) }); return b }
   return e
 }
@@ -256,6 +261,7 @@ for await (const line of lines) {
   if (!line) continue
   const op = JSON.parse(line)
   let error
+  let result
   try {
     switch (op.op) {
       case 'reset': next = 1; log = []; rejected = []; failMessage = null; backend = new WebGPUBackend(device, null); break
@@ -271,6 +277,12 @@ for await (const line of lines) {
       case 'endFrame': backend.endFrame(); break
       case 'createBindGroup': backend.createBindGroup(op.pass, backend.programs.get(op.program), frameState(op.state)); break
       case 'executePass': backend.executePass(op.pass, frameState(op.state)); break
+      case 'uploadCubeFace': backend.uploadCubeFace(op.id, op.face, { width: op.width, height: op.height, data: Uint8Array.from(op.data) }); break
+      case 'uploadMeshData': result = backend.uploadMeshData(op.id, decode(op.positions), decode(op.normals), decode(op.uvs), op.width, op.height, op.vertexCount); break
+      case 'copyTexture': backend.copyTexture(op.src, op.dst); break
+      case 'copyTextureScaled': backend.copyTextureScaled(op.src, op.dst); break
+      case 'generateMipmaps': backend.generateMipmaps(op.ids); break
+      case 'clearTexture': backend.clearTexture(op.id); break
       default: throw new Error(`unknown op ${op.op}`)
     }
   } catch (err) {
@@ -283,6 +295,8 @@ for await (const line of lines) {
   await new Promise(resolve => setImmediate(resolve))
   if (op.op === 'reset') continue
   const record = { key: op.key, calls: log.splice(0) }
+  // A method's return value, where a caller uses it (uploadMeshData).
+  if (result !== undefined) record.result = result
   if (error) record.error = error
   process.stdout.write(JSON.stringify(record) + '\n')
 }

@@ -39,6 +39,8 @@ public:
     void draw(Handle pass, double vertexCount, double instanceCount, double firstVertex, double firstInstance) override;
     void dispatchWorkgroups(Handle pass, double x, double y, double z) override;
     void end(Handle pass) override;
+    void copyTextureToTexture(Handle encoder, const TexelCopyTextureInfo& source, const TexelCopyTextureInfo& destination,
+                              const Extent3D& size) override;
     Handle finish(Handle encoder) override;
     void submit(const std::vector<Handle>& commandBuffers) override;
     // The work is done when it is submitted: done runs at once.

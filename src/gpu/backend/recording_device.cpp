@@ -374,6 +374,28 @@ void RecordingDevice::end(Handle pass) {
     log(std::move(call));
 }
 
+namespace {
+Value copyInfo(const TexelCopyTextureInfo& info) {
+    Object out;
+    out.set(u"texture", ref(info.texture));
+    out.set(u"mipLevel", Value(info.mipLevel));
+    out.set(u"origin", Value(Array{Value(info.origin[0]), Value(info.origin[1]), Value(info.origin[2])}));
+    out.set(u"aspect", Value(info.aspect));
+    return Value(std::move(out));
+}
+}  // namespace
+
+void RecordingDevice::copyTextureToTexture(Handle encoder, const TexelCopyTextureInfo& source,
+                                           const TexelCopyTextureInfo& destination, const Extent3D& size) {
+    Object call;
+    call.set(u"call", Value(u"copyTextureToTexture"));
+    call.set(u"encoder", ref(encoder));
+    call.set(u"source", copyInfo(source));
+    call.set(u"destination", copyInfo(destination));
+    call.set(u"size", extent(size));
+    log(std::move(call));
+}
+
 Handle RecordingDevice::finish(Handle encoder) {
     const Handle id = next();
     Object call;

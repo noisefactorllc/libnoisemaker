@@ -64,7 +64,8 @@ nm::Value error_record(const nm::JsString& name, const nm::JsString& message) {
 
 // Replays JSON lines on one RecordingDevice and WebGPUBackend, as
 // tools/reference-backend.mjs replays them on the reference backend. Writes
-// {key, calls} or {key, calls, error: {name, message}} for each op but reset.
+// {key, calls}, with result where a caller uses the return value and error
+// when the op throws, for each op but reset.
 int backend(int, char**) {
     auto device = std::make_unique<be::RecordingDevice>();
     auto backend = std::make_unique<be::WebGPUBackend>(*device);
@@ -108,6 +109,27 @@ int backend(int, char**) {
                     const be::ProgramInfo* program = backend->program(field(op, u"program").as_string());
                     if (!program) throw nm::JsError(u"TypeError", u"Cannot read properties of undefined (reading 'bindings')");
                     backend->createBindGroup(field(op, u"pass"), *program, frame_state(field(op, u"state")));
+                } else if (kind == u"uploadCubeFace") {
+                    const nm::Value bytes = field(op, u"data");
+                    std::vector<uint8_t> data;
+                    for (const nm::Value& byte : bytes.as_array()) data.push_back(static_cast<uint8_t>(byte.as_number()));
+                    backend->uploadCubeFace(id.as_string(), field(op, u"face"), field(op, u"width"), field(op, u"height"), data);
+                } else if (kind == u"uploadMeshData") {
+                    record.set(u"result", backend->uploadMeshData(id.as_string(), decode(field(op, u"positions")).as_float32_array(),
+                                                                  decode(field(op, u"normals")).as_float32_array(),
+                                                                  decode(field(op, u"uvs")).as_float32_array(), field(op, u"width"),
+                                                                  field(op, u"height"), field(op, u"vertexCount")));
+                } else if (kind == u"copyTexture") {
+                    backend->copyTexture(field(op, u"src").as_string(), field(op, u"dst").as_string());
+                } else if (kind == u"copyTextureScaled") {
+                    backend->copyTextureScaled(field(op, u"src").as_string(), field(op, u"dst").as_string());
+                } else if (kind == u"generateMipmaps") {
+                    const nm::Value texIds = field(op, u"ids");
+                    std::vector<nm::JsString> ids;
+                    for (const nm::Value& texId : texIds.as_array()) ids.push_back(texId.as_string());
+                    backend->generateMipmaps(ids);
+                } else if (kind == u"clearTexture") {
+                    backend->clearTexture(id.as_string());
                 } else if (kind == u"executePass") {
                     backend->executePass(field(op, u"pass"), frame_state(field(op, u"state")));
                 } else {

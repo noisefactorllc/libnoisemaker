@@ -54,6 +54,8 @@ struct TextureRecord {
     Value filter;
     bool cube = false;
     bool isExternal = false;
+    // generateMipmaps' bind group per level, made on first use.
+    std::vector<Handle> mipBindGroups;
 };
 
 // What compileProgram keeps in this.programs.
@@ -103,6 +105,17 @@ public:
     void destroyTexture(const JsString& id);
     void createCubeTexture(const JsString& id, const Value& size);
     void uploadDataTexture(const JsString& id, const std::vector<float>& data, const Value& width, const Value& height);
+    // uploadCubeFace(id, face, { width, height, data }) with RGBA8 data.
+    void uploadCubeFace(const JsString& id, const Value& face, const Value& width, const Value& height,
+                        const std::vector<uint8_t>& data);
+    // uploadMeshData(meshId, positions, normals, uvs, width, height, vertexCount):
+    // { success: true, vertexCount }, which the canvas renderer passes on.
+    Value uploadMeshData(const JsString& meshId, const std::vector<float>& positions, const std::vector<float>& normals,
+                         const std::vector<float>& uvs, const Value& width, const Value& height, const Value& vertexCount);
+    void copyTexture(const JsString& srcId, const JsString& dstId);
+    void copyTextureScaled(const JsString& srcId, const JsString& dstId);
+    void generateMipmaps(const std::vector<JsString>& ids);
+    void clearTexture(const JsString& id);
     const TextureRecord* texture(const JsString& id) const;
 
     // compileProgram(id, spec), spec being the graph's program spec.
@@ -161,6 +174,9 @@ private:
     std::vector<Value> resolveWorkgroups(const Value& pass, const FrameState& state) const;
     void copyBufferToTexture(const FrameState& state, const Value& outputId, const JsString& bufferName);
     Handle getBufferToTextureRenderPipeline(const Value& format);
+    Handle getResamplePipeline(const Value& gpuFormat, const JsString& entryPoint);
+    void writeTextureRows(Handle texture, const std::vector<float>& data, const Value& width, const Value& height,
+                          double bytesPerPixel);
     Handle encoder() const;
     void drawPass(Handle passEncoder, const Value& pass, const FrameState& state, const Value& outputId, const TextureRecord* tex);
     Handle sampler(const Value& type) const;
@@ -183,6 +199,8 @@ private:
     Value depthTextureWidth_;
     Value depthTextureHeight_;
     std::vector<std::pair<JsString, Handle>> bufferToTexturePipelines_;
+    Handle resampleModule_ = 0;
+    std::vector<std::pair<JsString, Handle>> resamplePipelines_;
     UniformPacker packer_;
 };
 

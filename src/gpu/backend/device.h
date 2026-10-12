@@ -194,6 +194,8 @@ public:
     virtual void draw(Handle pass, double vertexCount, double instanceCount, double firstVertex, double firstInstance) = 0;
     virtual void dispatchWorkgroups(Handle pass, double x, double y, double z) = 0;
     virtual void end(Handle pass) = 0;
+    virtual void copyTextureToTexture(Handle encoder, const TexelCopyTextureInfo& source,
+                                      const TexelCopyTextureInfo& destination, const Extent3D& size) = 0;
     virtual Handle finish(Handle encoder) = 0;
     virtual void submit(const std::vector<Handle>& commandBuffers) = 0;
     // queue.onSubmittedWorkDone().then(done)

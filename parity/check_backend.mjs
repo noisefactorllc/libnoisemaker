@@ -402,6 +402,34 @@ sequence('synthetic/execution', [
   exec({ program: 'buffers', outputs: { color: 'plainTex' } }, surfaceState({ screenWidth: 640, screenHeight: 480 })),
   { op: 'endFrame' }
 ])
+const floats = (count, scale) => ({ $float32: Array.from({ length: count }, (_, i) => (i % 17) * scale) })
+sequence('synthetic/texture-operations', [
+  { op: 'init' }, ...baseTextures,
+  { op: 'createTexture', id: 'same', spec: { width: 64, height: 32, format: 'rgba16f' } },
+  { op: 'createTexture', id: 'smaller', spec: { width: 30, height: 17, format: 'rgba8' } },
+  { op: 'createTexture', id: 'mipDst', spec: { width: 64, height: 32, format: 'rgba16f', mipmaps: true } },
+  { op: 'createCubeTexture', id: 'cube', size: 70 },
+  { op: 'uploadCubeFace', id: 'cube', face: 2, width: 3, height: 2, data: Array.from({ length: 24 }, (_, i) => i * 7 % 256) },
+  { op: 'uploadCubeFace', id: 'cube', face: 5, width: 64, height: 1, data: Array.from({ length: 256 }, (_, i) => i) },
+  { op: 'uploadCubeFace', id: 'noCube', face: 0, width: 1, height: 1, data: [1, 2, 3, 4] },
+  { op: 'uploadMeshData', id: 'mesh0', positions: floats(5 * 3 * 4, 0.5), normals: floats(5 * 3 * 4, -0.25), uvs: floats(5 * 3 * 4, 0.125), width: 5, height: 3, vertexCount: 15 },
+  { op: 'uploadMeshData', id: 'mesh0', positions: floats(5 * 3 * 4, 1), normals: floats(5 * 3 * 4, 2), uvs: floats(5 * 3 * 4, 3), width: 5, height: 3, vertexCount: 15 },
+  { op: 'uploadMeshData', id: 'mesh0', positions: floats(16 * 2 * 4, 1), normals: floats(16 * 2 * 4, 2), uvs: floats(16 * 2 * 4, 3), width: 16, height: 2, vertexCount: 32 },
+  { op: 'uploadMeshData', id: 'mesh1', positions: floats(4, 1), normals: floats(4, 2), uvs: floats(4, 3), width: 1, height: 1 },
+  { op: 'copyTexture', src: 'plainTex', dst: 'same' },
+  { op: 'copyTexture', src: 'plainTex', dst: 'smaller' },
+  { op: 'copyTexture', src: 'mipTex', dst: 'same' },
+  { op: 'copyTexture', src: 'plainTex', dst: 'mipDst' },
+  { op: 'copyTexture', src: 'missing', dst: 'same' },
+  { op: 'copyTextureScaled', src: 'vol3d', dst: 'smaller' },
+  { op: 'copyTextureScaled', src: 'plainTex', dst: 'vol3d' },
+  { op: 'copyTextureScaled', src: 'noFormat', dst: 'plainTex3' },
+  { op: 'generateMipmaps', ids: ['mipTex', 'plainTex', 'vol3d', 'missing', 'mipDst', 'global_feedback_write'] },
+  { op: 'generateMipmaps', ids: ['mipTex'] },
+  { op: 'clearTexture', id: 'mipTex' },
+  { op: 'clearTexture', id: 'plainTex' },
+  { op: 'clearTexture', id: 'missing' }
+])
 sequence('synthetic/textures', [
   { op: 'init' },
   { op: 'uploadDataTexture', id: 'small', data: { $float32: Array.from({ length: 40 }, (_, i) => i) }, width: 5, height: 2 },
