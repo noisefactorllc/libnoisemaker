@@ -13,7 +13,8 @@
 //   - parity/uniforms/synthetic.json, sequences that reach the branches and
 //     errors the others do not.
 // Each call's buffer size and bytes, or its error name and message, must equal
-// the reference's. Corpus calls must not throw. {"$float32": [numbers]} and
+// the reference's. Corpus calls must not throw, and every corpus program must
+// compile. {"$float32": [numbers]} and
 // {"$float32bits": [hex]} carry a Float32Array to both sides
 // (tools/reference-uniforms.mjs).
 //
@@ -76,9 +77,10 @@ const corpusSources = readdirSync(programsDir).filter(f => f.endsWith('.dsl')).s
 corpusSources.push(['audio/scope', 'search synth\nscope().write(o0)\nrender(o0)'],
   ['audio/spectrum', 'search synth\nspectrum().write(o0)\nrender(o0)'])
 let corpusPrograms = 0
+const uncompiled = []
 for (const [index, [file, source]] of corpusSources.entries()) {
   let graph
-  try { graph = mod.compileGraph(source) } catch { continue }
+  try { graph = mod.compileGraph(source) } catch { uncompiled.push(file); continue }
   corpusPrograms++
   const [width, height] = sizes[index % sizes.length]
   const calls = []
@@ -199,6 +201,8 @@ for (const op of ops) {
     err(`  ${op.id}: reference ${JSON.stringify(ref).slice(0, 300)} vs candidate ${JSON.stringify(cand).slice(0, 300)}`)
   }
 }
+for (const file of uncompiled) err(`  corpus/${file}: the reference does not compile it`)
+total += uncompiled.length
 out(`Uniforms: ${matched}/${total} match (${sequences} sequences: ${corpusPrograms} corpus graphs, 60 random, ` +
   `${synthetic.sequences.length} synthetic; ${errors} matching errors)`)
 process.exitCode = matched === total ? 0 : 1

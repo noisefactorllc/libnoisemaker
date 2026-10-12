@@ -1,0 +1,57 @@
+#pragma once
+
+// A Device that creates nothing and logs every call, one JSON object per call,
+// in the form tools/reference-backend.mjs gives the reference backend's calls
+// on its mock device: objects numbered by creation order, descriptors with
+// WebGPU's static defaults applied (members whose default comes from the
+// texture stay null), extents and origins as arrays, written bytes in hex.
+
+#include "gpu/backend/device.h"
+
+namespace libnoisemaker::backend {
+
+class RecordingDevice : public Device {
+public:
+    double maxTextureDimension2D() const override { return 8192; }
+    double maxColorAttachmentBytesPerSample() const override { return 32; }
+
+    Handle createTexture(const TextureDescriptor& descriptor) override;
+    Handle createView(Handle texture, const TextureViewDescriptor& descriptor) override;
+    void destroyTexture(Handle texture) override;
+    Handle createSampler(const SamplerDescriptor& descriptor) override;
+    Handle createBuffer(const BufferDescriptor& descriptor) override;
+    void destroyBuffer(Handle buffer) override;
+    Handle createShaderModule(const JsString& code) override;
+    std::vector<JsString> compilationErrors(Handle) override { return {}; }
+    Handle createRenderPipeline(const RenderPipelineDescriptor& descriptor) override;
+    Handle createComputePipeline(const ComputePipelineDescriptor& descriptor) override;
+    Handle getBindGroupLayout(Handle pipeline, double index) override;
+    Handle createBindGroup(Handle layout, const std::vector<BindGroupEntry>& entries) override;
+    void writeBuffer(Handle buffer, double offset, const std::vector<uint8_t>& bytes) override;
+    void writeTexture(const TexelCopyTextureInfo& destination, const std::vector<uint8_t>& bytes,
+                      const TexelCopyBufferLayout& layout, const Extent3D& size) override;
+    Handle createCommandEncoder() override;
+    Handle finish(Handle encoder) override;
+    void submit(const std::vector<Handle>& commandBuffers) override;
+    // The work is done when it is submitted: done runs at once.
+    void onSubmittedWorkDone(std::function<void()> done) override { done(); }
+
+    // The calls since the last take, in order.
+    Array takeLog();
+
+    // For the gate: createBindGroup rejects a group holding one of these
+    // bindings ("binding index N not present"), or every group with
+    // failMessage when it is set.
+    void rejectBindings(std::vector<double> bindings, std::optional<JsString> failMessage);
+
+private:
+    Handle next();
+    void log(Object call);
+
+    Handle next_ = 1;
+    Array log_;
+    std::vector<double> rejected_;
+    std::optional<JsString> failMessage_;
+};
+
+}  // namespace libnoisemaker::backend

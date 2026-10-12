@@ -4,6 +4,7 @@
 #include "frontend_commands.h"
 #include "dsl_commands.h"
 #include "program_state_commands.h"
+#include "backend_commands.h"
 #include "uniforms_commands.h"
 #include "wgsl_commands.h"
 
@@ -74,6 +75,7 @@ int dispatch(const std::string& subcommand, int argc, char** argv) {
     if (subcommand == "run") return nm_dump::run_program_state(argc, argv);
     if (subcommand == "wgsl") return nm_dump::wgsl(argc, argv);
     if (subcommand == "uniforms") return nm_dump::uniforms(argc, argv);
+    if (subcommand == "backend") return nm_dump::backend(argc, argv);
     std::fprintf(stderr, "nm-dump: unknown subcommand: %s\n", subcommand.c_str());
     return 2;
 }
