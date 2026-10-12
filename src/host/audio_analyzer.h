@@ -18,7 +18,7 @@
 
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 class AudioAnalyzer {
 public:
@@ -78,4 +78,4 @@ private:
     std::vector<double> m_imag;
 };
 
-} // namespace nm
+} // namespace libnoisemaker

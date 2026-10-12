@@ -14,7 +14,7 @@
 #include <optional>
 #include <stdexcept>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -67,7 +67,7 @@ namespace {
 //     shared temp counter, `evalExpr`'s JSON clone (a non-finite Number
 //     condition reads back as null, so it is false) and the TypeError a
 //     `let` inside a block raises. Nothing downstream executes these plans:
-//     the reference expander fails on them, and so does nm::expand.
+//     the reference expander fails on them, and so does libnoisemaker::expand.
 //   - The pinned reference registers both bare and namespaced starter names.
 //     Missing-write starter chains therefore produce S006 even when their
 //     call name is bare.
@@ -303,7 +303,7 @@ std::optional<JsValue> jsOwnProperty(const JsValue& cur, const JsText& key) {
 
 // The reference compiles a Func (`() => expr`) value with
 // `new Function('state', `with(state){ return ${src}; }`)` and reports S001
-// when that throws. nm::js::checkFunctionBody decides the same question for
+// when that throws. libnoisemaker::js::checkFunctionBody decides the same question for
 // V8; input it cannot decide fails loud.
 bool funcCompiles(const JsText& src) {
     const js::CheckResult result =
@@ -916,7 +916,7 @@ JsArray Validator::compileBlock(const JsValue& body) {
 
 // Reference compileStmt. Nothing downstream executes Branch, Break,
 // Continue or Return plans: the reference expander iterates `plan.chain`
-// and fails on them, and nm::expand does the same.
+// and fails on them, and libnoisemaker::expand does the same.
 JsValue Validator::compileStmt(const JsObject& stmt) {
     const JsText t = stmt.value(JsText(u"type")).toString();
     if (t == NodeKind::IfStmt) {
@@ -2358,7 +2358,7 @@ JsObject Validator::run(const JsObject& ast) {
         }
     }
     if (programSearchOrder_.isEmpty()) {
-        // Dead in practice: nm::parse (T8) already guarantees a non-empty
+        // Dead in practice: libnoisemaker::parse (T8) already guarantees a non-empty
         // search directive, mirroring the reference's OWN parser.js
         // enforcement (identical message text) -- this validator-level
         // check exists only for callers that hand-build an AST bypassing
@@ -2401,4 +2401,4 @@ Value validate(const Value& ast, EffectRegistry& registry) {
     return validate(JsObject(ast), registry).raw();
 }
 
-} // namespace nm
+} // namespace libnoisemaker

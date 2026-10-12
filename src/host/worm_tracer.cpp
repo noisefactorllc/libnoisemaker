@@ -8,7 +8,7 @@
 #include <optional>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -366,4 +366,4 @@ TraceResult traceWorms(StrokeCanvas& canvas, const WormTraceOptions& opts,
     return TraceResult::Completed;
 }
 
-} // namespace nm
+} // namespace libnoisemaker

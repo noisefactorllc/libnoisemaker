@@ -8,12 +8,12 @@
 #include <cmath>
 #include <limits>
 
-namespace nm {
+namespace libnoisemaker {
 JsError::JsError(JsString name, JsString message)
     : std::runtime_error(js_to_utf8(message)), name_(std::move(name)), message_(std::move(message)) {}
 }
 
-namespace nm::jsv {
+namespace libnoisemaker::jsv {
 namespace {
 JsString native_function(const JsString& name) { return u"function " + name + u"() { [native code] }"; }
 bool in_names(const JsString& key, std::initializer_list<const char16_t*> names) {

@@ -11,7 +11,7 @@
 #include <charconv>
 #endif
 
-namespace nm::js {
+namespace libnoisemaker::js {
 namespace detail {
 #ifdef __APPLE__
 // Apple's libc++ provides floating std::to_chars only from macOS 13.3, and
@@ -71,8 +71,8 @@ JsString numberToString(double value) {
     }
     return utf8_to_js(out);
 }
-}  // namespace nm::js
+}  // namespace libnoisemaker::js
 
-namespace nm {
+namespace libnoisemaker {
 JsString js_number_to_string(double value) { return js::numberToString(value); }
 }

@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace nm {
+namespace libnoisemaker {
 
 struct ParamDef {
     JsText name;
@@ -73,4 +73,4 @@ private:
     Enums enums_;
 };
 
-} // namespace nm
+} // namespace libnoisemaker

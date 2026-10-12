@@ -22,25 +22,25 @@
 namespace nm_dump {
 namespace {
 
-const nm::Value& field(const nm::Object& object, const char16_t* name) {
-    static const nm::Value missing;
-    const nm::Value* value = object.find(name);
+const libnoisemaker::Value& field(const libnoisemaker::Object& object, const char16_t* name) {
+    static const libnoisemaker::Value missing;
+    const libnoisemaker::Value* value = object.find(name);
     return value ? *value : missing;
 }
 
-nm::JsString string(const nm::Value& value) {
-    return value.is_string() ? value.as_string() : nm::JsString();
+libnoisemaker::JsString string(const libnoisemaker::Value& value) {
+    return value.is_string() ? value.as_string() : libnoisemaker::JsString();
 }
 
-int integer(const nm::Value& value) {
+int integer(const libnoisemaker::Value& value) {
     return value.is_number() ? static_cast<int>(value.as_number()) : 0;
 }
 
-bool boolean(const nm::Value& value, bool fallback = false) {
+bool boolean(const libnoisemaker::Value& value, bool fallback = false) {
     return value.is_bool() ? value.as_bool() : fallback;
 }
 
-double number(const nm::Value& value) {
+double number(const libnoisemaker::Value& value) {
     if (value.is_number()) return value.as_number();
     if (value.is_string()) {
         if (value.as_string() == u"Infinity") return std::numeric_limits<double>::infinity();
@@ -49,41 +49,41 @@ double number(const nm::Value& value) {
     return std::numeric_limits<double>::quiet_NaN();
 }
 
-const nm::Object& object(const nm::Value& value) {
-    static const nm::Object empty;
+const libnoisemaker::Object& object(const libnoisemaker::Value& value) {
+    static const libnoisemaker::Object empty;
     return value.is_object() ? value.as_object() : empty;
 }
 
-const nm::Array& array(const nm::Value& value) {
-    static const nm::Array empty;
+const libnoisemaker::Array& array(const libnoisemaker::Value& value) {
+    static const libnoisemaker::Array empty;
     return value.is_array() ? value.as_array() : empty;
 }
 
-std::vector<std::uint8_t> bytes(const nm::Value& value) {
+std::vector<std::uint8_t> bytes(const libnoisemaker::Value& value) {
     std::vector<std::uint8_t> out;
     for (const auto& entry : array(value)) out.push_back(static_cast<std::uint8_t>(integer(entry)));
     return out;
 }
 
-nm::Value input(const char* path) {
+libnoisemaker::Value input(const char* path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) throw std::runtime_error("cannot open input file");
-    return nm::json::parse(std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()));
+    return libnoisemaker::json::parse(std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()));
 }
 
-int emit(const nm::Array& results) {
-    const std::string output = nm::json::stringify(nm::Value(results));
+int emit(const libnoisemaker::Array& results) {
+    const std::string output = libnoisemaker::json::stringify(libnoisemaker::Value(results));
     std::fwrite(output.data(), 1, output.size(), stdout);
     std::fputc('\n', stdout);
     return 0;
 }
 
-nm::MidiPort midiPort(const nm::Object& source) {
+libnoisemaker::MidiPort midiPort(const libnoisemaker::Object& source) {
     return {string(field(source, u"id")), string(field(source, u"name")),
             boolean(field(source, u"connected"), true)};
 }
 
-nm::AudioDevice audioDevice(const nm::Object& source) {
+libnoisemaker::AudioDevice audioDevice(const libnoisemaker::Object& source) {
     return {string(field(source, u"id")), string(field(source, u"name")),
             integer(field(source, u"channelCount")), boolean(field(source, u"connected"), true)};
 }
@@ -99,11 +99,11 @@ void appendHex(std::string& out, std::uint32_t bits) {
     for (int shift = 28; shift >= 0; shift -= 4) out.push_back(digits[(bits >> shift) & 15]);
 }
 
-nm::JsString hexArray(const std::vector<float>& values) {
+libnoisemaker::JsString hexArray(const std::vector<float>& values) {
     std::string text;
     text.reserve(values.size() * 8);
     for (float value : values) appendHex(text, canonicalBits(value));
-    return nm::utf8_to_js(text);
+    return libnoisemaker::utf8_to_js(text);
 }
 
 constexpr std::array<std::uint32_t, 64> kSha256{
@@ -117,7 +117,7 @@ constexpr std::array<std::uint32_t, 64> kSha256{
     0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
 };
 
-nm::JsString sha256(const std::vector<float>& values) {
+libnoisemaker::JsString sha256(const std::vector<float>& values) {
     std::vector<std::uint8_t> data;
     data.reserve(values.size() * 4 + 72);
     for (float value : values) {
@@ -161,7 +161,7 @@ nm::JsString sha256(const std::vector<float>& values) {
     std::string text;
     text.reserve(64);
     for (std::uint32_t word : hash) appendHex(text, word);
-    return nm::utf8_to_js(text);
+    return libnoisemaker::utf8_to_js(text);
 }
 
 class SilenceExpectedMeshWarnings {
@@ -178,12 +178,12 @@ private:
 int midi_state(int argc, char** argv) {
     if (argc != 1) { std::fputs("usage: nm-dump midi-state <scenarios.json>\n", stderr); return 2; }
     try {
-        nm::Array results;
+        libnoisemaker::Array results;
         const auto manifest = input(argv[0]);
         for (const auto& scenarioValue : array(manifest)) {
             const auto& scenario = object(scenarioValue);
-            nm::MidiState state;
-            nm::Array dumps;
+            libnoisemaker::MidiState state;
+            libnoisemaker::Array dumps;
             for (const auto& eventValue : array(field(scenario, u"events"))) {
                 const auto& event = object(eventValue);
                 const auto op = string(field(event, u"op"));
@@ -197,13 +197,13 @@ int midi_state(int argc, char** argv) {
                 } else if (op == u"disconnect") state.disconnectPort(string(field(event, u"id")));
                 else if (op == u"register") state.registerPort(midiPort(object(field(event, u"port"))));
                 else if (op == u"inventory") {
-                    std::vector<nm::MidiPort> ports;
+                    std::vector<libnoisemaker::MidiPort> ports;
                     for (const auto& entry : array(field(event, u"ports"))) ports.push_back(midiPort(object(entry)));
                     state.setPortInventory(ports);
                 } else if (op == u"reset") state.reset();
                 else if (op == u"dump") dumps.emplace_back(state.dumpState());
             }
-            results.emplace_back(nm::HostObject{{u"name", field(scenario, u"name")}, {u"dumps", dumps}});
+            results.emplace_back(libnoisemaker::HostObject{{u"name", field(scenario, u"name")}, {u"dumps", dumps}});
         }
         return emit(results);
     } catch (const std::exception& e) {
@@ -215,18 +215,18 @@ int midi_state(int argc, char** argv) {
 int audio_state(int argc, char** argv) {
     if (argc != 1) { std::fputs("usage: nm-dump audio-state <scenarios.json>\n", stderr); return 2; }
     try {
-        nm::Array results;
+        libnoisemaker::Array results;
         const auto manifest = input(argv[0]);
         for (const auto& scenarioValue : array(manifest)) {
             const auto& scenario = object(scenarioValue);
-            nm::AudioState state;
-            nm::Array dumps;
+            libnoisemaker::AudioState state;
+            libnoisemaker::Array dumps;
             for (const auto& eventValue : array(field(scenario, u"events"))) {
                 const auto& event = object(eventValue);
                 const auto op = string(field(event, u"op"));
                 const auto id = string(field(event, u"id"));
                 if (op == u"update" || op == u"channelUpdate") {
-                    nm::AudioState* target = &state;
+                    libnoisemaker::AudioState* target = &state;
                     if (op == u"channelUpdate") {
                         const int channel = integer(field(event, u"channel"));
                         target = event.has(u"id") ? state.deviceChannelState(id, channel) : state.defaultChannelState(channel);
@@ -247,7 +247,7 @@ int audio_state(int argc, char** argv) {
                 } else if (op == u"deviceRawUnavailable") state.setDeviceRawUnavailable(id);
                 else if (op == u"disconnectDevice") state.disconnectDevice(id);
                 else if (op == u"inventory") {
-                    std::vector<nm::AudioDevice> devices;
+                    std::vector<libnoisemaker::AudioDevice> devices;
                     for (const auto& entry : array(field(event, u"devices"))) devices.push_back(audioDevice(object(entry)));
                     state.setDeviceInventory(devices);
                 } else if (op == u"registerDefault") state.registerDefaultChannels(integer(field(event, u"count")));
@@ -260,7 +260,7 @@ int audio_state(int argc, char** argv) {
                 else if (op == u"reset") state.reset();
                 else if (op == u"dump") dumps.emplace_back(state.dumpState());
             }
-            results.emplace_back(nm::HostObject{{u"name", field(scenario, u"name")}, {u"dumps", dumps}});
+            results.emplace_back(libnoisemaker::HostObject{{u"name", field(scenario, u"name")}, {u"dumps", dumps}});
         }
         return emit(results);
     } catch (const std::exception& e) {
@@ -272,36 +272,36 @@ int audio_state(int argc, char** argv) {
 int obj_parser(int argc, char** argv) {
     if (argc != 1) { std::fputs("usage: nm-dump obj-parser <manifest.json>\n", stderr); return 2; }
     try {
-        nm::Array results;
+        libnoisemaker::Array results;
         const auto manifest = input(argv[0]);
         for (const auto& entryValue : array(manifest)) {
             const auto& entry = object(entryValue);
-            const auto path = nm::js_to_utf8(string(field(entry, u"path")));
+            const auto path = libnoisemaker::js_to_utf8(string(field(entry, u"path")));
             const auto mode = string(field(entry, u"mode"));
-            nm::HostObject out{{u"path", field(entry, u"path")}, {u"mode", field(entry, u"mode")}};
+            libnoisemaker::HostObject out{{u"path", field(entry, u"path")}, {u"mode", field(entry, u"mode")}};
             try {
-                nm::ObjMeshData mesh;
-                if (mode == u"file") mesh = nm::loadOBJ(path);
+                libnoisemaker::ObjMeshData mesh;
+                if (mode == u"file") mesh = libnoisemaker::loadOBJ(path);
                 else {
                     std::ifstream file(path, std::ios::binary);
                     if (!file) throw std::runtime_error("cannot open corpus file");
                     const std::string data{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-                    mesh = nm::parseOBJ(nm::utf8_to_js(data));
+                    mesh = libnoisemaker::parseOBJ(libnoisemaker::utf8_to_js(data));
                 }
                 out.insert(u"vertexCount", static_cast<double>(mesh.vertexCount));
                 out.insert(u"positions", hexArray(mesh.positions));
                 out.insert(u"normals", hexArray(mesh.normals));
                 out.insert(u"uvs", hexArray(mesh.uvs));
                 SilenceExpectedMeshWarnings silence;
-                const auto large = nm::packMeshDataForTextures(mesh, 256, 256);
-                out.insert(u"packed256", nm::HostObject{
+                const auto large = libnoisemaker::packMeshDataForTextures(mesh, 256, 256);
+                out.insert(u"packed256", libnoisemaker::HostObject{
                     {u"vertexCount", large.vertexCount}, {u"positionData", sha256(large.positionData)},
                     {u"normalData", sha256(large.normalData)}, {u"uvData", sha256(large.uvData)}});
-                const auto small = nm::packMeshDataForTextures(mesh, 4, 4);
-                out.insert(u"packed4", nm::HostObject{
+                const auto small = libnoisemaker::packMeshDataForTextures(mesh, 4, 4);
+                out.insert(u"packed4", libnoisemaker::HostObject{
                     {u"vertexCount", small.vertexCount}, {u"positionData", hexArray(small.positionData)},
                     {u"normalData", hexArray(small.normalData)}, {u"uvData", hexArray(small.uvData)}});
-            } catch (const std::exception& e) { out.insert(u"error", nm::utf8_to_js(e.what())); }
+            } catch (const std::exception& e) { out.insert(u"error", libnoisemaker::utf8_to_js(e.what())); }
             results.emplace_back(out);
         }
         return emit(results);

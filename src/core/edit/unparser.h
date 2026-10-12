@@ -3,7 +3,7 @@
 #include "core/lang/effect_registry.h"
 #include <functional>
 
-namespace nm {
+namespace libnoisemaker {
 struct UnparseOptions {
     Value enums;
     Value omit_search_directive;

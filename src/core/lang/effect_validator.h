@@ -42,7 +42,7 @@
 #include <string>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 // Validate a definition. `def` may be any JsValue shape; the error list
 // is empty iff the definition satisfies the full grammar.
@@ -55,9 +55,9 @@ std::vector<std::string> validateEffectDefinition(const JsObject& def);
 // Injectable std-enum table the validator resolves `member` defaults and
 // `enum` paths against (the reference imports std_enums.js directly). The
 // table is COPIED, so callers may pass any object, including temporaries;
-// the validator's live default (nm::Enums::std()) is used until this is
+// the validator's live default (libnoisemaker::Enums::std()) is used until this is
 // called, and the last call's copy is kept.
 void setEffectValidatorStdEnums(const JsObject& stdEnums);
 void setEffectValidatorStdEnums(const Value& stdEnums);
 
-} // namespace nm
+} // namespace libnoisemaker

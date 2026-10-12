@@ -74,7 +74,7 @@ try {
 // uniforms, defines, defaults, ranges and enum mappings. The exception is
 // `ui.control: false` and `ui.hidden: true`: the demo host shows no control for
 // such a param, so it does not coerce the param's function value
-// (nm::hasHostControl).
+// (libnoisemaker::hasHostControl).
 function projectGlobal (spec) {
   const out = {}
   if (spec.type !== undefined) out.type = spec.type

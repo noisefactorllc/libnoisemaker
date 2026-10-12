@@ -11,20 +11,20 @@ void check(bool condition, const char* label) {
     if (!condition) ++failures;
 }
 
-void send(nm::MidiState& state, std::initializer_list<std::uint8_t> bytes,
-          const nm::MidiPort* port = nullptr, double time = 1000.0) {
+void send(libnoisemaker::MidiState& state, std::initializer_list<std::uint8_t> bytes,
+          const libnoisemaker::MidiPort* port = nullptr, double time = 1000.0) {
     state.handleMessage(bytes.begin(), bytes.size(), port, time);
 }
 
-nm::Object channel(const nm::MidiState& state, const char16_t* number) {
+libnoisemaker::Object channel(const libnoisemaker::MidiState& state, const char16_t* number) {
     return state.snapshot().find(u"channels")->as_object().find(number)->as_object();
 }
 }  // namespace
 
 int main() {
-    nm::MidiState state;
-    const nm::MidiPort keys{u"port-a", u"Keys", true};
-    const nm::MidiPort pads{u"port-b", u"Pads", true};
+    libnoisemaker::MidiState state;
+    const libnoisemaker::MidiPort keys{u"port-a", u"Keys", true};
+    const libnoisemaker::MidiPort pads{u"port-b", u"Pads", true};
     send(state, {0xb0, 1, 64}, &keys);
     send(state, {0xb0, 33, 32}, &keys);
     check(channel(state, u"1").find(u"cc14")->as_array()[1].as_number() == ((64 << 7) | 32),

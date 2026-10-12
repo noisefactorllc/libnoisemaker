@@ -1,6 +1,6 @@
 #include "enums.h"
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -166,4 +166,4 @@ void Enums::registerChoice(const JsList& path, const JsValue& value) {
     project_ = insertLeaf(project_, path, 0, value);
 }
 
-} // namespace nm
+} // namespace libnoisemaker

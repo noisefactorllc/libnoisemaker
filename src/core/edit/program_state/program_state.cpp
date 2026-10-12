@@ -12,7 +12,7 @@
 #include <exception>
 #include <limits>
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 Value field(const Value& value, const JsString& key) { return jsv::member(value, key); }
 Value registry_effect(EffectRegistry& registry, const JsString& key) {
@@ -752,9 +752,9 @@ void ProgramStateCore::apply_to_pipeline() {
     }
 }
 
-}  // namespace nm
+}  // namespace libnoisemaker
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 Value edit_result(bool success, const JsString& error = {}) {
     Object out; out.set(u"success", Value(success));
@@ -945,10 +945,10 @@ Value ProgramStateCore::insert_step(double after, const JsString& effect_id, con
     return Value(std::move(out));
 }
 
-}  // namespace nm
+}  // namespace libnoisemaker
 
 
-namespace nm {
+namespace libnoisemaker {
 
 Value ProgramStateCore::serialize() const {
     Object steps;
@@ -1005,4 +1005,4 @@ void ProgramStateCore::deserialize(const Value& data) {
     emit(u"load", Value(std::move(event)));
 }
 
-}  // namespace nm
+}  // namespace libnoisemaker

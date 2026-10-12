@@ -8,7 +8,7 @@
 #include <iterator>
 #include <limits>
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 thread_local size_t format_depth = 0;
 struct DepthGuard {
@@ -1087,4 +1087,4 @@ JsString apply_parameter_updates(const JsString& dsl, const Value& compiled, con
     }
     return unparse(source, updates, UnparseOptions{}, registry);
 }
-} // namespace nm
+} // namespace libnoisemaker

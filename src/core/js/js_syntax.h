@@ -14,7 +14,7 @@
 
 #include "core/value/js_string.h"
 
-namespace nm::js {
+namespace libnoisemaker::js {
 
 enum class Verdict { Valid, Invalid, Unsupported };
 
@@ -30,4 +30,4 @@ struct CheckResult {
 // sloppy-mode FunctionBody.
 CheckResult checkFunctionBody(const JsString& param, const JsString& body);
 
-} // namespace nm::js
+} // namespace libnoisemaker::js

@@ -15,7 +15,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 class LangString : public js::JsText {
 public:
     using js::JsText::JsText;
@@ -168,7 +168,7 @@ inline JsonObject JsonValue::toObject() const { return value_.is_object() ? Json
 inline JsonArray JsonValue::toArray() const { return value_.is_array() ? JsonArray(value_.as_array()) : JsonArray(); }
 }
 namespace std {
-template<> struct hash<nm::LangString> {
-    size_t operator()(const nm::LangString& s) const noexcept { return hash<nm::JsString>{}(s); }
+template<> struct hash<libnoisemaker::LangString> {
+    size_t operator()(const libnoisemaker::LangString& s) const noexcept { return hash<libnoisemaker::JsString>{}(s); }
 };
 }

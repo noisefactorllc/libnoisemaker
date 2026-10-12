@@ -6,7 +6,7 @@
 #include <string>
 #include <chrono>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -602,4 +602,4 @@ HostObject MidiState::dumpState() const {
     return stateJson(true);
 }
 
-} // namespace nm
+} // namespace libnoisemaker

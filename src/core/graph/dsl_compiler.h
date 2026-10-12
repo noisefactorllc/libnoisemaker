@@ -9,7 +9,7 @@
 
 #include "core/graph/graph.h"
 
-namespace nm {
+namespace libnoisemaker {
 
 class EffectRegistry;
 
@@ -52,20 +52,20 @@ JsString hashSource(const JsString& source);
 
 // lex -> parse -> validate -> expand -> allocateResources ->
 // extractTextureSpecs, returning the reference compiler graph.
-// Shader source remains in each program entry. Throws nm::CompilationError mirroring compiler.js's
+// Shader source remains in each program entry. Throws libnoisemaker::CompilationError mirroring compiler.js's
 // ERR_COMPILATION_FAILED (a validate() diagnostic with severity:"error")
-// / ERR_EXPANSION_FAILED (expand() returned errors); nm::DslSyntaxError /
-// nm::UnsupportedDsl propagate unchanged from the lex/parse/validate/
+// / ERR_EXPANSION_FAILED (expand() returned errors); libnoisemaker::DslSyntaxError /
+// libnoisemaker::UnsupportedDsl propagate unchanged from the lex/parse/validate/
 // expand stages.
 Object compileGraphJson(const JsString& source, EffectRegistry& registry,
                         const Object& options = {});
 
-// compileGraphJson() then nm::Graph::fromJson() on the serialized bytes —
+// compileGraphJson() then libnoisemaker::Graph::fromJson() on the serialized bytes —
 // see file header for why this guarantees --dsl/--graph byte-identity.
-nm::Graph compileGraph(const JsString& source, EffectRegistry& registry,
+libnoisemaker::Graph compileGraph(const JsString& source, EffectRegistry& registry,
                        const Object& options = {});
 
 // Convenience overload using the embedded effect catalog.
-nm::Graph compileGraph(const JsString& source, const Object& options = {});
+libnoisemaker::Graph compileGraph(const JsString& source, const Object& options = {});
 
-} // namespace nm
+} // namespace libnoisemaker

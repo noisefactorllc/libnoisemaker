@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 class JsText : public js::JsText {
 public:
@@ -194,7 +194,7 @@ public:
     const JsValue& first() const { return front(); }
     const JsValue& last() const { return back(); }
     void replace(std::size_t index, const JsValue& value) { (*this)[index] = value; }
-    Value raw() const { nm::Array out; for (const auto& item : *this) out.push_back(item.raw()); return Value(std::move(out)); }
+    Value raw() const { libnoisemaker::Array out; for (const auto& item : *this) out.push_back(item.raw()); return Value(std::move(out)); }
 };
 
 class JsObject {
@@ -241,7 +241,7 @@ public:
     Iterator constEnd() const { return {this, entries_.size()}; }
     Iterator begin() const { return constBegin(); }
     Iterator end() const { return constEnd(); }
-    Value raw() const { nm::Object out; for (const auto& [key, val] : entries_) out.set(key, val.raw()); return Value(std::move(out)); }
+    Value raw() const { libnoisemaker::Object out; for (const auto& [key, val] : entries_) out.set(key, val.raw()); return Value(std::move(out)); }
     operator Value() const { return raw(); }
     bool operator==(const JsObject& other) const {
         if (entries_.size() != other.entries_.size()) return false;
@@ -317,4 +317,4 @@ private:
     JsObject project_;
 };
 
-} // namespace nm
+} // namespace libnoisemaker

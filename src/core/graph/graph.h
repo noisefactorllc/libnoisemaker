@@ -2,7 +2,7 @@
 #include "core/graph/compat.h"
 
 
-namespace nm {
+namespace libnoisemaker {
 
 // One entry of `graph.textures`: docs/GRAPH-JSON-SCHEMA.md "TextureSpec &
 // dimensions" / reference/04-resources-pipeline.md §0. `width`/`height`/
@@ -93,4 +93,4 @@ struct Graph {
     static Graph fromJson(const std::string& json);
 };
 
-} // namespace nm
+} // namespace libnoisemaker

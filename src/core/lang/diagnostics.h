@@ -1,7 +1,7 @@
 #pragma once
 #include "core/lang/compat.h"
 #include <stdexcept>
-namespace nm {
+namespace libnoisemaker {
 class DslSyntaxError : public std::runtime_error {
 public:
     explicit DslSyntaxError(const JsString& message, int line = -1, int col = -1,

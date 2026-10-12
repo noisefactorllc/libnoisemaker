@@ -6,7 +6,7 @@
 #include <string>
 #include <cmath>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -456,4 +456,4 @@ void AudioInput::update() {
     }
 }
 
-} // namespace nm
+} // namespace libnoisemaker

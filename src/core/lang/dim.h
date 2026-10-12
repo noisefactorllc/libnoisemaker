@@ -26,7 +26,7 @@
 // passes through `scopeDim` completely unchanged.
 
 
-namespace nm::dim {
+namespace libnoisemaker::dim {
 
 // True iff `d` is a JSON object carrying a `param` or `screenDivide` key
 // (reference/03 §6.3 `dimReferencesParam` / hasParamRef). Any other shape
@@ -54,4 +54,4 @@ bool referencesParam(const JsValue& d);
 JsValue scope(const JsValue& d, const JsText& scopeSuffix, JsMap<JsText, JsText>& scopedParamMap,
                   const JsText& stateSizeScope = JsText());
 
-} // namespace nm::dim
+} // namespace libnoisemaker::dim

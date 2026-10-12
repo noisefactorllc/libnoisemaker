@@ -37,7 +37,7 @@
 //   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 //   USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-namespace nm::js {
+namespace libnoisemaker::js {
 
 namespace {
 
@@ -1093,4 +1093,4 @@ RegexCheck validateRegExpLiteral(const JsString& pattern, const JsString& flags,
     return RegexCheck::Valid;
 }
 
-} // namespace nm::js
+} // namespace libnoisemaker::js

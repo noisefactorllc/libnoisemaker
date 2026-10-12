@@ -7,7 +7,7 @@
 
 #include <utility>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -1598,4 +1598,4 @@ Value parse(const std::vector<Token>& tokens, const Value& options) {
     return parser.parseProgram().native();
 }
 
-} // namespace nm
+} // namespace libnoisemaker

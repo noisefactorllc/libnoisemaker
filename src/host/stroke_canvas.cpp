@@ -47,7 +47,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-namespace nm {
+namespace libnoisemaker {
 
 using namespace raster;
 
@@ -760,7 +760,7 @@ void RectClipBlitter::blitMask(const Mask& mask, const IRect& clip) {
 
 StrokeCanvas::StrokeCanvas(int width, int height) : m_width(width), m_height(height) {
     if (width <= 0 || height <= 0) {
-        throw std::invalid_argument("nm::StrokeCanvas: width and height must be positive");
+        throw std::invalid_argument("libnoisemaker::StrokeCanvas: width and height must be positive");
     }
     m_pixels.assign(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0u);
 }
@@ -848,4 +848,4 @@ std::vector<std::uint8_t> unpremultiplyForUpload(const std::vector<std::uint8_t>
     return out;
 }
 
-} // namespace nm
+} // namespace libnoisemaker

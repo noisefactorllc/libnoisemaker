@@ -9,7 +9,7 @@
 // godot/addons/noisemaker/compiler/lang/validator.gd (full argument-
 // resolution fidelity). Control flow (if/elif/else, break/continue/return)
 // compiles to the reference's Branch/Break/Continue/Return plans, and Func
-// (arrow-function) values are checked with nm::js::checkFunctionBody, the
+// (arrow-function) values are checked with libnoisemaker::js::checkFunctionBody, the
 // V8 syntax check the reference gets from `new Function`. See validator.cpp
 // for the PARITY-CRITICAL details.
 //
@@ -22,29 +22,29 @@
 
 #include <stdexcept>
 
-namespace nm {
+namespace libnoisemaker {
 
 class EffectRegistry;
 
 // DSL input this AOT frontend cannot compile exactly. Never silently
 // wrong -- mirrors the sibling ports' NotImplementedException /
 // UnsupportedDsl (TD's validator.py). Thrown for a Func (arrow-function)
-// body that nm::js::checkFunctionBody cannot decide (nesting deeper than it
+// body that libnoisemaker::js::checkFunctionBody cannot decide (nesting deeper than it
 // follows); see js_syntax.h.
 class UnsupportedDsl : public std::runtime_error {
 public:
     explicit UnsupportedDsl(const JsText& message) : std::runtime_error(message.toStdString()) {}
 };
 
-// Validates `ast` (as produced by nm::parse) against `registry`'s loaded
+// Validates `ast` (as produced by libnoisemaker::parse) against `registry`'s loaded
 // ops/enums/aliases/starters, producing the flattened, argument-resolved
-// plan structure the (future) Expander consumes. Throws nm::UnsupportedDsl
+// plan structure the (future) Expander consumes. Throws libnoisemaker::UnsupportedDsl
 // at the family's fail-loud points (see above); all other semantic issues
 // are collected into the returned object's `diagnostics` array, never
 // thrown (matches the reference -- validate() has exactly one throw site
-// of its own, "Missing required search directive", which nm::parse
+// of its own, "Missing required search directive", which libnoisemaker::parse
 // already guarantees can never reach here).
 Value validate(const Value& ast, EffectRegistry& registry);
 JsObject validate(const JsObject& ast, EffectRegistry& registry);
 
-} // namespace nm
+} // namespace libnoisemaker

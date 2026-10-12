@@ -5,7 +5,7 @@
 #include <map>
 #include <utility>
 
-namespace nm {
+namespace libnoisemaker {
 
 template<class Key, class T> class GraphMap : public JsMap<Key, T> {
 public:
@@ -28,4 +28,4 @@ public:
     }
 };
 
-}  // namespace nm
+}  // namespace libnoisemaker

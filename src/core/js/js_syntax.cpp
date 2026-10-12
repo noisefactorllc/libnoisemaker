@@ -54,7 +54,7 @@
 //     head (acorn also allows it before an `of` or `in` on the next line).
 //   - A labelled function declaration binds its name in the enclosing scope.
 
-namespace nm::js {
+namespace libnoisemaker::js {
 
 namespace {
 
@@ -2874,4 +2874,4 @@ CheckResult checkFunctionBody(const JsString& param, const JsString& body) {
     return result;
 }
 
-} // namespace nm::js
+} // namespace libnoisemaker::js

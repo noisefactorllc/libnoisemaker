@@ -5,7 +5,7 @@
 #include <array>
 #include <cmath>
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 
 struct PalettePreset {
@@ -98,4 +98,4 @@ Value expand_palette_value(const Value& index) {
     return Value(std::move(out));
 }
 
-}  // namespace nm
+}  // namespace libnoisemaker

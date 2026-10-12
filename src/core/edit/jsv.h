@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 class JsError : public std::runtime_error {
 public:
     JsError(JsString name, JsString message);
@@ -17,7 +17,7 @@ private:
 };
 }
 
-namespace nm::jsv {
+namespace libnoisemaker::jsv {
 using Entries = std::vector<std::pair<JsString, Value>>;
 Value member(const Value& base, const JsString& key);
 Value get(const Value& base, const JsString& key);

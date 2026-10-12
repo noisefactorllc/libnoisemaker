@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-namespace nm::raster {
+namespace libnoisemaker::raster {
 
 namespace {
 
@@ -2290,4 +2290,4 @@ void fillStroke(Pt p0, Pt p1, float width, const IRect& canvas, Blitter& blitter
     }
 }
 
-} // namespace nm::raster
+} // namespace libnoisemaker::raster

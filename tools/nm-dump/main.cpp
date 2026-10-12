@@ -21,7 +21,7 @@ int hex_digit(char ch) {
     return -1;
 }
 
-bool decode(std::string_view line, nm::JsString& result) {
+bool decode(std::string_view line, libnoisemaker::JsString& result) {
     result.clear();
     result.reserve(line.size());
     for (std::size_t i = 0; i < line.size(); ++i) {
@@ -46,16 +46,16 @@ bool decode(std::string_view line, nm::JsString& result) {
 
 int cmd_js_syntax(int, char**) {
     std::string raw;
-    nm::JsString body;
+    libnoisemaker::JsString body;
     while (std::getline(std::cin, raw)) {
         if (raw.empty()) continue;
         if (!decode(raw, body)) {
             std::fputs("nm-dump js-syntax: malformed %XXXX input\n", stderr);
             return 2;
         }
-        const auto result = nm::js::checkFunctionBody(u"state", body);
-        std::putchar(result.verdict == nm::js::Verdict::Valid ? 'V'
-                     : result.verdict == nm::js::Verdict::Invalid ? 'I' : 'U');
+        const auto result = libnoisemaker::js::checkFunctionBody(u"state", body);
+        std::putchar(result.verdict == libnoisemaker::js::Verdict::Valid ? 'V'
+                     : result.verdict == libnoisemaker::js::Verdict::Invalid ? 'I' : 'U');
         std::putchar('\n');
     }
     return 0;

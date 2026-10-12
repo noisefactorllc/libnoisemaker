@@ -33,7 +33,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 class StrokeCanvas {
 public:
@@ -79,4 +79,4 @@ private:
 // straight alpha, as unpremultipliedRgba8() applies it.
 std::vector<std::uint8_t> unpremultiplyForUpload(const std::vector<std::uint8_t>& premultiplied);
 
-} // namespace nm
+} // namespace libnoisemaker

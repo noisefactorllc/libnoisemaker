@@ -15,7 +15,7 @@
 #include <cstdint>
 #include <functional>
 
-namespace nm {
+namespace libnoisemaker {
 
 class StrokeCanvas;
 
@@ -88,4 +88,4 @@ double jsCos(double x);
 double jsLog(double x);
 } // namespace detail
 
-} // namespace nm
+} // namespace libnoisemaker

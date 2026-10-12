@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace nm::program_state {
+namespace libnoisemaker::program_state {
 
 void report_emitter_error(const JsString& event, const JsString& error);
 
@@ -127,4 +127,4 @@ private:
     std::shared_ptr<State> state_;
 };
 
-}  // namespace nm::program_state
+}  // namespace libnoisemaker::program_state

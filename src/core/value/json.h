@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace nm::json {
+namespace libnoisemaker::json {
 class ParseError : public std::runtime_error {
  public:
     using std::runtime_error::runtime_error;
@@ -14,4 +14,4 @@ class ParseError : public std::runtime_error {
 
 std::string stringify(const Value& value, int indent = 0);
 Value parse(std::string_view utf8);
-}  // namespace nm::json
+}  // namespace libnoisemaker::json

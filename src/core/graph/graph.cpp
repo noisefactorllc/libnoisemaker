@@ -5,7 +5,7 @@
 
 #include <stdexcept>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -116,8 +116,8 @@ Pass parsePass(const JsValue& value, int index, const JsObject& programs) {
 
 Graph Graph::fromJson(const std::string& json) {
     Value parsed;
-    try { parsed = nm::json::parse(json); }
-    catch (const nm::json::ParseError& e) {
+    try { parsed = libnoisemaker::json::parse(json); }
+    catch (const libnoisemaker::json::ParseError& e) {
         fail(JsText(u"graph JSON parse error: ") + JsText::fromUtf8(e.what()));
     }
     if (!parsed.is_object()) {
@@ -154,4 +154,4 @@ Graph Graph::fromJson(const std::string& json) {
     return graph;
 }
 
-} // namespace nm
+} // namespace libnoisemaker

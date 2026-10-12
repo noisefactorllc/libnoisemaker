@@ -4,15 +4,15 @@
 
 #include <string>
 
-namespace nm::js {
+namespace libnoisemaker::js {
 JsString numberToString(double value);
 
 namespace detail {
 // The shortest round-trip digits of a finite double above zero, as "d.ddde±x".
 std::string shortest_scientific(double magnitude);
 }  // namespace detail
-}  // namespace nm::js
+}  // namespace libnoisemaker::js
 
-namespace nm {
+namespace libnoisemaker {
 JsString js_number_to_string(double value);
 }

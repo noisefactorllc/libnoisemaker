@@ -7,7 +7,7 @@
 
 #include <stdexcept>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -438,4 +438,4 @@ JsObject EffectRegistry::dumpSummary() const {
     return out;
 }
 
-} // namespace nm
+} // namespace libnoisemaker

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace nm {
+namespace libnoisemaker {
 Value::Value() = default;
 Value Value::null() { Value v; v.kind_ = Kind::Null; return v; }
 Value::Value(bool value) : kind_(Kind::Bool), data_(value) {}
@@ -100,4 +100,4 @@ void Object::define_hidden(const JsString& key, Value value) {
     hidden_.insert_or_assign(key, std::move(value));
 }
 size_t Object::size() const { return entries_.size() + hidden_.size(); }
-}  // namespace nm
+}  // namespace libnoisemaker

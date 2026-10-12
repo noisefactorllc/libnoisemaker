@@ -10,7 +10,7 @@
 #include <variant>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 class Value;
 class Object;
 using Array = std::vector<Value>;
@@ -74,4 +74,4 @@ class Object {
     std::unordered_map<JsString, size_t> index_;
     std::unordered_map<JsString, Value> hidden_;
 };
-}  // namespace nm
+}  // namespace libnoisemaker

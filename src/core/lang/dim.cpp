@@ -1,7 +1,7 @@
 #include "dim.h"
 
 
-namespace nm::dim {
+namespace libnoisemaker::dim {
 
 bool referencesParam(const JsValue& d) {
     if (!d.isObject()) return false;
@@ -36,4 +36,4 @@ JsValue scope(const JsValue& d, const JsText& scopeSuffix, JsMap<JsText, JsText>
     return d;
 }
 
-} // namespace nm::dim
+} // namespace libnoisemaker::dim

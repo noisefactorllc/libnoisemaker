@@ -16,7 +16,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -512,4 +512,4 @@ PackedMeshData packMeshDataForTextures(const ObjMeshData& mesh, int texWidth, in
     return packed;
 }
 
-} // namespace nm
+} // namespace libnoisemaker

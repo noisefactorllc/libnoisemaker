@@ -1,7 +1,7 @@
 #pragma once
 #include "core/lang/effect_registry.h"
 #include "core/value/value.h"
-namespace nm {
+namespace libnoisemaker {
 Value list_steps(const Value& compiled, const Value& options, const EffectRegistry& registry);
 Value replace_effect(const Value& compiled, const Value& step_index, const Value& new_effect_name,
                      const Value& new_args, const Value& options, const EffectRegistry& registry);

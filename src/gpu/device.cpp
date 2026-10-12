@@ -3,7 +3,7 @@
 #include <cstring>
 #include <utility>
 
-namespace nm::gpu {
+namespace libnoisemaker::gpu {
 namespace {
 
 std::string to_string(WGPUStringView view) {
@@ -249,4 +249,4 @@ Status read_rgba8(Device& d, WGPUTexture texture, uint32_t width, uint32_t heigh
     return Status::Ok;
 }
 
-}  // namespace nm::gpu
+}  // namespace libnoisemaker::gpu

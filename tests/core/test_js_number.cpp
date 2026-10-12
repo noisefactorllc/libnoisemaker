@@ -19,7 +19,7 @@
 
 namespace {
 void check(double value, const char* expected) {
-    const auto actual = nm::js_to_utf8(nm::js::numberToString(value));
+    const auto actual = libnoisemaker::js_to_utf8(libnoisemaker::js::numberToString(value));
     if (actual != expected) std::fprintf(stderr, "expected %s, got %s\n", expected, actual.c_str());
     NM_CHECK(actual == expected);
 }
@@ -48,7 +48,7 @@ void check_shortest_against_to_chars() {
     int compared = 0;
     auto compare = [&compared](double magnitude) {
         if (!(magnitude > 0) || std::isinf(magnitude)) return;
-        const std::string ours = nm::js::detail::shortest_scientific(magnitude);
+        const std::string ours = libnoisemaker::js::detail::shortest_scientific(magnitude);
         const std::string reference = to_chars_scientific(magnitude);
         if (!same_scientific(ours, reference))
             std::fprintf(stderr, "%a: expected %s, got %s\n", magnitude, reference.c_str(), ours.c_str());

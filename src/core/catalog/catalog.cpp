@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-namespace nm {
+namespace libnoisemaker {
 const CatalogFile* catalog_find(std::string_view path) {
     const auto files = catalog_files();
     const auto it = std::lower_bound(files.begin(), files.end(), path,
@@ -15,6 +15,6 @@ const CatalogFile* catalog_find(std::string_view path) {
                                      });
     return it != files.end() && it->path == path ? &*it : nullptr;
 }
-}  // namespace nm
+}  // namespace libnoisemaker
 
 extern "C" const char* nm_engine_version(void) { return NM_CATALOG_VERSION; }

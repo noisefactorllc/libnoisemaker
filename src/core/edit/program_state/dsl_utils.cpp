@@ -8,7 +8,7 @@
 #include "core/lang/parser.h"
 #include "core/lang/validator.h"
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 Value property(const Value& value, const JsString& key) { return jsv::member(value, key); }
 bool automation(const Value& value) {
@@ -29,7 +29,7 @@ Value error_arg(const JsString& name, const JsString& message) {
 }  // namespace
 
 Value compile_state_dsl(const JsString& dsl, EffectRegistry& registry) {
-    return nm::validate(JsObject(nm::parse(nm::lex(dsl))), registry).raw();
+    return libnoisemaker::validate(JsObject(libnoisemaker::parse(libnoisemaker::lex(dsl))), registry).raw();
 }
 
 Value extract_effects_from_dsl(const JsString& dsl, EffectRegistry& registry) {
@@ -95,4 +95,4 @@ Value extract_effects_from_dsl(const JsString& dsl, EffectRegistry& registry) {
     return Value(std::move(effects));
 }
 
-}  // namespace nm
+}  // namespace libnoisemaker

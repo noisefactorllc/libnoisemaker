@@ -5,7 +5,7 @@
 #include <initializer_list>
 #include <utility>
 
-namespace nm {
+namespace libnoisemaker {
 // Small builders for host snapshots. The stored values use the core JSON model.
 class HostObject : public Object {
 public:
@@ -22,4 +22,4 @@ public:
     HostArray(std::initializer_list<Value> values) : Array(values) {}
     void append(Value value) { push_back(std::move(value)); }
 };
-}  // namespace nm
+}  // namespace libnoisemaker

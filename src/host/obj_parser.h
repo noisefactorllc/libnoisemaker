@@ -15,7 +15,7 @@
 
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 // reference parseOBJ() result: de-indexed triangle-list vertex data, three
 // vertices per triangle, in the reference's (v0, v2, v1) winding order.
@@ -52,4 +52,4 @@ ObjMeshData loadOBJ(const std::string& path);
 // Throws std::invalid_argument for a negative texture dimension.
 PackedMeshData packMeshDataForTextures(const ObjMeshData& mesh, int texWidth, int texHeight);
 
-} // namespace nm
+} // namespace libnoisemaker

@@ -5,7 +5,7 @@
 #include <functional>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 using ProgramConsoleCallback = std::function<void(const JsString& level, const std::vector<Value>& args)>;
 
@@ -14,4 +14,4 @@ void set_program_state_console(ProgramConsoleCallback callback);
 void program_console_warn(const std::vector<Value>& args);
 void program_console_error(const std::vector<Value>& args);
 
-}  // namespace nm
+}  // namespace libnoisemaker

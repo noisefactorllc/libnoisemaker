@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 
-namespace nm::capi {
+namespace libnoisemaker::capi {
 void set_error(std::string message);
 void clear_error();
-}  // namespace nm::capi
+}  // namespace libnoisemaker::capi

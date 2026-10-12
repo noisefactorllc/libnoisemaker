@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace nm::gpu {
+namespace libnoisemaker::gpu {
 
 struct DeviceOptions {
     bool allow_fallback = false;
@@ -60,4 +60,4 @@ bool wait(WGPUInstance instance, WGPUFuture future);
 Status read_rgba8(Device& device, WGPUTexture texture, uint32_t width, uint32_t height,
                   std::vector<uint8_t>& out, std::string& message);
 
-}  // namespace nm::gpu
+}  // namespace libnoisemaker::gpu

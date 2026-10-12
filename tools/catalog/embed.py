@@ -18,7 +18,7 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     header.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w") as cpp:
-        cpp.write('#include "core/catalog/catalog.h"\n\nnamespace nm {\nnamespace {\n')
+        cpp.write('#include "core/catalog/catalog.h"\n\nnamespace libnoisemaker {\nnamespace {\n')
         for index, path in enumerate(paths):
             data = path.read_bytes()
             cpp.write(f"static const unsigned char file_{index}[] = {{\n")
@@ -33,7 +33,7 @@ def main() -> None:
             size = path.stat().st_size
             cpp.write(f'  {{"{rel}", std::string_view(reinterpret_cast<const char*>(file_{index}), {size})}},\n')
         cpp.write("};\n}  // namespace\n")
-        cpp.write("std::span<const CatalogFile> catalog_files() { return catalog; }\n}  // namespace nm\n")
+        cpp.write("std::span<const CatalogFile> catalog_files() { return catalog; }\n}  // namespace libnoisemaker\n")
     header.write_text(
         "#pragma once\n"
         f'#define NM_CATALOG_VERSION "{lock["version"]}"\n'

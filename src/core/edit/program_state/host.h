@@ -5,7 +5,7 @@
 #include <optional>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 enum class MockConvert { Canvas, Passthrough, Absent };
 
@@ -76,4 +76,4 @@ Value convert_parameter_for_uniform(const Value& value, const Value& spec, const
 bool write_uniform_aliases(Value& pass, const JsString& param_name,
                            const Value& uniform_name, const Value& value);
 
-}  // namespace nm
+}  // namespace libnoisemaker

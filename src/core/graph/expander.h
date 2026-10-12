@@ -34,7 +34,7 @@
 // Pure data transformation — no GPU calls, no floating-point pixel math.
 
 
-namespace nm {
+namespace libnoisemaker {
 
 class EffectRegistry;
 
@@ -42,7 +42,7 @@ class EffectRegistry;
 // storageTextures) are copied onto each expanded pass verbatim, as
 // expander.js does. No catalog definition declares them at the pinned
 // reference. The normalized graph drops them (tools/export-graph.mjs
-// normalizePass), and nm::Backend has no compute path.
+// normalizePass), and libnoisemaker::Backend has no compute path.
 
 // One expanded GPU pass in the RAW (pre-normalization) shape
 // shaders/src/runtime/expander.js itself produces (reference/03 §2.1
@@ -145,7 +145,7 @@ struct ExpandResult {
     JsArray mediaSteps;
 };
 
-// Expands `validated` (nm::validate()'s output: {plans, diagnostics,
+// Expands `validated` (libnoisemaker::validate()'s output: {plans, diagnostics,
 // render, vars, searchNamespaces}) into a Render Graph. `registry` supplies
 // effect definitions (getEffect), the std enum tree (for member-typed
 // global DEFAULTS only — reference/03 §1: the expander's own local
@@ -164,4 +164,4 @@ ExpandResult expand(const JsObject& validated, EffectRegistry& registry,
 // `JSON.stringify`'s undefined-drops-the-key semantics. Used by both the expanded and graph dumps.
 Value toRawPassJson(const ExpandedPass& pass);
 
-} // namespace nm
+} // namespace libnoisemaker

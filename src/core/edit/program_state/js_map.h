@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace nm::program_state {
+namespace libnoisemaker::program_state {
 
 // An insertion ordered JavaScript Map. Value keys use SameValueZero; object keys
 // cannot match by identity because Value owns rather than references objects.
@@ -87,4 +87,4 @@ private:
     std::vector<Entry> entries_;
 };
 
-}  // namespace nm::program_state
+}  // namespace libnoisemaker::program_state

@@ -9,7 +9,7 @@
 // code point against /^\p{ID_Start}$/u and /^\p{ID_Continue}$/u, and
 // checked against `new Function('var <c>x;')` for the whole BMP.
 
-namespace nm::js {
+namespace libnoisemaker::js {
 
 namespace {
 
@@ -307,4 +307,4 @@ bool isWhiteSpace(char32_t cp) {
 
 bool isLineTerminator(char32_t cp) { return cp == 0x0A || cp == 0x0D || cp == 0x2028 || cp == 0x2029; }
 
-} // namespace nm::js
+} // namespace libnoisemaker::js

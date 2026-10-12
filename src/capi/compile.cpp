@@ -18,7 +18,7 @@
 
 struct nm_compiled {
     std::string graph_json;
-    nm::JsString source;
+    libnoisemaker::JsString source;
 };
 
 struct nm_diagnostics {
@@ -26,89 +26,89 @@ struct nm_diagnostics {
 };
 
 namespace {
-nm::EffectRegistry& registry() {
-    static nm::EffectRegistry instance;
+libnoisemaker::EffectRegistry& registry() {
+    static libnoisemaker::EffectRegistry instance;
     static const bool loaded = (instance.loadEmbedded(), true);
     (void)loaded;
     return instance;
 }
 
-nm::Value syntax_diagnostic(const nm::DslSyntaxError& error) {
+libnoisemaker::Value syntax_diagnostic(const libnoisemaker::DslSyntaxError& error) {
     if (error.diagnostic().is_object()) return error.diagnostic();
-    nm::Object diagnostic;
-    diagnostic.set(u"code", nm::Value(u"P001"));
-    diagnostic.set(u"stage", nm::Value(u"parser"));
-    diagnostic.set(u"severity", nm::Value(u"error"));
-    diagnostic.set(u"message", nm::Value(error.message()));
+    libnoisemaker::Object diagnostic;
+    diagnostic.set(u"code", libnoisemaker::Value(u"P001"));
+    diagnostic.set(u"stage", libnoisemaker::Value(u"parser"));
+    diagnostic.set(u"severity", libnoisemaker::Value(u"error"));
+    diagnostic.set(u"message", libnoisemaker::Value(error.message()));
     if (error.line() > 0 && error.col() > 0) {
-        nm::Object location;
-        location.set(u"line", nm::Value(error.line()));
-        location.set(u"column", nm::Value(error.col()));
-        diagnostic.set(u"location", nm::Value(location));
+        libnoisemaker::Object location;
+        location.set(u"line", libnoisemaker::Value(error.line()));
+        location.set(u"column", libnoisemaker::Value(error.col()));
+        diagnostic.set(u"location", libnoisemaker::Value(location));
     }
-    return nm::Value(diagnostic);
+    return libnoisemaker::Value(diagnostic);
 }
 
-void append(nm_diagnostics& out, const nm::Value& diagnostic,
-            const nm::JsString& stage, const nm::JsString& code) {
-    nm::Object entry = diagnostic.is_object() ? diagnostic.as_object() : nm::Object{};
-    if (!entry.has(u"code")) entry.set(u"code", nm::Value(code));
-    if (!entry.has(u"stage")) entry.set(u"stage", nm::Value(stage));
-    if (!entry.has(u"severity")) entry.set(u"severity", nm::Value(u"error"));
+void append(nm_diagnostics& out, const libnoisemaker::Value& diagnostic,
+            const libnoisemaker::JsString& stage, const libnoisemaker::JsString& code) {
+    libnoisemaker::Object entry = diagnostic.is_object() ? diagnostic.as_object() : libnoisemaker::Object{};
+    if (!entry.has(u"code")) entry.set(u"code", libnoisemaker::Value(code));
+    if (!entry.has(u"stage")) entry.set(u"stage", libnoisemaker::Value(stage));
+    if (!entry.has(u"severity")) entry.set(u"severity", libnoisemaker::Value(u"error"));
     if (!entry.has(u"message")) entry.set(u"message", diagnostic);
-    if (!entry.has(u"location")) entry.set(u"location", nm::Value::null());
-    if (!entry.has(u"span")) entry.set(u"span", nm::Value::null());
-    out.entries.push_back(nm::json::stringify(nm::Value(entry)));
+    if (!entry.has(u"location")) entry.set(u"location", libnoisemaker::Value::null());
+    if (!entry.has(u"span")) entry.set(u"span", libnoisemaker::Value::null());
+    out.entries.push_back(libnoisemaker::json::stringify(libnoisemaker::Value(entry)));
 }
 
 void set_error_noexcept(const char* message) noexcept {
-    try { nm::capi::set_error(message); }
+    try { libnoisemaker::capi::set_error(message); }
     catch (...) {}
 }
 }  // namespace
 
 static nm_status compile_impl(const char* source, size_t length,
                               nm_compiled** out, nm_diagnostics** diagnostics) {
-    nm::capi::clear_error();
+    libnoisemaker::capi::clear_error();
     if (out) *out = nullptr;
     if (diagnostics) *diagnostics = nullptr;
     if (!source || !out || !diagnostics) {
-        nm::capi::set_error("nm_compile: source, out and diagnostics are required");
+        libnoisemaker::capi::set_error("nm_compile: source, out and diagnostics are required");
         return NM_ERR_INVALID_ARGUMENT;
     }
     try {
-        const nm::JsString text = nm::utf8_to_js(std::string_view(source, length));
-        const nm::Object graph = nm::compileGraphJson(text, registry());
+        const libnoisemaker::JsString text = libnoisemaker::utf8_to_js(std::string_view(source, length));
+        const libnoisemaker::Object graph = libnoisemaker::compileGraphJson(text, registry());
         auto compiled = std::make_unique<nm_compiled>();
-        compiled->graph_json = nm::json::stringify(nm::Value(graph));
+        compiled->graph_json = libnoisemaker::json::stringify(libnoisemaker::Value(graph));
         compiled->source = text;
         *out = compiled.release();
         return NM_OK;
-    } catch (const nm::CompilationError& error) {
+    } catch (const libnoisemaker::CompilationError& error) {
         auto output = std::make_unique<nm_diagnostics>();
         for (const auto& item : error.diagnostics())
             append(*output, item.raw(), u"compiler", error.code());
         for (const auto& item : error.errors())
             append(*output, item.raw(), u"expander", error.code());
         if (output->entries.empty()) {
-            nm::Object diagnostic;
-            diagnostic.set(u"message", nm::Value(nm::utf8_to_js(error.what())));
-            append(*output, nm::Value(diagnostic), u"compiler", error.code());
+            libnoisemaker::Object diagnostic;
+            diagnostic.set(u"message", libnoisemaker::Value(libnoisemaker::utf8_to_js(error.what())));
+            append(*output, libnoisemaker::Value(diagnostic), u"compiler", error.code());
         }
-        nm::capi::set_error(error.what());
+        libnoisemaker::capi::set_error(error.what());
         *diagnostics = output.release();
         return NM_ERR_COMPILE;
-    } catch (const nm::DslSyntaxError& error) {
+    } catch (const libnoisemaker::DslSyntaxError& error) {
         auto output = std::make_unique<nm_diagnostics>();
         append(*output, syntax_diagnostic(error), u"parser", u"P001");
-        nm::capi::set_error(error.what());
+        libnoisemaker::capi::set_error(error.what());
         *diagnostics = output.release();
         return NM_ERR_COMPILE;
     } catch (const std::exception& error) {
-        nm::capi::set_error(error.what());
+        libnoisemaker::capi::set_error(error.what());
         return NM_ERR_INTERNAL;
     } catch (...) {
-        nm::capi::set_error("nm_compile: unknown exception");
+        libnoisemaker::capi::set_error("nm_compile: unknown exception");
         return NM_ERR_INTERNAL;
     }
 }
@@ -139,32 +139,32 @@ extern "C" void nm_diagnostics_destroy(nm_diagnostics* diagnostics) { delete dia
 
 static nm_status unparse_impl(const nm_compiled* compiled,
                               const char* overrides_json, char** out_source) {
-    nm::capi::clear_error();
+    libnoisemaker::capi::clear_error();
     if (out_source) *out_source = nullptr;
     if (!compiled || !out_source) {
-        nm::capi::set_error("nm_unparse: compiled and out_source are required");
+        libnoisemaker::capi::set_error("nm_unparse: compiled and out_source are required");
         return NM_ERR_INVALID_ARGUMENT;
     }
     try {
-        const nm::Value overrides = overrides_json
-            ? nm::json::parse(overrides_json) : nm::Value(nm::Object{});
-        const nm::Value validated = nm::validate(nm::parse(nm::lex(compiled->source)), registry());
-        const nm::JsString source = nm::unparse(validated, overrides,
-            nm::UnparseOptions::from_value(nm::Value(), &registry()), registry());
-        const std::string utf8 = nm::js_to_utf8(source);
+        const libnoisemaker::Value overrides = overrides_json
+            ? libnoisemaker::json::parse(overrides_json) : libnoisemaker::Value(libnoisemaker::Object{});
+        const libnoisemaker::Value validated = libnoisemaker::validate(libnoisemaker::parse(libnoisemaker::lex(compiled->source)), registry());
+        const libnoisemaker::JsString source = libnoisemaker::unparse(validated, overrides,
+            libnoisemaker::UnparseOptions::from_value(libnoisemaker::Value(), &registry()), registry());
+        const std::string utf8 = libnoisemaker::js_to_utf8(source);
         char* result = static_cast<char*>(std::malloc(utf8.size() + 1));
         if (!result) {
-            nm::capi::set_error("nm_unparse: allocation failed");
+            libnoisemaker::capi::set_error("nm_unparse: allocation failed");
             return NM_ERR_OUT_OF_MEMORY;
         }
         std::memcpy(result, utf8.c_str(), utf8.size() + 1);
         *out_source = result;
         return NM_OK;
     } catch (const std::exception& error) {
-        nm::capi::set_error(error.what());
+        libnoisemaker::capi::set_error(error.what());
         return NM_ERR_INTERNAL;
     } catch (...) {
-        nm::capi::set_error("nm_unparse: unknown exception");
+        libnoisemaker::capi::set_error("nm_unparse: unknown exception");
         return NM_ERR_INTERNAL;
     }
 }

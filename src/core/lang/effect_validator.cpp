@@ -5,7 +5,7 @@
 // effect_validator.h for the documented deviations).
 //
 // Error strings are byte-identical to the reference's template literals.
-// Numbers inside messages format through nm::js::numberToString (ECMAScript
+// Numbers inside messages format through libnoisemaker::js::numberToString (ECMAScript
 // Number::toString), matching the reference's `${number}` interpolation.
 // Object keys retain declaration order, as the reference's Object.entries()
 // does.
@@ -25,7 +25,7 @@
 #include <set>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -307,7 +307,7 @@ std::string jsStringOf(const JsValue& value) {
 
 // Injectable std-enum tree, stored BY VALUE (setEffectValidatorStdEnums
 // copies its argument, so no caller-object lifetime is retained). Defaults
-// to the live nm::Enums::std() table until overridden (the reference
+// to the live libnoisemaker::Enums::std() table until overridden (the reference
 // imports std_enums.js directly).
 JsObject g_stdEnumsOverride;
 
@@ -1754,4 +1754,4 @@ std::vector<std::string> validateEffectDefinition(const Value& def) {
     return validateEffectDefinition(JsValue(def));
 }
 
-} // namespace nm
+} // namespace libnoisemaker

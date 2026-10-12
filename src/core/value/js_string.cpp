@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 void append_utf16(JsString& out, uint32_t cp) {
     if (cp <= 0xffff) {
@@ -84,4 +84,4 @@ std::string js_to_utf8(const JsString& text) {
     }
     return out;
 }
-}  // namespace nm
+}  // namespace libnoisemaker

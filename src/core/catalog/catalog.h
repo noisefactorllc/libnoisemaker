@@ -3,7 +3,7 @@
 #include <span>
 #include <string_view>
 
-namespace nm {
+namespace libnoisemaker {
 struct CatalogFile {
     std::string_view path;
     std::string_view bytes;
@@ -11,4 +11,4 @@ struct CatalogFile {
 
 const CatalogFile* catalog_find(std::string_view path);
 std::span<const CatalogFile> catalog_files();
-}  // namespace nm
+}  // namespace libnoisemaker

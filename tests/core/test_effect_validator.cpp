@@ -1,4 +1,4 @@
-// Unit tests for nm::validateEffectDefinition (qt/noisemaker/compiler/
+// Unit tests for libnoisemaker::validateEffectDefinition (qt/noisemaker/compiler/
 // effect_validator.{h,cpp}): the port of shaders/src/runtime/effect-validator.js
 // validateEffectDefinition() (upstream commits ba87ffae + 9d3474df).
 // Plain assert-style checks, no test framework dependency.
@@ -26,16 +26,16 @@
 
 namespace {
 
-using nm::validateEffectDefinition;
+using libnoisemaker::validateEffectDefinition;
 
 int g_failures = 0;
 
-std::vector<std::string> validate(const nm::JsObject& def) {
+std::vector<std::string> validate(const libnoisemaker::JsObject& def) {
     return validateEffectDefinition(def);
 }
 
-nm::JsObject parseDefinition(const char* json, const char* source) {
-    try { return nm::JsValue(nm::json::parse(json)).toObject(); } catch (const nm::json::ParseError&) {
+libnoisemaker::JsObject parseDefinition(const char* json, const char* source) {
+    try { return libnoisemaker::JsValue(libnoisemaker::json::parse(json)).toObject(); } catch (const libnoisemaker::json::ParseError&) {
         std::printf("FAIL: %s is not valid JSON\n", source);
         ++g_failures;
     }
@@ -44,7 +44,7 @@ nm::JsObject parseDefinition(const char* json, const char* source) {
 
 // A complete, valid plain-object definition exercising the schema surface
 // (the reference test's validDefinition()).
-nm::JsObject validDefinition() {
+libnoisemaker::JsObject validDefinition() {
     return parseDefinition(R"json({
     "name": "Validator Probe",
     "namespace": "synth",
@@ -128,7 +128,7 @@ nm::JsObject validDefinition() {
                               "validDefinition");
 }
 
-void checkValid(const nm::JsObject& def, const char* source) {
+void checkValid(const libnoisemaker::JsObject& def, const char* source) {
     const std::vector<std::string> errors = validate(def);
     if (!errors.empty()) {
         std::printf("FAIL: %s expected [], got:", source);
@@ -140,7 +140,7 @@ void checkValid(const nm::JsObject& def, const char* source) {
     }
 }
 
-void checkAnyError(const nm::JsObject& def, const char* source) {
+void checkAnyError(const libnoisemaker::JsObject& def, const char* source) {
     const std::vector<std::string> errors = validate(def);
     if (errors.empty()) {
         std::printf("FAIL: %s expected >=1 error, got []\n", source);
@@ -150,7 +150,7 @@ void checkAnyError(const nm::JsObject& def, const char* source) {
     }
 }
 
-void checkErrors(const nm::JsObject& def, size_t expected, const char* source) {
+void checkErrors(const libnoisemaker::JsObject& def, size_t expected, const char* source) {
     const std::vector<std::string> errors = validate(def);
     if (errors.size() != expected) {
         std::printf("FAIL: %s expected %zu errors, got %zu:", source, expected, errors.size());
@@ -162,7 +162,7 @@ void checkErrors(const nm::JsObject& def, size_t expected, const char* source) {
     }
 }
 
-void checkMessage(const nm::JsObject& def, const char* substring, const char* source) {
+void checkMessage(const libnoisemaker::JsObject& def, const char* substring, const char* source) {
     const std::vector<std::string> errors = validate(def);
     for (const std::string& e : errors) {
         if (e.find(substring) != std::string::npos) {
@@ -176,7 +176,7 @@ void checkMessage(const nm::JsObject& def, const char* substring, const char* so
     ++g_failures;
 }
 
-void checkMessageCount(const nm::JsObject& def, const char* substring, size_t expected,
+void checkMessageCount(const libnoisemaker::JsObject& def, const char* substring, size_t expected,
                        const char* source) {
     size_t count = 0;
     for (const std::string& e : validate(def)) {
@@ -194,38 +194,38 @@ void checkMessageCount(const nm::JsObject& def, const char* substring, size_t ex
 // Mutators that must produce at least one error (the reference test's
 // malformed-container, type-constraint, and unsupported-reference cases).
 
-nm::JsObject getObject(nm::JsObject& host, const nm::JsText& key) {
+libnoisemaker::JsObject getObject(libnoisemaker::JsObject& host, const libnoisemaker::JsText& key) {
     return host.value(key).toObject();
 }
 
 // Merge a key into a nested object, replacing it wholesale.
 template <typename T>
-void nest(nm::JsObject& def, const nm::JsText& container, const nm::JsText& key,
+void nest(libnoisemaker::JsObject& def, const libnoisemaker::JsText& container, const libnoisemaker::JsText& key,
           const T& value) {
-    nm::JsObject host = def.value(container).toObject();
+    libnoisemaker::JsObject host = def.value(container).toObject();
     host.insert(key, value);
     def.insert(container, host);
 }
 
-void nestInGlobals(nm::JsObject& def, const nm::JsText& global, const nm::JsValue& spec) {
-    nm::JsObject globals = def.value("globals").toObject();
+void nestInGlobals(libnoisemaker::JsObject& def, const libnoisemaker::JsText& global, const libnoisemaker::JsValue& spec) {
+    libnoisemaker::JsObject globals = def.value("globals").toObject();
     globals.insert(global, spec);
     def.insert("globals", globals);
 }
 
-void mutateFirstPass(nm::JsObject& def, const nm::JsText& key, const nm::JsValue& value) {
-    nm::JsArray passes = def.value("passes").toArray();
-    nm::JsObject pass = passes.at(0).toObject();
+void mutateFirstPass(libnoisemaker::JsObject& def, const libnoisemaker::JsText& key, const libnoisemaker::JsValue& value) {
+    libnoisemaker::JsArray passes = def.value("passes").toArray();
+    libnoisemaker::JsObject pass = passes.at(0).toObject();
     pass.insert(key, value);
     passes.replace(0, pass);
     def.insert("passes", passes);
 }
 
-void mutateFirstPassNested(nm::JsObject& def, const nm::JsText& container, const nm::JsText& key,
-                           const nm::JsValue& value) {
-    nm::JsArray passes = def.value("passes").toArray();
-    nm::JsObject pass = passes.at(0).toObject();
-    nm::JsObject host = pass.value(container).toObject();
+void mutateFirstPassNested(libnoisemaker::JsObject& def, const libnoisemaker::JsText& container, const libnoisemaker::JsText& key,
+                           const libnoisemaker::JsValue& value) {
+    libnoisemaker::JsArray passes = def.value("passes").toArray();
+    libnoisemaker::JsObject pass = passes.at(0).toObject();
+    libnoisemaker::JsObject host = pass.value(container).toObject();
     host.insert(key, value);
     pass.insert(container, host);
     passes.replace(0, pass);
@@ -236,18 +236,18 @@ void mutateFirstPassNested(nm::JsObject& def, const nm::JsText& container, const
 
 int main() {
     // --- null and non-object containers (exact reference messages) ---
-    // null/undefined: the port receives them as a nm::JsValue, so exercise via
-    // validateEffectDefinition(nm::JsValue) directly.
+    // null/undefined: the port receives them as a libnoisemaker::JsValue, so exercise via
+    // validateEffectDefinition(libnoisemaker::JsValue) directly.
     {
         const std::vector<std::string> errors =
-            nm::validateEffectDefinition(nm::JsValue(nm::JsValue::Null));
+            libnoisemaker::validateEffectDefinition(libnoisemaker::JsValue(libnoisemaker::JsValue::Null));
         const bool ok = errors.size() == 1 &&
                         errors.at(0) == "Effect definition is null or undefined";
         std::printf("%s: null -> exact message\n", ok ? "PASS" : "FAIL");
         if (!ok) ++g_failures;
     }
     {
-        const std::vector<std::string> errors = nm::validateEffectDefinition(nm::JsArray());
+        const std::vector<std::string> errors = libnoisemaker::validateEffectDefinition(libnoisemaker::JsArray());
         const bool ok = errors.size() == 1 &&
                         errors.at(0) ==
                             "Effect definition must be a plain object or Effect instance, "
@@ -255,8 +255,8 @@ int main() {
         std::printf("%s: array -> exact message\n", ok ? "PASS" : "FAIL");
         if (!ok) ++g_failures;
     }
-    for (const nm::JsValue& bad : {nm::JsValue("string"), nm::JsValue(42), nm::JsValue(true)}) {
-        const std::vector<std::string> errors = nm::validateEffectDefinition(bad);
+    for (const libnoisemaker::JsValue& bad : {libnoisemaker::JsValue("string"), libnoisemaker::JsValue(42), libnoisemaker::JsValue(true)}) {
+        const std::vector<std::string> errors = libnoisemaker::validateEffectDefinition(bad);
         const bool ok = !errors.empty();
         std::printf("%s: primitive diagnosed\n", ok ? "PASS" : "FAIL");
         if (!ok) ++g_failures;
@@ -267,26 +267,26 @@ int main() {
 
     // --- unknown top-level declarative fields are diagnosed ---
     {
-        nm::JsObject def = validDefinition();
+        libnoisemaker::JsObject def = validDefinition();
         def.insert("globalz", def.value("globals"));
         checkMessageCount(def, "globalz", 1, "unknown top-level field diagnosed");
     }
 
     // --- unknown nested fields are diagnosed ---
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject globals = getObject(def, "globals");
-        nm::JsObject amount = getObject(globals, "amount");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject globals = getObject(def, "globals");
+        libnoisemaker::JsObject amount = getObject(globals, "amount");
         amount.insert("unkown", 1);
         globals.insert("amount", amount);
         def.insert("globals", globals);
         checkMessageCount(def, "unkown", 1, "unknown global-spec field diagnosed");
     }
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject globals = getObject(def, "globals");
-        nm::JsObject mode = getObject(globals, "mode");
-        nm::JsObject ui = getObject(mode, "ui");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject globals = getObject(def, "globals");
+        libnoisemaker::JsObject mode = getObject(globals, "mode");
+        libnoisemaker::JsObject ui = getObject(mode, "ui");
         ui.insert("colour", "red");
         mode.insert("ui", ui);
         globals.insert("mode", mode);
@@ -294,17 +294,17 @@ int main() {
         checkMessageCount(def, "colour", 1, "unknown ui field diagnosed");
     }
     {
-        nm::JsObject def = validDefinition();
+        libnoisemaker::JsObject def = validDefinition();
         mutateFirstPass(def, "progam", "typo");
         checkMessageCount(def, "progam", 1, "unknown pass field diagnosed");
     }
     // --- ui.resetOnChange is accepted as a boolean and diagnosed otherwise
     // (reference 3c1e47e5, upstream test_effect_definition_validation.js) ---
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject globals = getObject(def, "globals");
-        nm::JsObject mode = getObject(globals, "mode");
-        nm::JsObject ui = getObject(mode, "ui");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject globals = getObject(def, "globals");
+        libnoisemaker::JsObject mode = getObject(globals, "mode");
+        libnoisemaker::JsObject ui = getObject(mode, "ui");
         ui.insert("resetOnChange", true);
         mode.insert("ui", ui);
         globals.insert("mode", mode);
@@ -312,10 +312,10 @@ int main() {
         checkValid(def, "ui.resetOnChange true accepted");
     }
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject globals = getObject(def, "globals");
-        nm::JsObject mode = getObject(globals, "mode");
-        nm::JsObject ui = getObject(mode, "ui");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject globals = getObject(def, "globals");
+        libnoisemaker::JsObject mode = getObject(globals, "mode");
+        libnoisemaker::JsObject ui = getObject(mode, "ui");
         ui.insert("resetOnChange", "yes");
         mode.insert("ui", ui);
         globals.insert("mode", mode);
@@ -323,9 +323,9 @@ int main() {
         checkMessageCount(def, "resetOnChange", 1, "non-boolean ui.resetOnChange diagnosed");
     }
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject textures = getObject(def, "textures");
-        nm::JsObject scratch = getObject(textures, "scratch");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject textures = getObject(def, "textures");
+        libnoisemaker::JsObject scratch = getObject(textures, "scratch");
         scratch.insert("widht", 8);
         textures.insert("scratch", scratch);
         def.insert("textures", textures);
@@ -336,155 +336,155 @@ int main() {
     {
         struct Case {
             const char* name;
-            void (*mutate)(nm::JsObject&);
+            void (*mutate)(libnoisemaker::JsObject&);
         };
         const Case cases[] = {
-            {"globals is an array", [](nm::JsObject& d) { d.insert("globals", nm::JsArray{"nope"}); }},
-            {"globals is a string", [](nm::JsObject& d) { d.insert("globals", "nope"); }},
-            {"globals entry null", [](nm::JsObject& d) {
-                 nm::JsObject g; g.insert("g", nm::JsValue());
+            {"globals is an array", [](libnoisemaker::JsObject& d) { d.insert("globals", libnoisemaker::JsArray{"nope"}); }},
+            {"globals is a string", [](libnoisemaker::JsObject& d) { d.insert("globals", "nope"); }},
+            {"globals entry null", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject g; g.insert("g", libnoisemaker::JsValue());
                  d.insert("globals", g);
              }},
-            {"globals entry array", [](nm::JsObject& d) {
-                 nm::JsObject g; g.insert("g", nm::JsArray());
+            {"globals entry array", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject g; g.insert("g", libnoisemaker::JsArray());
                  d.insert("globals", g);
              }},
-            {"ui is a string", [](nm::JsObject& d) {
-                 nestInGlobals(d, "g", nm::JsObject{{"type", "float"}, {"default", 0.5},
+            {"ui is a string", [](libnoisemaker::JsObject& d) {
+                 nestInGlobals(d, "g", libnoisemaker::JsObject{{"type", "float"}, {"default", 0.5},
                                                    {"ui", "slider"}});
              }},
-            {"passes is an object", [](nm::JsObject& d) {
-                 nm::JsObject p; p.insert("program", "x");
+            {"passes is an object", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject p; p.insert("program", "x");
                  d.insert("passes", p);
              }},
-            {"passes contains null", [](nm::JsObject& d) {
-                 nm::JsArray a; a.append(nm::JsValue());
+            {"passes contains null", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray a; a.append(libnoisemaker::JsValue());
                  d.insert("passes", a);
              }},
-            {"inputs is a string", [](nm::JsObject& d) {
-                 nm::JsArray a; nm::JsObject p; p.insert("program", "p"); p.insert("inputs", "x");
+            {"inputs is a string", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray a; libnoisemaker::JsObject p; p.insert("program", "p"); p.insert("inputs", "x");
                  a.append(p); d.insert("passes", a);
              }},
-            {"outputs is a number", [](nm::JsObject& d) {
-                 nm::JsArray a; nm::JsObject p; p.insert("program", "p"); p.insert("outputs", 3);
+            {"outputs is a number", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray a; libnoisemaker::JsObject p; p.insert("program", "p"); p.insert("outputs", 3);
                  a.append(p); d.insert("passes", a);
              }},
-            {"uniforms is a string", [](nm::JsObject& d) {
-                 nm::JsArray a; nm::JsObject p; p.insert("program", "p"); p.insert("uniforms", "x");
+            {"uniforms is a string", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray a; libnoisemaker::JsObject p; p.insert("program", "p"); p.insert("uniforms", "x");
                  a.append(p); d.insert("passes", a);
              }},
-            {"conditions is a string", [](nm::JsObject& d) {
-                 nm::JsArray a; nm::JsObject p; p.insert("program", "p");
+            {"conditions is a string", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray a; libnoisemaker::JsObject p; p.insert("program", "p");
                  p.insert("conditions", "always");
                  a.append(p); d.insert("passes", a);
              }},
-            {"runIf entry null", [](nm::JsObject& d) {
-                 nm::JsArray a; nm::JsObject p; p.insert("program", "p");
-                 nm::JsObject c; nm::JsArray r; r.append(nm::JsValue());
+            {"runIf entry null", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray a; libnoisemaker::JsObject p; p.insert("program", "p");
+                 libnoisemaker::JsObject c; libnoisemaker::JsArray r; r.append(libnoisemaker::JsValue());
                  c.insert("runIf", r); p.insert("conditions", c);
                  a.append(p); d.insert("passes", a);
              }},
-            {"condition uniform is a number", [](nm::JsObject& d) {
-                 nm::JsArray a; nm::JsObject p; p.insert("program", "p");
-                 nm::JsObject c; nm::JsArray r; nm::JsObject cond; cond.insert("uniform", 7);
+            {"condition uniform is a number", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray a; libnoisemaker::JsObject p; p.insert("program", "p");
+                 libnoisemaker::JsObject c; libnoisemaker::JsArray r; libnoisemaker::JsObject cond; cond.insert("uniform", 7);
                  r.append(cond); c.insert("runIf", r); p.insert("conditions", c);
                  a.append(p); d.insert("passes", a);
              }},
-            {"condition missing equals", [](nm::JsObject& d) {
-                 nm::JsArray a; nm::JsObject p; p.insert("program", "p");
-                 nm::JsObject c; nm::JsArray r; nm::JsObject cond; cond.insert("uniform", "mode");
+            {"condition missing equals", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray a; libnoisemaker::JsObject p; p.insert("program", "p");
+                 libnoisemaker::JsObject c; libnoisemaker::JsArray r; libnoisemaker::JsObject cond; cond.insert("uniform", "mode");
                  r.append(cond); c.insert("runIf", r); p.insert("conditions", c);
                  a.append(p); d.insert("passes", a);
              }},
-            {"textures is an array", [](nm::JsObject& d) {
-                 nm::JsArray t; t.append("x"); d.insert("textures", t);
+            {"textures is an array", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray t; t.append("x"); d.insert("textures", t);
              }},
-            {"texture spec is a string", [](nm::JsObject& d) {
-                 nm::JsObject t; t.insert("t", "big"); d.insert("textures", t);
+            {"texture spec is a string", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject t; t.insert("t", "big"); d.insert("textures", t);
              }},
-            {"texture width is a word", [](nm::JsObject& d) {
-                 nm::JsObject t; nm::JsObject s; s.insert("width", "banana");
+            {"texture width is a word", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject t; libnoisemaker::JsObject s; s.insert("width", "banana");
                  t.insert("t", s); d.insert("textures", t);
              }},
-            {"texture width param is a number", [](nm::JsObject& d) {
-                 nm::JsObject t; nm::JsObject s; nm::JsObject w; w.insert("param", 42);
+            {"texture width param is a number", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject t; libnoisemaker::JsObject s; libnoisemaker::JsObject w; w.insert("param", 42);
                  s.insert("width", w); t.insert("t", s); d.insert("textures", t);
              }},
-            {"texture width has an unknown field", [](nm::JsObject& d) {
-                 nm::JsObject t; nm::JsObject s; nm::JsObject w; w.insert("wrong", 1);
+            {"texture width has an unknown field", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject t; libnoisemaker::JsObject s; libnoisemaker::JsObject w; w.insert("wrong", 1);
                  s.insert("width", w); t.insert("t", s); d.insert("textures", t);
              }},
-            {"texture width is negative", [](nm::JsObject& d) {
-                 nm::JsObject t; nm::JsObject s; s.insert("width", -4);
+            {"texture width is negative", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject t; libnoisemaker::JsObject s; s.insert("width", -4);
                  t.insert("t", s); d.insert("textures", t);
              }},
-            {"texture format is unknown", [](nm::JsObject& d) {
-                 nm::JsObject t; nm::JsObject s; s.insert("format", "rgba999");
+            {"texture format is unknown", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject t; libnoisemaker::JsObject s; s.insert("format", "rgba999");
                  t.insert("t", s); d.insert("textures", t);
              }},
-            {"uniformLayout slot is a string", [](nm::JsObject& d) {
-                 nm::JsObject l; nm::JsObject u; u.insert("slot", "x"); u.insert("components", "x");
+            {"uniformLayout slot is a string", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject l; libnoisemaker::JsObject u; u.insert("slot", "x"); u.insert("components", "x");
                  l.insert("u", u); d.insert("uniformLayout", l);
              }},
-            {"uniformLayout components are out of the grammar", [](nm::JsObject& d) {
-                 nm::JsObject l; nm::JsObject u; u.insert("slot", 0);
+            {"uniformLayout components are out of the grammar", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject l; libnoisemaker::JsObject u; u.insert("slot", 0);
                  u.insert("components", "xyzwq");
                  l.insert("u", u); d.insert("uniformLayout", l);
              }},
-            {"uniformLayout components are out of order", [](nm::JsObject& d) {
-                 nm::JsObject l; nm::JsObject u; u.insert("slot", 0); u.insert("components", "zy");
+            {"uniformLayout components are out of order", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject l; libnoisemaker::JsObject u; u.insert("slot", 0); u.insert("components", "zy");
                  l.insert("u", u); d.insert("uniformLayout", l);
              }},
-            {"uniformLayout slot is fractional", [](nm::JsObject& d) {
-                 nm::JsObject l; nm::JsObject u; u.insert("slot", 0.5); u.insert("components", "x");
+            {"uniformLayout slot is fractional", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject l; libnoisemaker::JsObject u; u.insert("slot", 0.5); u.insert("components", "x");
                  l.insert("u", u); d.insert("uniformLayout", l);
              }},
-            {"uniformLayout conflicts at one slot", [](nm::JsObject& d) {
-                 nm::JsObject l;
-                 nm::JsObject u; u.insert("slot", 0); u.insert("components", "x");
-                 nm::JsObject v; v.insert("slot", 0); v.insert("components", "y");
-                 nm::JsObject w; w.insert("slot", 0); w.insert("components", "x");
+            {"uniformLayout conflicts at one slot", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject l;
+                 libnoisemaker::JsObject u; u.insert("slot", 0); u.insert("components", "x");
+                 libnoisemaker::JsObject v; v.insert("slot", 0); v.insert("components", "y");
+                 libnoisemaker::JsObject w; w.insert("slot", 0); w.insert("components", "x");
                  l.insert("u", u); l.insert("v", v); l.insert("w", w);
                  d.insert("uniformLayout", l);
              }},
-            {"uniformLayouts value is a string", [](nm::JsObject& d) {
-                 nm::JsObject ls; ls.insert("p", "layout"); d.insert("uniformLayouts", ls);
+            {"uniformLayouts value is a string", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject ls; ls.insert("p", "layout"); d.insert("uniformLayouts", ls);
              }},
-            {"paramAliases is a string", [](nm::JsObject& d) { d.insert("paramAliases", "aliases"); }},
-            {"paramAliases target is unknown", [](nm::JsObject& d) {
-                 nm::JsObject a; a.insert("amt", "nosuchglobal"); d.insert("paramAliases", a);
+            {"paramAliases is a string", [](libnoisemaker::JsObject& d) { d.insert("paramAliases", "aliases"); }},
+            {"paramAliases target is unknown", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject a; a.insert("amt", "nosuchglobal"); d.insert("paramAliases", a);
              }},
-            {"tags is a string", [](nm::JsObject& d) { d.insert("tags", "noise"); }},
-            {"tags contains an unknown tag", [](nm::JsObject& d) {
-                 nm::JsArray t; t.append("not-a-tag"); d.insert("tags", t);
+            {"tags is a string", [](libnoisemaker::JsObject& d) { d.insert("tags", "noise"); }},
+            {"tags contains an unknown tag", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray t; t.append("not-a-tag"); d.insert("tags", t);
              }},
-            {"tags contains a number", [](nm::JsObject& d) {
-                 nm::JsArray t; t.append(42); d.insert("tags", t);
+            {"tags contains a number", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray t; t.append(42); d.insert("tags", t);
              }},
-            {"openCategories contains a number", [](nm::JsObject& d) {
-                 nm::JsArray t; t.append(7); d.insert("openCategories", t);
+            {"openCategories contains a number", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsArray t; t.append(7); d.insert("openCategories", t);
              }},
-            {"onInit present (JSON cannot encode functions)", [](nm::JsObject& d) {
+            {"onInit present (JSON cannot encode functions)", [](libnoisemaker::JsObject& d) {
                  d.insert("onInit", "nope");
              }},
-            {"onUpdate present (JSON cannot encode functions)", [](nm::JsObject& d) {
+            {"onUpdate present (JSON cannot encode functions)", [](libnoisemaker::JsObject& d) {
                  d.insert("onUpdate", 42);
              }},
-            {"onDestroy present (JSON cannot encode functions)", [](nm::JsObject& d) {
-                 d.insert("onDestroy", nm::JsObject());
+            {"onDestroy present (JSON cannot encode functions)", [](libnoisemaker::JsObject& d) {
+                 d.insert("onDestroy", libnoisemaker::JsObject());
              }},
-            {"asyncInit present (JSON cannot encode functions)", [](nm::JsObject& d) {
+            {"asyncInit present (JSON cannot encode functions)", [](libnoisemaker::JsObject& d) {
                  d.insert("asyncInit", true);
              }},
-            {"shaders is a string", [](nm::JsObject& d) { d.insert("shaders", "inline"); }},
-            {"shaders value is a string", [](nm::JsObject& d) {
-                 nm::JsObject s; s.insert("main", "source"); d.insert("shaders", s);
+            {"shaders is a string", [](libnoisemaker::JsObject& d) { d.insert("shaders", "inline"); }},
+            {"shaders value is a string", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject s; s.insert("main", "source"); d.insert("shaders", s);
              }},
-            {"deprecatedBy is a number", [](nm::JsObject& d) { d.insert("deprecatedBy", 5); }},
-            {"externalTexture is a number", [](nm::JsObject& d) { d.insert("externalTexture", 7); }},
+            {"deprecatedBy is a number", [](libnoisemaker::JsObject& d) { d.insert("deprecatedBy", 5); }},
+            {"externalTexture is a number", [](libnoisemaker::JsObject& d) { d.insert("externalTexture", 7); }},
         };
         for (const Case& c : cases) {
-            nm::JsObject def = validDefinition();
+            libnoisemaker::JsObject def = validDefinition();
             c.mutate(def);
             checkAnyError(def, c.name);
         }
@@ -494,9 +494,9 @@ int main() {
     {
         struct Case {
             const char* name;
-            nm::JsText global;
-            nm::JsText key;
-            nm::JsValue value;
+            libnoisemaker::JsText global;
+            libnoisemaker::JsText key;
+            libnoisemaker::JsValue value;
         };
         const Case cases[] = {
             {"float type is vec9", "amount", "type", "vec9"},
@@ -505,18 +505,18 @@ int main() {
             {"int default is fractional", "mode", "default", 1.5},
             {"int default is a string", "mode", "default", "one"},
             {"boolean default is a number", "flag", "default", 1},
-            {"color default is short", "tint", "default", nm::JsArray{1, 0}},
-            {"color default has a string", "tint", "default", nm::JsArray{1, 0, "a"}},
-            {"vec3 default is short", "point", "default", nm::JsArray{0, 0}},
-            {"vec3 default is out of min/max", "point", "default", nm::JsArray{0, 0, 2}},
-            {"vec3 min is short", "point", "min", nm::JsArray{-1, -1}},
+            {"color default is short", "tint", "default", libnoisemaker::JsArray{1, 0}},
+            {"color default has a string", "tint", "default", libnoisemaker::JsArray{1, 0, "a"}},
+            {"vec3 default is short", "point", "default", libnoisemaker::JsArray{0, 0}},
+            {"vec3 default is out of min/max", "point", "default", libnoisemaker::JsArray{0, 0, 2}},
+            {"vec3 min is short", "point", "min", libnoisemaker::JsArray{-1, -1}},
             {"vec3 max is a number", "point", "max", 1},
             {"float min is a string", "amount", "min", "low"},
             {"float min exceeds max", "amount", "min", 0.9},
             {"float max is below min", "amount", "max", 0.4},
             {"float step is a string", "amount", "step", "x"},
-            {"choices is an array", "mode", "choices", nm::JsArray{0, 1}},
-            {"choices value is a string", "mode", "choices", nm::JsObject{{"bad", "x"}}},
+            {"choices is an array", "mode", "choices", libnoisemaker::JsArray{0, 1}},
+            {"choices value is a string", "mode", "choices", libnoisemaker::JsObject{{"bad", "x"}}},
             {"int default not among choices", "mode", "default", 5},
             {"dropdown default not among choices", "table", "default", 8},
             {"colorModeUniform is a number", "surfaceIn", "colorModeUniform", 3},
@@ -524,31 +524,31 @@ int main() {
             {"define is a number", "mode", "define", 5},
         };
         for (const Case& c : cases) {
-            nm::JsObject def = validDefinition();
-            nm::JsObject globals = getObject(def, "globals");
-            nm::JsObject spec = getObject(globals, c.global);
+            libnoisemaker::JsObject def = validDefinition();
+            libnoisemaker::JsObject globals = getObject(def, "globals");
+            libnoisemaker::JsObject spec = getObject(globals, c.global);
             spec.insert(c.key, c.value);
             globals.insert(c.global, spec);
             def.insert("globals", globals);
             checkAnyError(def, c.name);
         }
     }
-    // NaN and Infinity defaults (JSON cannot carry them; nm::JsValue can hold
+    // NaN and Infinity defaults (JSON cannot carry them; libnoisemaker::JsValue can hold
     // the doubles, which is how callers passing runtime-computed values
     // exercise the reference's !isFinite branch).
     for (const double bad : {std::nan(""), std::numeric_limits<double>::infinity()}) {
-        nm::JsObject def = validDefinition();
-        nm::JsObject globals = getObject(def, "globals");
-        nm::JsObject amount = getObject(globals, "amount");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject globals = getObject(def, "globals");
+        libnoisemaker::JsObject amount = getObject(globals, "amount");
         amount.insert("default", bad);
         globals.insert("amount", amount);
         def.insert("globals", globals);
         checkAnyError(def, "float default is NaN/Infinity");
     }
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject globals = getObject(def, "globals");
-        nm::JsObject amount = getObject(globals, "amount");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject globals = getObject(def, "globals");
+        libnoisemaker::JsObject amount = getObject(globals, "amount");
         amount.insert("max", std::numeric_limits<double>::infinity());
         globals.insert("amount", amount);
         def.insert("globals", globals);
@@ -557,33 +557,33 @@ int main() {
 
     // --- member-typed globals must resolve through the std enum tables ---
     {
-        nm::JsObject spec{
+        libnoisemaker::JsObject spec{
             {"type", "member"}, {"default", "noSuchTable.member"}, {"enum", "noSuchTable"},
-            {"ui", nm::JsObject{{"label", "member"}, {"control", "dropdown"}}}};
-        nm::JsObject def = validDefinition();
+            {"ui", libnoisemaker::JsObject{{"label", "member"}, {"control", "dropdown"}}}};
+        libnoisemaker::JsObject def = validDefinition();
         nestInGlobals(def, "memberProbe", spec);
         checkMessage(def, "noSuchTable", "member enum path unresolved");
     }
     {
-        nm::JsObject spec{
+        libnoisemaker::JsObject spec{
             {"type", "member"}, {"default", "oscType.sine"}, {"enum", "oscType"},
-            {"ui", nm::JsObject{{"label", "member"}, {"control", "dropdown"}}}};
-        nm::JsObject def = validDefinition();
+            {"ui", libnoisemaker::JsObject{{"label", "member"}, {"control", "dropdown"}}}};
+        libnoisemaker::JsObject def = validDefinition();
         nestInGlobals(def, "memberProbe", spec);
         checkValid(def, "member enum resolves through std tables");
     }
 
     // --- duplicate and conflicting bindings and layouts are diagnosed ---
     {
-        nm::JsObject def = validDefinition();
+        libnoisemaker::JsObject def = validDefinition();
         nestInGlobals(def, "other",
-                      nm::JsObject{{"type", "float"}, {"default", 0}, {"uniform", "amount"}});
+                      libnoisemaker::JsObject{{"type", "float"}, {"default", 0}, {"uniform", "amount"}});
         checkMessage(def, "amount", "duplicate uniform binding diagnosed");
     }
 
     // --- template interpolation of non-string values follows JS String(value) ---
     {
-        nm::JsObject def = validDefinition();
+        libnoisemaker::JsObject def = validDefinition();
         mutateFirstPass(def, "type", 5);
         const std::string want = "Pass 0: unknown pass type '5'";
         const std::vector<std::string> errors = validate(def);
@@ -598,7 +598,7 @@ int main() {
         }
     }
     {
-        nm::JsObject def = validDefinition();
+        libnoisemaker::JsObject def = validDefinition();
         mutateFirstPass(def, "drawMode", true);
         const std::string want = "Pass 0: unknown drawMode 'true'";
         const std::vector<std::string> errors = validate(def);
@@ -613,8 +613,8 @@ int main() {
         }
     }
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject t; nm::JsObject s; s.insert("format", 1);
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject t; libnoisemaker::JsObject s; s.insert("format", 1);
         t.insert("t", s); def.insert("textures", t);
         const std::string want = "Texture 't': unknown format '1'";
         const std::vector<std::string> errors = validate(def);
@@ -630,8 +630,8 @@ int main() {
     }
     {
         // The reference emits paramAliases['<alias>'] with BOTH quotes.
-        nm::JsObject def = validDefinition();
-        nm::JsObject a; a.insert("amt", "nosuchglobal"); def.insert("paramAliases", a);
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject a; a.insert("amt", "nosuchglobal"); def.insert("paramAliases", a);
         const std::string want = "paramAliases['amt'] references unknown global 'nosuchglobal'";
         const std::vector<std::string> errors = validate(def);
         bool ok = false;
@@ -645,19 +645,19 @@ int main() {
         }
     }
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject l;
-        nm::JsObject a; a.insert("slot", 1); a.insert("components", "x");
-        nm::JsObject b; b.insert("slot", 1); b.insert("components", "xy");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject l;
+        libnoisemaker::JsObject a; a.insert("slot", 1); a.insert("components", "x");
+        libnoisemaker::JsObject b; b.insert("slot", 1); b.insert("components", "xy");
         l.insert("a", a); l.insert("b", b);
         def.insert("uniformLayout", l);
         checkMessage(def, "slot 1", "overlapping layout diagnosed");
     }
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject l;
-        nm::JsObject a; a.insert("slot", 1); a.insert("components", "x");
-        nm::JsObject b; b.insert("slot", 1); b.insert("components", "x");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject l;
+        libnoisemaker::JsObject a; a.insert("slot", 1); a.insert("components", "x");
+        libnoisemaker::JsObject b; b.insert("slot", 1); b.insert("components", "x");
         l.insert("a", a); l.insert("b", b);
         def.insert("uniformLayout", l);
         checkAnyError(def, "duplicate layout entries diagnosed");
@@ -667,76 +667,76 @@ int main() {
     {
         struct Case {
             const char* name;
-            void (*mutate)(nm::JsObject&);
+            void (*mutate)(libnoisemaker::JsObject&);
         };
         const Case cases[] = {
-            {"pass input is a number", [](nm::JsObject& d) { mutateFirstPassNested(d, "inputs", "bad", 7); }},
-            {"pass input references an undeclared texture", [](nm::JsObject& d) { mutateFirstPassNested(d, "inputs", "bad", "notDeclaredAnywhere"); }},
-            {"pass output references an undeclared texture", [](nm::JsObject& d) { mutateFirstPassNested(d, "outputs", "bad", "notDeclaredAnywhere"); }},
-            {"pass uniform is an array", [](nm::JsObject& d) { mutateFirstPassNested(d, "uniforms", "bad", nm::JsArray()); }},
-            {"pass uniform is an object", [](nm::JsObject& d) { mutateFirstPassNested(d, "uniforms", "bad", nm::JsObject{{"ref", 1}}); }},
-            {"condition uniform is undeclared", [](nm::JsObject& d) { mutateFirstPassNested(d, "conditions", "runIf", nm::JsArray{nm::JsObject{{"uniform", "nosuch"}, {"equals", 1}}}); }},
-            {"countUniform is undeclared", [](nm::JsObject& d) { mutateFirstPass(d, "countUniform", "nosuch"); }},
-            {"count is a word", [](nm::JsObject& d) { mutateFirstPass(d, "count", "banana"); }},
-            {"count is negative", [](nm::JsObject& d) { mutateFirstPass(d, "count", -1); }},
-            {"repeat is an array", [](nm::JsObject& d) { mutateFirstPass(d, "repeat", nm::JsArray()); }},
-            {"drawMode is unknown", [](nm::JsObject& d) { mutateFirstPass(d, "drawMode", "hexagons"); }},
-            {"type is unknown", [](nm::JsObject& d) { mutateFirstPass(d, "type", "vertex"); }},
-            {"drawBuffers is zero", [](nm::JsObject& d) { mutateFirstPass(d, "drawBuffers", 0); }},
-            {"blend is a string", [](nm::JsObject& d) { mutateFirstPass(d, "blend", "on"); }},
-            {"blend has one factor", [](nm::JsObject& d) { mutateFirstPass(d, "blend", nm::JsArray{"ONE"}); }},
-            {"workgroups is a string", [](nm::JsObject& d) { mutateFirstPass(d, "workgroups", "8"); }},
-            {"viewport is a number", [](nm::JsObject& d) { mutateFirstPass(d, "viewport", 32); }},
-            {"entryPoint is a number", [](nm::JsObject& d) { mutateFirstPass(d, "entryPoint", 7); }},
-            {"enabledBy param is undeclared", [](nm::JsObject& d) {
-                 nm::JsObject globals = getObject(d, "globals");
-                 nm::JsObject flag = getObject(globals, "flag");
-                 nm::JsObject ui = getObject(flag, "ui");
-                 ui.insert("enabledBy", nm::JsObject{{"param", "nosuch"}, {"eq", 1}});
+            {"pass input is a number", [](libnoisemaker::JsObject& d) { mutateFirstPassNested(d, "inputs", "bad", 7); }},
+            {"pass input references an undeclared texture", [](libnoisemaker::JsObject& d) { mutateFirstPassNested(d, "inputs", "bad", "notDeclaredAnywhere"); }},
+            {"pass output references an undeclared texture", [](libnoisemaker::JsObject& d) { mutateFirstPassNested(d, "outputs", "bad", "notDeclaredAnywhere"); }},
+            {"pass uniform is an array", [](libnoisemaker::JsObject& d) { mutateFirstPassNested(d, "uniforms", "bad", libnoisemaker::JsArray()); }},
+            {"pass uniform is an object", [](libnoisemaker::JsObject& d) { mutateFirstPassNested(d, "uniforms", "bad", libnoisemaker::JsObject{{"ref", 1}}); }},
+            {"condition uniform is undeclared", [](libnoisemaker::JsObject& d) { mutateFirstPassNested(d, "conditions", "runIf", libnoisemaker::JsArray{libnoisemaker::JsObject{{"uniform", "nosuch"}, {"equals", 1}}}); }},
+            {"countUniform is undeclared", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "countUniform", "nosuch"); }},
+            {"count is a word", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "count", "banana"); }},
+            {"count is negative", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "count", -1); }},
+            {"repeat is an array", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "repeat", libnoisemaker::JsArray()); }},
+            {"drawMode is unknown", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "drawMode", "hexagons"); }},
+            {"type is unknown", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "type", "vertex"); }},
+            {"drawBuffers is zero", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "drawBuffers", 0); }},
+            {"blend is a string", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "blend", "on"); }},
+            {"blend has one factor", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "blend", libnoisemaker::JsArray{"ONE"}); }},
+            {"workgroups is a string", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "workgroups", "8"); }},
+            {"viewport is a number", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "viewport", 32); }},
+            {"entryPoint is a number", [](libnoisemaker::JsObject& d) { mutateFirstPass(d, "entryPoint", 7); }},
+            {"enabledBy param is undeclared", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject globals = getObject(d, "globals");
+                 libnoisemaker::JsObject flag = getObject(globals, "flag");
+                 libnoisemaker::JsObject ui = getObject(flag, "ui");
+                 ui.insert("enabledBy", libnoisemaker::JsObject{{"param", "nosuch"}, {"eq", 1}});
                  flag.insert("ui", ui);
                  globals.insert("flag", flag);
                  d.insert("globals", globals);
              }},
-            {"enabledBy is an undeclared name", [](nm::JsObject& d) {
-                 nm::JsObject globals = getObject(d, "globals");
-                 nm::JsObject flag = getObject(globals, "flag");
-                 nm::JsObject ui = getObject(flag, "ui");
+            {"enabledBy is an undeclared name", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject globals = getObject(d, "globals");
+                 libnoisemaker::JsObject flag = getObject(globals, "flag");
+                 libnoisemaker::JsObject ui = getObject(flag, "ui");
                  ui.insert("enabledBy", "nosuch");
                  flag.insert("ui", ui);
                  globals.insert("flag", flag);
                  d.insert("globals", globals);
              }},
-            {"enabledBy has no eq", [](nm::JsObject& d) {
-                 nm::JsObject globals = getObject(d, "globals");
-                 nm::JsObject flag = getObject(globals, "flag");
-                 nm::JsObject ui = getObject(flag, "ui");
-                 ui.insert("enabledBy", nm::JsObject{{"param", "mode"}});
+            {"enabledBy has no eq", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject globals = getObject(d, "globals");
+                 libnoisemaker::JsObject flag = getObject(globals, "flag");
+                 libnoisemaker::JsObject ui = getObject(flag, "ui");
+                 ui.insert("enabledBy", libnoisemaker::JsObject{{"param", "mode"}});
                  flag.insert("ui", ui);
                  globals.insert("flag", flag);
                  d.insert("globals", globals);
              }},
-            {"enabledBy has an unknown container", [](nm::JsObject& d) {
-                 nm::JsObject globals = getObject(d, "globals");
-                 nm::JsObject flag = getObject(globals, "flag");
-                 nm::JsObject ui = getObject(flag, "ui");
-                 ui.insert("enabledBy", nm::JsObject{{"and", "x"}});
+            {"enabledBy has an unknown container", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject globals = getObject(d, "globals");
+                 libnoisemaker::JsObject flag = getObject(globals, "flag");
+                 libnoisemaker::JsObject ui = getObject(flag, "ui");
+                 ui.insert("enabledBy", libnoisemaker::JsObject{{"and", "x"}});
                  flag.insert("ui", ui);
                  globals.insert("flag", flag);
                  d.insert("globals", globals);
              }},
-            {"ui control is unknown", [](nm::JsObject& d) {
-                 nm::JsObject globals = getObject(d, "globals");
-                 nm::JsObject mode = getObject(globals, "mode");
-                 nm::JsObject ui = getObject(mode, "ui");
+            {"ui control is unknown", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject globals = getObject(d, "globals");
+                 libnoisemaker::JsObject mode = getObject(globals, "mode");
+                 libnoisemaker::JsObject ui = getObject(mode, "ui");
                  ui.insert("control", "dropdownx");
                  mode.insert("ui", ui);
                  globals.insert("mode", mode);
                  d.insert("globals", globals);
              }},
-            {"ui label is a number", [](nm::JsObject& d) {
-                 nm::JsObject globals = getObject(d, "globals");
-                 nm::JsObject mode = getObject(globals, "mode");
-                 nm::JsObject ui = getObject(mode, "ui");
+            {"ui label is a number", [](libnoisemaker::JsObject& d) {
+                 libnoisemaker::JsObject globals = getObject(d, "globals");
+                 libnoisemaker::JsObject mode = getObject(globals, "mode");
+                 libnoisemaker::JsObject ui = getObject(mode, "ui");
                  ui.insert("label", 7);
                  mode.insert("ui", ui);
                  globals.insert("mode", mode);
@@ -744,7 +744,7 @@ int main() {
              }},
         };
         for (const Case& c : cases) {
-            nm::JsObject def = validDefinition();
+            libnoisemaker::JsObject def = validDefinition();
             c.mutate(def);
             checkAnyError(def, c.name);
         }
@@ -752,19 +752,19 @@ int main() {
 
     // --- numeric literals and supported dimension expressions are preserved ---
     {
-        nm::JsObject def = validDefinition();
+        libnoisemaker::JsObject def = validDefinition();
         mutateFirstPassNested(def, "uniforms", "literal", 0);
         mutateFirstPassNested(def, "uniforms", "another", 12.5);
         checkValid(def, "numeric pass-uniform literals preserved");
     }
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject textures = getObject(def, "textures");
-        nm::JsObject expressions;
-        nm::JsObject width;
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject textures = getObject(def, "textures");
+        libnoisemaker::JsObject expressions;
+        libnoisemaker::JsObject width;
         width.insert("scale", 0.5);
-        width.insert("clamp", nm::JsObject{{"min", 8}, {"max", 256}});
-        nm::JsObject height;
+        width.insert("clamp", libnoisemaker::JsObject{{"min", 8}, {"max", 256}});
+        libnoisemaker::JsObject height;
         height.insert("param", "volumeSize");
         height.insert("multiply", 2);
         height.insert("paramDefault", 64);
@@ -779,20 +779,20 @@ int main() {
     // reported (documented deviation; the reference's valid case is
     // unreachable in this grammar) ---
     {
-        nm::JsObject def = validDefinition();
+        libnoisemaker::JsObject def = validDefinition();
         def.insert("onInit", 1);
         def.insert("onUpdate", "x");
-        def.insert("onDestroy", nm::JsObject());
+        def.insert("onDestroy", libnoisemaker::JsObject());
         def.insert("asyncInit", true);
         checkErrors(def, 4, "four present hooks each reported");
     }
 
     // --- validation errors follow declaration order ---
     {
-        nm::JsObject def = validDefinition();
-        nm::JsObject globals;
-        nm::JsObject zzz; zzz.insert("type", "float"); zzz.insert("default", "bad");
-        nm::JsObject aaa; aaa.insert("type", "float"); aaa.insert("default", "bad");
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject globals;
+        libnoisemaker::JsObject zzz; zzz.insert("type", "float"); zzz.insert("default", "bad");
+        libnoisemaker::JsObject aaa; aaa.insert("type", "float"); aaa.insert("default", "bad");
         globals.insert("zzz", zzz);
         globals.insert("aaa", aaa);
         def.insert("globals", globals);
@@ -817,18 +817,18 @@ int main() {
         } else {
             std::ostringstream bytes;
             bytes << input.rdbuf();
-            const nm::JsObject corpus = nm::JsValue(nm::json::parse(bytes.str())).toObject();
-            const nm::JsArray probes = corpus.value(u"probes").toArray();
-            const nm::JsText commit = corpus.value(u"provenance").toObject().value(u"referenceCommit").toString();
+            const libnoisemaker::JsObject corpus = libnoisemaker::JsValue(libnoisemaker::json::parse(bytes.str())).toObject();
+            const libnoisemaker::JsArray probes = corpus.value(u"probes").toArray();
+            const libnoisemaker::JsText commit = corpus.value(u"provenance").toObject().value(u"referenceCommit").toString();
             int mismatches = 0;
-            for (const nm::JsValue& probeValue : probes) {
-                const nm::JsObject probe = probeValue.toObject();
-                const nm::JsObject def = probe.value(u"def").toObject();
-                nm::JsList want;
-                for (const nm::JsValue& e : probe.value(u"referenceErrors").toArray()) want.append(e.toString());
+            for (const libnoisemaker::JsValue& probeValue : probes) {
+                const libnoisemaker::JsObject probe = probeValue.toObject();
+                const libnoisemaker::JsObject def = probe.value(u"def").toObject();
+                libnoisemaker::JsList want;
+                for (const libnoisemaker::JsValue& e : probe.value(u"referenceErrors").toArray()) want.append(e.toString());
                 const std::vector<std::string> got = validateEffectDefinition(def);
-                nm::JsList actual;
-                for (const std::string& e : got) actual.append(nm::JsText::fromUtf8(e));
+                libnoisemaker::JsList actual;
+                for (const std::string& e : got) actual.append(libnoisemaker::JsText::fromUtf8(e));
                 if (want != actual) {
                     ++mismatches;
                     std::printf("FAIL: corpus probe '%s': want %s; got %s\n",
@@ -845,11 +845,11 @@ int main() {
     // Every embedded definition's reference-authored fields must validate.
     {
         int expected = 0, passed = 0;
-        for (const auto& file : nm::catalog_files()) {
+        for (const auto& file : libnoisemaker::catalog_files()) {
             if (!file.path.starts_with("effects/") || !file.path.ends_with(".json")) continue;
             ++expected;
             try {
-                nm::Value definition = nm::json::parse(file.bytes);
+                libnoisemaker::Value definition = libnoisemaker::json::parse(file.bytes);
                 // The converter adds these metadata fields after the
                 // reference definition grammar is applied.
                 definition.as_object().erase(u"starter");
@@ -862,7 +862,7 @@ int main() {
                                 int(file.path.size()), file.path.data(), errors.size());
                     ++g_failures;
                 }
-            } catch (const nm::json::ParseError&) {
+            } catch (const libnoisemaker::json::ParseError&) {
                 std::printf("FAIL: %.*s: invalid JSON\n", int(file.path.size()), file.path.data());
                 ++g_failures;
             }

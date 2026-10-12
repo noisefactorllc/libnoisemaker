@@ -9,7 +9,7 @@
 #include <limits>
 #include <string>
 
-namespace nm::json {
+namespace libnoisemaker::json {
 namespace {
 void append_hex_escape(std::string& out, char16_t unit) {
     constexpr char hex[] = "0123456789abcdef";
@@ -269,4 +269,4 @@ std::string stringify(const Value& value, int indent) {
     return out;
 }
 Value parse(std::string_view utf8) { return Parser(utf8).parse(); }
-}  // namespace nm::json
+}  // namespace libnoisemaker::json

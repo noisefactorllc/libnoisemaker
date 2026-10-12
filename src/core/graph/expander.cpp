@@ -11,7 +11,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -1468,4 +1468,4 @@ Value toRawPassJson(const ExpandedPass& pass) {
     return out.raw();
 }
 
-} // namespace nm
+} // namespace libnoisemaker

@@ -1,4 +1,4 @@
-// Unit tests for nm::parseOBJ / nm::loadOBJ / nm::packMeshDataForTextures
+// Unit tests for libnoisemaker::parseOBJ / libnoisemaker::loadOBJ / libnoisemaker::packMeshDataForTextures
 // (qt/noisemaker/runtime/obj_parser.{h,cpp}). Plain assert-style checks.
 // Every expected value is hand-traced against the reference
 // shaders/src/runtime/obj-parser.js; parity/check_obj_parser.mjs compares
@@ -48,8 +48,8 @@ bool equals(const std::vector<float>& actual, const std::vector<float>& expected
     return true;
 }
 
-nm::ObjMeshData parse(const char16_t* text) {
-    return nm::parseOBJ(text);
+libnoisemaker::ObjMeshData parse(const char16_t* text) {
+    return libnoisemaker::parseOBJ(text);
 }
 
 } // namespace
@@ -176,19 +176,19 @@ int main() {
     // Packing: w = 1 marks used vertices; truncation to the texture size.
     {
         const auto mesh = parse(u"v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nvt 0.25 0.75\nf 1/1 2/1 3/1 4/1\n");
-        const nm::PackedMeshData grid4x4 = nm::packMeshDataForTextures(mesh, 4, 4);
+        const libnoisemaker::PackedMeshData grid4x4 = libnoisemaker::packMeshDataForTextures(mesh, 4, 4);
         check(grid4x4.vertexCount == 6 && grid4x4.positionData.size() == 64, "pack 4x4: six vertices in 16 texels");
         check(sameBits(grid4x4.positionData[5 * 4 + 3], 1.0f) && sameBits(grid4x4.positionData[6 * 4 + 3], 0.0f),
               "pack 4x4: w is 1 for used texels and 0 after them");
         check(sameBits(grid4x4.uvData[4], 0.25f) && sameBits(grid4x4.uvData[5], 0.75f) && sameBits(grid4x4.uvData[6], 0.0f),
               "pack 4x4: uv in xy, zw zero");
         check(sameBits(grid4x4.normalData[3], 0.0f), "pack 4x4: normal w is zero");
-        const nm::PackedMeshData grid2x2 = nm::packMeshDataForTextures(mesh, 2, 2);
+        const libnoisemaker::PackedMeshData grid2x2 = libnoisemaker::packMeshDataForTextures(mesh, 2, 2);
         check(grid2x2.vertexCount == 4 && sameBits(grid2x2.positionData[3 * 4 + 3], 1.0f),
               "pack 2x2: truncated to four vertices");
         bool threw = false;
         try {
-            nm::packMeshDataForTextures(mesh, -1, 4);
+            libnoisemaker::packMeshDataForTextures(mesh, -1, 4);
         } catch (const std::invalid_argument&) {
             threw = true;
         }
@@ -203,13 +203,13 @@ int main() {
             std::ofstream file(path, std::ios::binary);
             file << "\xEF\xBB\xBFv 0 0 0\r\nv 1 0 0\r\nv 0 1 0\r\nf 1 2 3\r\n";
         }
-        const nm::ObjMeshData mesh = nm::loadOBJ(path.string());
+        const libnoisemaker::ObjMeshData mesh = libnoisemaker::loadOBJ(path.string());
         check(mesh.vertexCount == 3 && equals(mesh.positions, {0, 0, 0, 0, 1, 0, 1, 0, 0}),
               "loadOBJ: BOM and CRLF file parses");
         std::filesystem::remove(path);
         std::string message;
         try {
-            nm::loadOBJ(path.string());
+            libnoisemaker::loadOBJ(path.string());
         } catch (const std::runtime_error& e) {
             message = e.what();
         }

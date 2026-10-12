@@ -1,5 +1,5 @@
-// Unit tests for nm::expand (qt/noisemaker/compiler/expander.{h,cpp}) and
-// nm::compileGraphJson (dsl_compiler.{h,cpp}). Plain assert-style checks,
+// Unit tests for libnoisemaker::expand (qt/noisemaker/compiler/expander.{h,cpp}) and
+// libnoisemaker::compileGraphJson (dsl_compiler.{h,cpp}). Plain assert-style checks,
 // no test framework dependency (matches test_lexer.cpp/test_registry.cpp
 // convention).
 //
@@ -17,8 +17,8 @@
 // file header for the full analysis.
 //
 // RED (before dim.cpp/resources.cpp/expander.cpp/dsl_compiler.cpp
-// existed): this binary failed to link ("undefined symbols: nm::expand,
-// nm::compileGraphJson, ..."). GREEN: all checks below print PASS and the
+// existed): this binary failed to link ("undefined symbols: libnoisemaker::expand,
+// libnoisemaker::compileGraphJson, ..."). GREEN: all checks below print PASS and the
 // process exits 0.
 
 #include "core/graph/dsl_compiler.h"
@@ -49,8 +49,8 @@ void check(bool condition, const char* description) {
 
 bool numEq(double a, double b) { return std::fabs(a - b) <= 1e-9 * std::max(1.0, std::max(std::fabs(a), std::fabs(b))); }
 
-nm::EffectRegistry& registry() {
-    static nm::EffectRegistry reg;
+libnoisemaker::EffectRegistry& registry() {
+    static libnoisemaker::EffectRegistry reg;
     static bool loaded = false;
     if (!loaded) {
         reg.loadEmbedded();
@@ -59,32 +59,32 @@ nm::EffectRegistry& registry() {
     return reg;
 }
 
-nm::ExpandResult expandSrc(const nm::JsText& src) {
-    const auto tokens = nm::lex(src);
-    const nm::JsObject ast(nm::parse(tokens));
-    const nm::JsObject validated = nm::validate(ast, registry());
-    return nm::expand(validated, registry());
+libnoisemaker::ExpandResult expandSrc(const libnoisemaker::JsText& src) {
+    const auto tokens = libnoisemaker::lex(src);
+    const libnoisemaker::JsObject ast(libnoisemaker::parse(tokens));
+    const libnoisemaker::JsObject validated = libnoisemaker::validate(ast, registry());
+    return libnoisemaker::expand(validated, registry());
 }
 
-const nm::ExpandedPass* findPass(const nm::ExpandResult& r, const nm::JsText& idSuffix) {
-    for (const nm::ExpandedPass& p : r.passes) {
+const libnoisemaker::ExpandedPass* findPass(const libnoisemaker::ExpandResult& r, const libnoisemaker::JsText& idSuffix) {
+    for (const libnoisemaker::ExpandedPass& p : r.passes) {
         if (p.id.endsWith(idSuffix)) return &p;
     }
     return nullptr;
 }
 
-nm::JsText findInput(const nm::ExpandedPass& pass, const nm::JsText& uniformName) {
+libnoisemaker::JsText findInput(const libnoisemaker::ExpandedPass& pass, const libnoisemaker::JsText& uniformName) {
     for (const auto& kv : pass.inputs) {
         if (kv.first == uniformName) return kv.second;
     }
-    return nm::JsText();
+    return libnoisemaker::JsText();
 }
 
-nm::JsText findOutput(const nm::ExpandedPass& pass, const nm::JsText& attachment) {
+libnoisemaker::JsText findOutput(const libnoisemaker::ExpandedPass& pass, const libnoisemaker::JsText& attachment) {
     for (const auto& kv : pass.outputs) {
         if (kv.first == attachment) return kv.second;
     }
-    return nm::JsText();
+    return libnoisemaker::JsText();
 }
 
 } // namespace
@@ -96,16 +96,16 @@ int main() {
     // Oracle probe: `search classicNoisedeck\nnoise().write(o0)\nrender(o0)`
     // ======================================================================
     {
-        const nm::JsText src = nm::JsText(u"search classicNoisedeck\nnoise().write(o0)\nrender(o0)\n");
-        const nm::ExpandResult r = expandSrc(src);
+        const libnoisemaker::JsText src = libnoisemaker::JsText(u"search classicNoisedeck\nnoise().write(o0)\nrender(o0)\n");
+        const libnoisemaker::ExpandResult r = expandSrc(src);
         check(r.errors.isEmpty(), "classicNoisedeck.noise(): no expand errors");
-        const nm::ExpandedPass* p0 = findPass(r, nm::JsText(u"_pass_0"));
+        const libnoisemaker::ExpandedPass* p0 = findPass(r, libnoisemaker::JsText(u"_pass_0"));
         check(p0 != nullptr, "classicNoisedeck.noise(): effect pass 0 exists");
         if (p0) {
-            check(p0->program == nm::JsText(u"node_0_noise__COLOR_MODE_6__LOOP_OFFSET_300__METRIC_0__REFRACT_MODE_2__NOISE_TYPE_10"),
+            check(p0->program == libnoisemaker::JsText(u"node_0_noise__COLOR_MODE_6__LOOP_OFFSET_300__METRIC_0__REFRACT_MODE_2__NOISE_TYPE_10"),
                   "define suffix is sorted by GLOBAL name (colorMode<loopOffset<metric<refractMode<type), "
                   "NOT by define name (which would put NOISE_TYPE before REFRACT_MODE) -- oracle-verified");
-            check(p0->uniforms.value(nm::JsText(u"type")).toDouble() == 10.0,
+            check(p0->uniforms.value(libnoisemaker::JsText(u"type")).toDouble() == 10.0,
                   "RAW pass.uniforms still carries 'type' (validator pre-fills step.args with EVERY "
                   "global's default, so the args-processing loop always sees it) -- only the "
                   "orchestrator's normalize step promotes/removes it");
@@ -119,49 +119,49 @@ int main() {
     // `search synth\nnoise(type: simplex, colorMode: mono).write(o0)\nrender(o0)`
     // ======================================================================
     {
-        const nm::JsText src = nm::JsText(u"search synth\nnoise(type: simplex, colorMode: mono).write(o0)\nrender(o0)\n");
-        const nm::ExpandResult r = expandSrc(src);
+        const libnoisemaker::JsText src = libnoisemaker::JsText(u"search synth\nnoise(type: simplex, colorMode: mono).write(o0)\nrender(o0)\n");
+        const libnoisemaker::ExpandResult r = expandSrc(src);
         check(r.errors.isEmpty(), "synth.noise(type:simplex,colorMode:mono): no expand errors");
-        const nm::ExpandedPass* p0 = findPass(r, nm::JsText(u"_pass_0"));
+        const libnoisemaker::ExpandedPass* p0 = findPass(r, libnoisemaker::JsText(u"_pass_0"));
         check(p0 != nullptr, "synth.noise: effect pass 0 exists");
         if (p0) {
-            check(p0->program == nm::JsText(u"node_0_noise__LOOP_OFFSET_300__NOISE_TYPE_10"),
+            check(p0->program == libnoisemaker::JsText(u"node_0_noise__LOOP_OFFSET_300__NOISE_TYPE_10"),
                   "synth.noise program suffix: only NOISE_TYPE/LOOP_OFFSET (define-carrying globals) "
                   "contribute, colorMode does NOT (it has no .define)");
-            check(p0->uniforms.value(nm::JsText(u"type")).toDouble() == 10.0,
+            check(p0->uniforms.value(libnoisemaker::JsText(u"type")).toDouble() == 10.0,
                   "raw pass.uniforms['type'] == 10 (simplex) -- present pre-normalization");
-            check(p0->uniforms.value(nm::JsText(u"colorMode")).toDouble() == 0.0,
+            check(p0->uniforms.value(libnoisemaker::JsText(u"colorMode")).toDouble() == 0.0,
                   "raw pass.uniforms['colorMode'] == 0 (mono) -- a genuine runtime uniform, "
                   "resolved via its OWN choices, never define-suffix-relevant");
-            const nm::CatalogFile* shader = nm::catalog_find("wgsl/synth/noise/noise.wgsl");
-            const nm::JsObject program = r.programs.value(p0->program).toObject();
-            check(shader != nullptr && program.value(nm::JsText(u"wgsl")).toString() == nm::JsText::fromUtf8(std::string(shader->bytes)),
+            const libnoisemaker::CatalogFile* shader = libnoisemaker::catalog_find("wgsl/synth/noise/noise.wgsl");
+            const libnoisemaker::JsObject program = r.programs.value(p0->program).toObject();
+            check(shader != nullptr && program.value(libnoisemaker::JsText(u"wgsl")).toString() == libnoisemaker::JsText::fromUtf8(std::string(shader->bytes)),
                   "expanded program retains exact embedded WGSL source");
         }
 
         // The reference compiler retains raw pass uniforms and stores
         // compile-time defines on the program entry.
         try {
-            const nm::JsObject graph(nm::Value(nm::compileGraphJson(src, registry())));
-            const nm::JsArray passes = graph.value(nm::JsText(u"passes")).toArray();
-            const nm::JsObject effectPass = passes.at(0).toObject();
-            const nm::JsObject program = graph.value(nm::JsText(u"programs")).toObject()
-                .value(effectPass.value(nm::JsText(u"program")).toString()).toObject();
-            const nm::JsObject defines = program.value(nm::JsText(u"defines")).toObject();
-            const nm::JsObject uniforms = effectPass.value(nm::JsText(u"uniforms")).toObject();
-            check(defines.value(nm::JsText(u"NOISE_TYPE")).toInt(-1) == 10,
+            const libnoisemaker::JsObject graph(libnoisemaker::Value(libnoisemaker::compileGraphJson(src, registry())));
+            const libnoisemaker::JsArray passes = graph.value(libnoisemaker::JsText(u"passes")).toArray();
+            const libnoisemaker::JsObject effectPass = passes.at(0).toObject();
+            const libnoisemaker::JsObject program = graph.value(libnoisemaker::JsText(u"programs")).toObject()
+                .value(effectPass.value(libnoisemaker::JsText(u"program")).toString()).toObject();
+            const libnoisemaker::JsObject defines = program.value(libnoisemaker::JsText(u"defines")).toObject();
+            const libnoisemaker::JsObject uniforms = effectPass.value(libnoisemaker::JsText(u"uniforms")).toObject();
+            check(defines.value(libnoisemaker::JsText(u"NOISE_TYPE")).toInt(-1) == 10,
                   "graph program: defines.NOISE_TYPE == 10");
-            check(defines.value(nm::JsText(u"LOOP_OFFSET")).toInt(-1) == 300,
+            check(defines.value(libnoisemaker::JsText(u"LOOP_OFFSET")).toInt(-1) == 300,
                   "graph program: defines.LOOP_OFFSET == 300");
-            check(uniforms.value(nm::JsText(u"type")).toInt(-1) == 10, "graph pass retains type uniform");
-            check(uniforms.value(nm::JsText(u"loopOffset")).toInt(-1) == 300, "graph pass retains loopOffset uniform");
-            check(uniforms.contains(nm::JsText(u"colorMode")) && uniforms.value(nm::JsText(u"colorMode")).toDouble() == 0.0,
+            check(uniforms.value(libnoisemaker::JsText(u"type")).toInt(-1) == 10, "graph pass retains type uniform");
+            check(uniforms.value(libnoisemaker::JsText(u"loopOffset")).toInt(-1) == 300, "graph pass retains loopOffset uniform");
+            check(uniforms.contains(libnoisemaker::JsText(u"colorMode")) && uniforms.value(libnoisemaker::JsText(u"colorMode")).toDouble() == 0.0,
                   "graph pass retains runtime colorMode uniform");
-            check(!defines.contains(nm::JsText(u"colorMode")) && !defines.contains(nm::JsText(u"COLOR_MODE")),
+            check(!defines.contains(libnoisemaker::JsText(u"colorMode")) && !defines.contains(libnoisemaker::JsText(u"COLOR_MODE")),
                   "graph program has no colorMode define");
-            const nm::Graph runtime = nm::compileGraph(src, registry());
-            check(!runtime.passes.empty() && runtime.passes.front().passType == nm::JsText(u"effect")
-                      && runtime.passes.front().defines.value(nm::JsText(u"NOISE_TYPE")).toInt(-1) == 10,
+            const libnoisemaker::Graph runtime = libnoisemaker::compileGraph(src, registry());
+            check(!runtime.passes.empty() && runtime.passes.front().passType == libnoisemaker::JsText(u"effect")
+                      && runtime.passes.front().defines.value(libnoisemaker::JsText(u"NOISE_TYPE")).toInt(-1) == 10,
                   "runtime Graph accepts reference graph passes and program defines");
         } catch (const std::exception& e) {
             check(false, e.what());
@@ -170,17 +170,17 @@ int main() {
 
     // A per-step shader override replaces the embedded program source.
     {
-        const nm::JsText src = nm::JsText(u"search synth\nnoise().write(o0)\nrender(o0)\n");
-        const nm::JsText overriddenWgsl = nm::JsText(u"// shader override for node 0");
-        const nm::JsObject overrideShader{{nm::JsText(u"wgsl"), overriddenWgsl}};
-        const nm::JsObject overridePrograms{{nm::JsText(u"noise"), overrideShader}};
-        const nm::JsObject overrideSteps{{nm::JsText(u"0"), overridePrograms}};
-        const nm::JsObject options{{nm::JsText(u"shaderOverrides"), overrideSteps}};
-        const nm::JsObject graph(nm::Value(nm::compileGraphJson(src, registry(), options.raw().as_object())));
-        const nm::JsObject programs = graph.value(nm::JsText(u"programs")).toObject();
-        const nm::JsText programName = graph.value(nm::JsText(u"passes")).toArray().first().toObject()
-                                        .value(nm::JsText(u"program")).toString();
-        check(programs.value(programName).toObject().value(nm::JsText(u"wgsl")) == overriddenWgsl,
+        const libnoisemaker::JsText src = libnoisemaker::JsText(u"search synth\nnoise().write(o0)\nrender(o0)\n");
+        const libnoisemaker::JsText overriddenWgsl = libnoisemaker::JsText(u"// shader override for node 0");
+        const libnoisemaker::JsObject overrideShader{{libnoisemaker::JsText(u"wgsl"), overriddenWgsl}};
+        const libnoisemaker::JsObject overridePrograms{{libnoisemaker::JsText(u"noise"), overrideShader}};
+        const libnoisemaker::JsObject overrideSteps{{libnoisemaker::JsText(u"0"), overridePrograms}};
+        const libnoisemaker::JsObject options{{libnoisemaker::JsText(u"shaderOverrides"), overrideSteps}};
+        const libnoisemaker::JsObject graph(libnoisemaker::Value(libnoisemaker::compileGraphJson(src, registry(), options.raw().as_object())));
+        const libnoisemaker::JsObject programs = graph.value(libnoisemaker::JsText(u"programs")).toObject();
+        const libnoisemaker::JsText programName = graph.value(libnoisemaker::JsText(u"passes")).toArray().first().toObject()
+                                        .value(libnoisemaker::JsText(u"program")).toString();
+        check(programs.value(programName).toObject().value(libnoisemaker::JsText(u"wgsl")) == overriddenWgsl,
               "compileGraphJson uses shaderOverrides keyed by the step temp index");
     }
 
@@ -191,39 +191,39 @@ int main() {
     // own formatError applied to compileGraph's throw (reference c9ee8a04).
     // ======================================================================
     {
-        nm::JsText code;
-        nm::JsText text;
-        nm::JsArray diagnostics;
+        libnoisemaker::JsText code;
+        libnoisemaker::JsText text;
+        libnoisemaker::JsArray diagnostics;
         try {
-            nm::compileGraphJson(nm::JsText(u"search synth, filter\nnoise().write(o0)\nread(o0).blur().read(o1).write(o2)\n"
+            libnoisemaker::compileGraphJson(libnoisemaker::JsText(u"search synth, filter\nnoise().write(o0)\nread(o0).blur().read(o1).write(o2)\n"
                                                 "noise(octaves: [1, 2]).write(o3)\nnoise(seed: bogus).write(o4)\nrender(o0)\n"),
                                  registry());
-        } catch (const nm::CompilationError& e) {
+        } catch (const libnoisemaker::CompilationError& e) {
             code = e.code();
-            text = nm::JsText::fromUtf8(std::string(e.what()));
+            text = libnoisemaker::JsText::fromUtf8(std::string(e.what()));
             diagnostics = e.diagnostics();
         }
-        check(code == nm::JsText(u"ERR_COMPILATION_FAILED"), "compile failure: code ERR_COMPILATION_FAILED");
-        check(diagnostics.size() == 2 && diagnostics.at(0).toObject().value(nm::JsText(u"code")).toString() == nm::JsText(u"S001")
-                  && diagnostics.at(1).toObject().value(nm::JsText(u"code")).toString() == nm::JsText(u"S003"),
+        check(code == libnoisemaker::JsText(u"ERR_COMPILATION_FAILED"), "compile failure: code ERR_COMPILATION_FAILED");
+        check(diagnostics.size() == 2 && diagnostics.at(0).toObject().value(libnoisemaker::JsText(u"code")).toString() == libnoisemaker::JsText(u"S001")
+                  && diagnostics.at(1).toObject().value(libnoisemaker::JsText(u"code")).toString() == libnoisemaker::JsText(u"S003"),
               "compile failure: carries the validate() diagnostics (S001, S003)");
-        check(text == nm::JsText(u"read() is a starter node and cannot be chained inline. Use standalone read() to start a "
+        check(text == libnoisemaker::JsText(u"read() is a starter node and cannot be chained inline. Use standalone read() to start a "
                                      "new chain.: '[Read]' (line 3, col 17); Variable used before assignment: 'bogus'"),
               "compile failure: what() is the reference formatError text, with line and column");
 
         code.clear();
         text.clear();
-        nm::JsArray errors;
+        libnoisemaker::JsArray errors;
         try {
-            nm::compileGraphJson(nm::JsText(u"search synth\nlet x = 1\n"), registry());
-        } catch (const nm::CompilationError& e) {
+            libnoisemaker::compileGraphJson(libnoisemaker::JsText(u"search synth\nlet x = 1\n"), registry());
+        } catch (const libnoisemaker::CompilationError& e) {
             code = e.code();
-            text = nm::JsText::fromUtf8(std::string(e.what()));
+            text = libnoisemaker::JsText::fromUtf8(std::string(e.what()));
             errors = e.errors();
         }
-        check(code == nm::JsText(u"ERR_EXPANSION_FAILED") && errors.size() == 1,
+        check(code == libnoisemaker::JsText(u"ERR_EXPANSION_FAILED") && errors.size() == 1,
               "expansion failure: code ERR_EXPANSION_FAILED with the expand() errors");
-        check(text == nm::JsText(u"No render surface specified and no write() found - add render(oN) or write(oN)"),
+        check(text == libnoisemaker::JsText(u"No render surface specified and no write() found - add render(oN) or write(oN)"),
               "expansion failure: what() is the reference formatError text");
     }
 
@@ -235,13 +235,13 @@ int main() {
     // vec3/int globals with their OWN, different, defaults).
     // ======================================================================
     {
-        const nm::JsText src = nm::JsText(u"search classicNoisedeck\nnoise().write(o0)\nrender(o0)\n");
-        const nm::ExpandResult r = expandSrc(src);
-        const nm::ExpandedPass* p0 = findPass(r, nm::JsText(u"_pass_0"));
+        const libnoisemaker::JsText src = libnoisemaker::JsText(u"search classicNoisedeck\nnoise().write(o0)\nrender(o0)\n");
+        const libnoisemaker::ExpandResult r = expandSrc(src);
+        const libnoisemaker::ExpandedPass* p0 = findPass(r, libnoisemaker::JsText(u"_pass_0"));
         check(p0 != nullptr, "palette test: effect pass 0 exists");
         if (p0) {
-            const nm::JsArray amp = p0->uniforms.value(nm::JsText(u"paletteAmp")).toArray();
-            const nm::JsArray phase = p0->uniforms.value(nm::JsText(u"palettePhase")).toArray();
+            const libnoisemaker::JsArray amp = p0->uniforms.value(libnoisemaker::JsText(u"paletteAmp")).toArray();
+            const libnoisemaker::JsArray phase = p0->uniforms.value(libnoisemaker::JsText(u"palettePhase")).toArray();
             check(amp.size() == 3 && numEq(amp.at(0).toDouble(), 0.56851584) && numEq(amp.at(1).toDouble(), 0.7740668)
                       && numEq(amp.at(2).toDouble(), 0.23485267),
                   "palette index 2 expands to fiveG's paletteAmp [.56851584,.7740668,.23485267] "
@@ -249,7 +249,7 @@ int main() {
             check(phase.size() == 3 && numEq(phase.at(0).toDouble(), 0.727029) && numEq(phase.at(1).toDouble(), 0.08039695)
                       && numEq(phase.at(2).toDouble(), 0.10427457),
                   "palette index 2 expands to fiveG's palettePhase [.727029,.08039695,.10427457]");
-            check(p0->uniforms.value(nm::JsText(u"paletteMode")).toDouble() == 3.0,
+            check(p0->uniforms.value(libnoisemaker::JsText(u"paletteMode")).toDouble() == 3.0,
                   "palette index 2 (fiveG) has classicNoisedeck mode 3 (rgb)");
         }
     }
@@ -259,16 +259,16 @@ int main() {
     // noise's node output into blur's inputTex, not a bare placeholder.
     // ======================================================================
     {
-        const nm::JsText src = nm::JsText(u"search synth, filter\nnoise().blur().write(o0)\nrender(o0)\n");
-        const nm::ExpandResult r = expandSrc(src);
+        const libnoisemaker::JsText src = libnoisemaker::JsText(u"search synth, filter\nnoise().blur().write(o0)\nrender(o0)\n");
+        const libnoisemaker::ExpandResult r = expandSrc(src);
         check(r.errors.isEmpty(), "noise().blur(): no expand errors");
-        const nm::ExpandedPass* noisePass = findPass(r, nm::JsText(u"node_0_pass_0"));
-        const nm::ExpandedPass* blurPass = findPass(r, nm::JsText(u"node_1_pass_0"));
+        const libnoisemaker::ExpandedPass* noisePass = findPass(r, libnoisemaker::JsText(u"node_0_pass_0"));
+        const libnoisemaker::ExpandedPass* blurPass = findPass(r, libnoisemaker::JsText(u"node_1_pass_0"));
         check(noisePass != nullptr && blurPass != nullptr, "noise().blur(): both effect passes exist");
         if (noisePass && blurPass) {
-            const nm::JsText noiseOut = findOutput(*noisePass, nm::JsText(u"fragColor"));
-            const nm::JsText blurIn = findInput(*blurPass, nm::JsText(u"inputTex"));
-            check(!noiseOut.isEmpty() && noiseOut == nm::JsText(u"node_0_out"),
+            const libnoisemaker::JsText noiseOut = findOutput(*noisePass, libnoisemaker::JsText(u"fragColor"));
+            const libnoisemaker::JsText blurIn = findInput(*blurPass, libnoisemaker::JsText(u"inputTex"));
+            check(!noiseOut.isEmpty() && noiseOut == libnoisemaker::JsText(u"node_0_out"),
                   "noise's fragColor output registers as node_0_out (not the last step -- write() "
                   "builtin follows, so no last-pass-to-surface fusion here)");
             check(!blurIn.isEmpty() && blurIn == noiseOut,
@@ -282,24 +282,24 @@ int main() {
     // `search points, synth, render\nsolid().pointsEmit(stateSize: 128).physarum().pointsRender().write(o0)\nrender(o0)`
     // ======================================================================
     {
-        const nm::JsText src = nm::JsText(
+        const libnoisemaker::JsText src = libnoisemaker::JsText(
             u"search points, synth, render\nsolid().pointsEmit(stateSize: 128).physarum().pointsRender().write(o0)\nrender(o0)\n");
-        const nm::ExpandResult r = expandSrc(src);
+        const libnoisemaker::ExpandResult r = expandSrc(src);
         check(r.errors.isEmpty(), "physarum agent chain: no expand errors");
-        check(r.textureSpecs.contains(nm::JsText(u"global_xyz_node_1")),
+        check(r.textureSpecs.contains(libnoisemaker::JsText(u"global_xyz_node_1")),
               "physarum agent chain: global_xyz scoped to its creating node (pointsEmit == node_1)");
-        if (r.textureSpecs.contains(nm::JsText(u"global_xyz_node_1"))) {
-            const nm::JsObject spec = r.textureSpecs.value(nm::JsText(u"global_xyz_node_1")).toObject();
-            const nm::JsObject width = spec.value(nm::JsText(u"width")).toObject();
-            check(width.value(nm::JsText(u"param")).toString() == nm::JsText(u"stateSize_node_1"),
+        if (r.textureSpecs.contains(libnoisemaker::JsText(u"global_xyz_node_1"))) {
+            const libnoisemaker::JsObject spec = r.textureSpecs.value(libnoisemaker::JsText(u"global_xyz_node_1")).toObject();
+            const libnoisemaker::JsObject width = spec.value(libnoisemaker::JsText(u"width")).toObject();
+            check(width.value(libnoisemaker::JsText(u"param")).toString() == libnoisemaker::JsText(u"stateSize_node_1"),
                   "global_xyz_node_1's width.param is scoped: 'stateSize' -> 'stateSize_node_1'");
-            check(width.value(nm::JsText(u"default")).toInt(-1) == 256,
+            check(width.value(libnoisemaker::JsText(u"default")).toInt(-1) == 256,
                   "scoping rewrites ONLY the param name, not other DimSpec fields (default:256 preserved)");
-            check(spec.value(nm::JsText(u"format")).toString() == nm::JsText(u"rgba32f"),
+            check(spec.value(libnoisemaker::JsText(u"format")).toString() == libnoisemaker::JsText(u"rgba32f"),
                   "global_xyz_node_1 format passes through unchanged (rgba32f)");
         }
         // Chain-scoped (non-particle) global texture: physarum's own pheromone trail.
-        check(r.textureSpecs.contains(nm::JsText(u"global_physarum_pheromone_chain_0")),
+        check(r.textureSpecs.contains(libnoisemaker::JsText(u"global_physarum_pheromone_chain_0")),
               "physarum's own global_physarum_pheromone texture is CHAIN-scoped (not particle-scoped: "
               "the name doesn't match the particle regex xyz|vel|rgba|points_trail|life_data)");
     }
@@ -310,42 +310,42 @@ int main() {
     // (oracle-gated by parity/corpus/control_flow_*.dsl).
     // ======================================================================
     {
-        nm::JsText error;
+        libnoisemaker::JsText error;
         try {
-            expandSrc(nm::JsText(u"search synth\nnoise().write(o0)\nif (1) {\n  noise().write(o1)\n}\nrender(o0)\n"));
+            expandSrc(libnoisemaker::JsText(u"search synth\nnoise().write(o0)\nif (1) {\n  noise().write(o1)\n}\nrender(o0)\n"));
         } catch (const std::runtime_error& e) {
-            error = nm::JsText::fromUtf8(std::string(e.what()));
+            error = libnoisemaker::JsText::fromUtf8(std::string(e.what()));
         }
-        check(error == nm::JsText(u"plan.chain is not iterable"),
+        check(error == libnoisemaker::JsText(u"plan.chain is not iterable"),
               "a Branch plan fails expansion with the reference's TypeError text");
         error.clear();
         try {
-            expandSrc(nm::JsText(u"search synth\nnoise().write(o0)\nreturn 3\nrender(o0)\n"));
+            expandSrc(libnoisemaker::JsText(u"search synth\nnoise().write(o0)\nreturn 3\nrender(o0)\n"));
         } catch (const std::runtime_error& e) {
-            error = nm::JsText::fromUtf8(std::string(e.what()));
+            error = libnoisemaker::JsText::fromUtf8(std::string(e.what()));
         }
-        check(error == nm::JsText(u"plan.chain is not iterable"), "a Return plan fails expansion the same way");
+        check(error == libnoisemaker::JsText(u"plan.chain is not iterable"), "a Return plan fails expansion the same way");
     }
 
     // ======================================================================
     // Chained variable alias expansion
     // ======================================================================
     {
-        const nm::JsText src = nm::JsText(
+        const libnoisemaker::JsText src = libnoisemaker::JsText(
             u"search synth, filter\nlet eff = rotate(1, 0.1)\nnoise().eff().write(o0)\nrender(o0)\n");
-        const nm::ExpandResult r = expandSrc(src);
+        const libnoisemaker::ExpandResult r = expandSrc(src);
         check(r.errors.isEmpty(), "chained variable alias: no expand errors");
         check(r.passes.size() == 3, "chained variable alias: exactly 3 passes (noise + rotate + write blit)");
-        const nm::ExpandedPass* noisePass = findPass(r, nm::JsText(u"node_0_pass_0"));
-        const nm::ExpandedPass* rotatePass = findPass(r, nm::JsText(u"node_1_pass_0"));
+        const libnoisemaker::ExpandedPass* noisePass = findPass(r, libnoisemaker::JsText(u"node_0_pass_0"));
+        const libnoisemaker::ExpandedPass* rotatePass = findPass(r, libnoisemaker::JsText(u"node_1_pass_0"));
         check(noisePass != nullptr && rotatePass != nullptr, "chained variable alias: both effect passes exist");
-        const nm::ExpandedPass* writePass = findPass(r, nm::JsText(u"node_2_write_blit"));
+        const libnoisemaker::ExpandedPass* writePass = findPass(r, libnoisemaker::JsText(u"node_2_write_blit"));
         check(writePass != nullptr, "chained variable alias: terminal write blit pass exists");
         if (writePass) {
             check(writePass->isBlit, "chained variable alias: terminal pass is blit");
-            check(findInput(*writePass, nm::JsText(u"src")) == nm::JsText(u"node_1_out"),
+            check(findInput(*writePass, libnoisemaker::JsText(u"src")) == libnoisemaker::JsText(u"node_1_out"),
                   "chained variable alias: blit reads node_1_out");
-            check(findOutput(*writePass, nm::JsText(u"color")) == nm::JsText(u"global_o0"),
+            check(findOutput(*writePass, libnoisemaker::JsText(u"color")) == libnoisemaker::JsText(u"global_o0"),
                   "chained variable alias: blit writes global_o0");
         }
     }
@@ -360,7 +360,7 @@ int main() {
     // mapping through (null when empty) for the runtime.
     // ======================================================================
     {
-        const nm::JsText src = nm::JsText(
+        const libnoisemaker::JsText src = libnoisemaker::JsText(
             u"search synth, filter, render, points, mixer\n"
             "perlin().subchain(name: \"emit\", id: \"e1\") {\n"
             "  .pointsEmit(stateSize: x256)\n"
@@ -368,40 +368,40 @@ int main() {
             "}\n"
             ".write(o0)\n"
             "render(o0)\n");
-        const nm::ExpandResult r = expandSrc(src);
+        const libnoisemaker::ExpandResult r = expandSrc(src);
         check(r.errors.isEmpty(), "pointsEmit subchain: no expand errors");
-        const nm::ExpandedPass* aliasPass = nullptr;
-        const nm::ExpandedPass* selfPass = nullptr;
-        for (const nm::ExpandedPass& p : r.passes) {
+        const libnoisemaker::ExpandedPass* aliasPass = nullptr;
+        const libnoisemaker::ExpandedPass* selfPass = nullptr;
+        for (const libnoisemaker::ExpandedPass& p : r.passes) {
             if (p.isBlit) {
                 check(p.uniformAliases.isEmpty(), "pointsEmit subchain: blit pass records no uniform aliases");
                 continue;
             }
-            if (p.uniforms.contains(nm::JsText(u"layoutMode"))) aliasPass = &p;
-            if (p.uniforms.contains(nm::JsText(u"attrition"))) selfPass = &p;
+            if (p.uniforms.contains(libnoisemaker::JsText(u"layoutMode"))) aliasPass = &p;
+            if (p.uniforms.contains(libnoisemaker::JsText(u"attrition"))) selfPass = &p;
         }
         check(aliasPass != nullptr && selfPass != nullptr,
               "pointsEmit subchain: the init pass (layoutMode) and the step pass (attrition) both exist");
         if (aliasPass) {
-            check(aliasPass->uniformAliases.value(nm::JsText(u"layoutMode")).toString() == nm::JsText(u"layout"),
+            check(aliasPass->uniformAliases.value(libnoisemaker::JsText(u"layoutMode")).toString() == libnoisemaker::JsText(u"layout"),
                   "the renamed init-pass uniform records uniformAliases { layoutMode: layout }");
-            check(!aliasPass->uniformAliases.contains(nm::JsText(u"attrition"))
-                      && !aliasPass->uniformAliases.contains(nm::JsText(u"resetState")),
+            check(!aliasPass->uniformAliases.contains(libnoisemaker::JsText(u"attrition"))
+                      && !aliasPass->uniformAliases.contains(libnoisemaker::JsText(u"resetState")),
                   "self-mapped pass uniforms record no alias entry");
         }
         if (selfPass) {
             check(selfPass->uniformAliases.isEmpty(),
                   "a pass whose uniforms all map globals under their own name records no aliases");
         }
-        const nm::JsObject graph(nm::Value(nm::compileGraphJson(src, registry())));
-        const nm::JsArray graphPasses = graph.value(nm::JsText(u"passes")).toArray();
+        const libnoisemaker::JsObject graph(libnoisemaker::Value(libnoisemaker::compileGraphJson(src, registry())));
+        const libnoisemaker::JsArray graphPasses = graph.value(libnoisemaker::JsText(u"passes")).toArray();
         bool sawAliasField = false;
-        for (const nm::JsValue& pv : graphPasses) {
-            const nm::JsObject gp = pv.toObject();
-            const nm::JsValue ua = gp.value(nm::JsText(u"uniformAliases"));
-            if (gp.value(nm::JsText(u"uniforms")).toObject().contains(nm::JsText(u"layoutMode"))) {
+        for (const libnoisemaker::JsValue& pv : graphPasses) {
+            const libnoisemaker::JsObject gp = pv.toObject();
+            const libnoisemaker::JsValue ua = gp.value(libnoisemaker::JsText(u"uniformAliases"));
+            if (gp.value(libnoisemaker::JsText(u"uniforms")).toObject().contains(libnoisemaker::JsText(u"layoutMode"))) {
                 sawAliasField = ua.isObject()
-                    && ua.toObject().value(nm::JsText(u"layoutMode")).toString() == nm::JsText(u"layout");
+                    && ua.toObject().value(libnoisemaker::JsText(u"layoutMode")).toString() == libnoisemaker::JsText(u"layout");
             } else {
                 check(ua.isUndefined(), "graph JSON: a pass without aliases omits uniformAliases");
             }
@@ -410,18 +410,18 @@ int main() {
     }
 
     {
-        const nm::ExpandResult r = expandSrc(nm::JsText(u"search synth\nnoise().write(o0)\nrender(o0)\n"));
-        const nm::JsObject blit = r.programs.value(nm::JsText(u"blit")).toObject();
-        check(blit.value(nm::JsText(u"fragmentEntryPoint")).toString() == nm::JsText(u"main")
-                  && blit.value(nm::JsText(u"fragment")).toString().startsWith(u"#version 300 es")
-                  && blit.value(nm::JsText(u"wgsl")).toString().find(u"textureSample") != nm::JsText::npos
-                  && !blit.contains(nm::JsText(u"defines")),
+        const libnoisemaker::ExpandResult r = expandSrc(libnoisemaker::JsText(u"search synth\nnoise().write(o0)\nrender(o0)\n"));
+        const libnoisemaker::JsObject blit = r.programs.value(libnoisemaker::JsText(u"blit")).toObject();
+        check(blit.value(libnoisemaker::JsText(u"fragmentEntryPoint")).toString() == libnoisemaker::JsText(u"main")
+                  && blit.value(libnoisemaker::JsText(u"fragment")).toString().startsWith(u"#version 300 es")
+                  && blit.value(libnoisemaker::JsText(u"wgsl")).toString().find(u"textureSample") != libnoisemaker::JsText::npos
+                  && !blit.contains(libnoisemaker::JsText(u"defines")),
               "built-in blit program retains source and the reference field set");
-        const nm::JsObject graph(nm::Value(nm::compileGraphJson(
-            nm::JsText(u"search synth\nnoise().write(o0)\nrender(o0)\n"), registry())));
-        check(graph.value(nm::JsText(u"programs")).toObject().value(nm::JsText(u"blit")).toObject().contains(nm::JsText(u"fragment")),
+        const libnoisemaker::JsObject graph(libnoisemaker::Value(libnoisemaker::compileGraphJson(
+            libnoisemaker::JsText(u"search synth\nnoise().write(o0)\nrender(o0)\n"), registry())));
+        check(graph.value(libnoisemaker::JsText(u"programs")).toObject().value(libnoisemaker::JsText(u"blit")).toObject().contains(libnoisemaker::JsText(u"fragment")),
               "compileGraphJson retains shader source for callers");
-        check(nm::hashSource(u"\U0001F600") == u"11zz7", "source hash uses both UTF-16 surrogate units");
+        check(libnoisemaker::hashSource(u"\U0001F600") == u"11zz7", "source hash uses both UTF-16 surrogate units");
     }
 
     if (g_failures == 0) {

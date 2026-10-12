@@ -8,7 +8,7 @@
 #include <limits>
 
 int main() {
-    using nm::Array; using nm::Object; using nm::Value; namespace json = nm::json;
+    using libnoisemaker::Array; using libnoisemaker::Object; using libnoisemaker::Value; namespace json = libnoisemaker::json;
     NM_CHECK(json::stringify(Value(-0.0)) == "0");
     NM_CHECK(json::stringify(Value(std::numeric_limits<double>::quiet_NaN())) == "null");
     NM_CHECK(json::stringify(Value(std::numeric_limits<double>::infinity())) == "null");
@@ -16,9 +16,9 @@ int main() {
     NM_CHECK(json::stringify(Value(0.1 + 0.2)) == "0.30000000000000004");
     NM_CHECK(json::stringify(Value(123456789012345680000.0)) == "123456789012345680000");
     NM_CHECK(json::stringify(Value(5e-7)) == "5e-7");
-    NM_CHECK(json::stringify(Value(nm::JsString(u"\xD800"))) == "\"\\ud800\"");
-    NM_CHECK(json::stringify(Value(nm::JsString(u"\u2028"))) == "\"\xE2\x80\xA8\"");
-    NM_CHECK(json::stringify(Value(nm::JsString(u"a\"b\\c\n"))) == "\"a\\\"b\\\\c\\n\"");
+    NM_CHECK(json::stringify(Value(libnoisemaker::JsString(u"\xD800"))) == "\"\\ud800\"");
+    NM_CHECK(json::stringify(Value(libnoisemaker::JsString(u"\u2028"))) == "\"\xE2\x80\xA8\"");
+    NM_CHECK(json::stringify(Value(libnoisemaker::JsString(u"a\"b\\c\n"))) == "\"a\\\"b\\\\c\\n\"");
     Object o;
     o.set(u"u", Value());
     o.set(u"n", Value::null());
@@ -31,10 +31,10 @@ int main() {
     NM_CHECK(json::parse("1e-400").as_number() == 0.0);
     double parsed = 23.0;
     const char* hex = "-0x1";
-    const auto hex_result = nm::parse_double(hex, hex + 4, parsed);
+    const auto hex_result = libnoisemaker::parse_double(hex, hex + 4, parsed);
     NM_CHECK(hex_result.ec == std::errc{} && hex_result.ptr == hex + 2 && std::signbit(parsed));
     const char* positive = "+1";
-    const auto positive_result = nm::parse_double(positive, positive + 2, parsed);
+    const auto positive_result = libnoisemaker::parse_double(positive, positive + 2, parsed);
     NM_CHECK(positive_result.ec == std::errc::invalid_argument && positive_result.ptr == positive);
     const std::string old_locale = std::setlocale(LC_NUMERIC, nullptr);
     if (std::setlocale(LC_NUMERIC, "de_DE.UTF-8")) {

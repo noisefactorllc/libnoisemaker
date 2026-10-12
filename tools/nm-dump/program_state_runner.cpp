@@ -19,11 +19,11 @@
 
 namespace nm_dump {
 namespace {
-using nm::Array;
-using nm::JsString;
-using nm::Object;
-using nm::Value;
-using State = nm::ProgramState<nm::MockHost>;
+using libnoisemaker::Array;
+using libnoisemaker::JsString;
+using libnoisemaker::Object;
+using libnoisemaker::Value;
+using State = libnoisemaker::ProgramState<libnoisemaker::MockHost>;
 
 Value field(const Value& object, const char16_t* key) {
     if (!object.is_object()) return {};
@@ -94,7 +94,7 @@ JsString string_field(const Value& value, const char16_t* key) {
     const Value item = field(value, key);
     return item.is_string() ? item.as_string() : JsString();
 }
-std::string json(const Value& value) { return nm::json::stringify(value); }
+std::string json(const Value& value) { return libnoisemaker::json::stringify(value); }
 void merge(Object& target, const Value& source) {
     if (!source.is_object()) return;
     for (const auto& key : source.as_object().keys()) {
@@ -108,13 +108,13 @@ void merge(Object& target, const Value& source) {
         } else target.set(key, item);
     }
 }
-Value error_record(const nm::JsError& error) {
+Value error_record(const libnoisemaker::JsError& error) {
     return object({{u"name", Value(error.name())}, {u"message", Value(error.message())}});
 }
-Value error_record(const nm::DslSyntaxError& error) {
+Value error_record(const libnoisemaker::DslSyntaxError& error) {
     return object({{u"name", Value(u"SyntaxError")}, {u"message", Value(error.message())}});
 }
-Value error_record(const nm::CompilationError& error) {
+Value error_record(const libnoisemaker::CompilationError& error) {
     Object thrown;
     thrown.set(u"code", Value(error.code()));
     if (error.code() == u"ERR_COMPILATION_FAILED")
@@ -128,15 +128,15 @@ Value error_record(const std::exception& error) {
     const bool type_error = message.rfind("Cannot read properties of ", 0) == 0 ||
         message == "plan.chain is not iterable";
     return object({{u"name", Value(type_error ? u"TypeError" : u"Error")},
-        {u"message", Value(nm::utf8_to_js(message))}});
+        {u"message", Value(libnoisemaker::utf8_to_js(message))}});
 }
 
 struct Scenario {
-    nm::EffectRegistry& registry;
+    libnoisemaker::EffectRegistry& registry;
     JsString name;
     std::unique_ptr<State> state;
-    std::optional<nm::MockHost> detached;
-    nm::MockMethods methods = nm::MockMethods::all();
+    std::optional<libnoisemaker::MockHost> detached;
+    libnoisemaker::MockMethods methods = libnoisemaker::MockMethods::all();
     std::vector<std::string> pass_json;
     std::unordered_map<std::string, std::string> last;
     std::unordered_map<JsString, State::Listener> listeners;
@@ -153,9 +153,9 @@ struct Scenario {
     Array logs;
     std::size_t index = 0;
 
-    Scenario(nm::EffectRegistry& registry, JsString name, const Value& host)
+    Scenario(libnoisemaker::EffectRegistry& registry, JsString name, const Value& host)
         : registry(registry), name(std::move(name)) {
-        nm::set_program_state_console([this](const JsString& level, const std::vector<Value>& args) {
+        libnoisemaker::set_program_state_console([this](const JsString& level, const std::vector<Value>& args) {
             Array encoded;
             for (const auto& argument : args) encoded.push_back(encode(argument));
             logs.push_back(object({{u"level", Value(level)}, {u"args", Value(encoded)}}));
@@ -170,28 +170,28 @@ struct Scenario {
         it->second = current;
         return encoded;
     }
-    nm::MockHost& mock() {
+    libnoisemaker::MockHost& mock() {
         if (state->renderer_mut()) return *state->renderer_mut();
         if (!detached) throw std::runtime_error("mock renderer missing");
         return *detached;
     }
-    const nm::MockHost& mock_ref() const {
+    const libnoisemaker::MockHost& mock_ref() const {
         if (state->renderer()) return *state->renderer();
         if (!detached) throw std::runtime_error("mock renderer missing");
         return *detached;
     }
     void new_state(const Value& host) {
         const Value renderer = field(host, u"renderer");
-        const bool attach = renderer.is_undefined() || nm::jsv::truthy(renderer);
+        const bool attach = renderer.is_undefined() || libnoisemaker::jsv::truthy(renderer);
         const JsString enums_name = string_field(host, u"enums");
         const JsString convert_name = string_field(host, u"convert");
         const Value method_names = field(host, u"methods");
         std::vector<JsString> names;
         if (method_names.is_array()) {
             for (const auto& item : method_names.as_array()) if (item.is_string()) names.push_back(item.as_string());
-            methods = nm::MockMethods::from_names(names);
-        } else methods = nm::MockMethods::all();
-        nm::MockHost host_value;
+            methods = libnoisemaker::MockMethods::from_names(names);
+        } else methods = libnoisemaker::MockMethods::all();
+        libnoisemaker::MockHost host_value;
         if (enums_name == u"none") host_value.enums = Value();
         else if (enums_name == u"empty") host_value.enums = Value(Object{});
         else if (enums_name == u"std") host_value.enums = registry.enums().std().raw();
@@ -200,8 +200,8 @@ struct Scenario {
             merge(combined, registry.enums().project().raw());
             host_value.enums = Value(combined);
         }
-        host_value.convert = convert_name == u"passthrough" ? nm::MockConvert::Passthrough
-            : convert_name == u"absent" ? nm::MockConvert::Absent : nm::MockConvert::Canvas;
+        host_value.convert = convert_name == u"passthrough" ? libnoisemaker::MockConvert::Passthrough
+            : convert_name == u"absent" ? libnoisemaker::MockConvert::Absent : libnoisemaker::MockConvert::Canvas;
         state = std::make_unique<State>(registry);
         if (attach) { state->set_renderer(std::move(host_value)); detached.reset(); }
         else { detached = std::move(host_value); state->set_renderer(std::nullopt); }
@@ -213,8 +213,8 @@ struct Scenario {
         for (const char16_t* event : {u"change", u"stepchange", u"structurechange", u"reset",
                                       u"load", u"recompileNeeded", u"mediachange", u"textchange"}) {
             const JsString label(event);
-            state->on(label, [this, label](nm::ProgramStateCore&, const Value& data) {
-                const std::string key = "ev." + nm::js_to_utf8(label);
+            state->on(label, [this, label](libnoisemaker::ProgramStateCore&, const Value& data) {
+                const std::string key = "ev." + libnoisemaker::js_to_utf8(label);
                 events.push_back(object({{u"l", Value(u"*")}, {u"e", Value(label)},
                                          {u"d", same(key, encode(data))}}));
             });
@@ -222,12 +222,12 @@ struct Scenario {
     }
 
     Value host_load(const JsString& dsl, bool set_dsl) {
-        nm::MockHost& host = mock();
+        libnoisemaker::MockHost& host = mock();
         if (set_dsl) host.current_dsl = dsl;
         try {
-            Value graph(nm::compileGraphJson(dsl, registry));
+            Value graph(libnoisemaker::compileGraphJson(dsl, registry));
             const Value passes = field(graph, u"passes");
-            nm::MockPipeline pipeline;
+            libnoisemaker::MockPipeline pipeline;
             pipeline.graph = std::move(graph);
             pipeline.methods = methods;
             host.pipeline = std::move(pipeline);
@@ -245,15 +245,15 @@ struct Scenario {
                 }
             }
             return object({{u"passes", Value(std::move(summaries))}});
-        } catch (const nm::JsError& error) {
+        } catch (const libnoisemaker::JsError& error) {
             host.pipeline.reset();
             pass_json.clear();
             return object({{u"error", error_record(error)}});
-        } catch (const nm::DslSyntaxError& error) {
+        } catch (const libnoisemaker::DslSyntaxError& error) {
             host.pipeline.reset();
             pass_json.clear();
             return object({{u"error", error_record(error)}});
-        } catch (const nm::CompilationError& error) {
+        } catch (const libnoisemaker::CompilationError& error) {
             host.pipeline.reset();
             pass_json.clear();
             return object({{u"error", error_record(error)}});
@@ -266,18 +266,18 @@ struct Scenario {
 
     double number_arg(const Value& op, const char16_t* key) const {
         const Value number = decode(field(op, key));
-        if (!number.is_number()) throw std::runtime_error(nm::js_to_utf8(JsString(key)) + " must be a number");
+        if (!number.is_number()) throw std::runtime_error(libnoisemaker::js_to_utf8(JsString(key)) + " must be a number");
         return number.as_number();
     }
-    nm::JsError make_error(const Value& spec) const {
+    libnoisemaker::JsError make_error(const Value& spec) const {
         const Value name = field(spec, u"name");
         const Value message = field(spec, u"message");
-        return nm::JsError(name.is_string() ? name.as_string() : JsString(u"Error"),
+        return libnoisemaker::JsError(name.is_string() ? name.as_string() : JsString(u"Error"),
                            message.is_string() ? message.as_string() : JsString());
     }
     void on_listener(const JsString& event, const JsString& id, bool once = false) {
         auto it = listeners.find(id);
-        if (it == listeners.end()) throw std::runtime_error("undefined listener " + nm::js_to_utf8(id));
+        if (it == listeners.end()) throw std::runtime_error("undefined listener " + libnoisemaker::js_to_utf8(id));
         const std::size_t generation = listener_generations[id];
         auto& registrations = listener_ids[id];
         if (!once && std::any_of(registrations.begin(), registrations.end(), [&](const Registration& item) {
@@ -321,10 +321,10 @@ struct Scenario {
         if (name == u"batch") {
             Array results;
             const Value nested = field(op, u"ops");
-            state->batch([&](nm::ProgramStateCore&) {
+            state->batch([&](libnoisemaker::ProgramStateCore&) {
                 if (nested.is_array()) for (const auto& action : nested.as_array()) results.push_back(run_state_op(action));
                 const Value thrown = field(op, u"throw");
-                if (nm::jsv::truthy(thrown)) throw make_error(thrown);
+                if (libnoisemaker::jsv::truthy(thrown)) throw make_error(thrown);
             });
             return Value(results);
         }
@@ -337,7 +337,7 @@ struct Scenario {
         if (name == u"getCompiled") return state->get_compiled();
         if (name == u"getEffectDef") {
             const Value def = state->get_effect_def(s(u"stepKey"));
-            if (!nm::jsv::truthy(def)) return Value::null();
+            if (!libnoisemaker::jsv::truthy(def)) return Value::null();
             return object({{u"func", field(def, u"func")}, {u"namespace", field(def, u"namespace")}});
         }
         if (name == u"stepCount") return Value(static_cast<double>(state->step_count()));
@@ -372,7 +372,7 @@ struct Scenario {
             const JsString id = s(u"id");
             const Value actions = field(op, u"actions");
             listener_generations[id] = next_listener_generation++;
-            listeners[id] = [this, id, actions](nm::ProgramStateCore&, const Value& data) {
+            listeners[id] = [this, id, actions](libnoisemaker::ProgramStateCore&, const Value& data) {
                 if (!actions.is_array()) return;
                 for (const auto& action : actions.as_array()) {
                     const JsString doing = string_field(action, u"do");
@@ -392,10 +392,10 @@ struct Scenario {
                         try {
                             events.push_back(object({{u"l", Value(id)}, {u"n", nested_name},
                                                      {u"r", encode(run_state_op(nested))}}));
-                        } catch (const nm::JsError& error) {
+                        } catch (const libnoisemaker::JsError& error) {
                             events.push_back(object({{u"l", Value(id)}, {u"n", nested_name},
                                                      {u"x", error_record(error)}}));
-                            if (nm::jsv::truthy(field(action, u"rethrow"))) throw;
+                            if (libnoisemaker::jsv::truthy(field(action, u"rethrow"))) throw;
                         }
                     }
                 }
@@ -410,8 +410,8 @@ struct Scenario {
             remove_all_listeners(event.is_string() ? std::optional<JsString>(event.as_string()) : std::nullopt);
             return {};
         }
-        if (name == u"extractEffectsFromDsl") return nm::extract_effects_from_dsl(s(u"dsl"), registry);
-        throw nm::JsError(u"Error", u"unknown op " + name);
+        if (name == u"extractEffectsFromDsl") return libnoisemaker::extract_effects_from_dsl(s(u"dsl"), registry);
+        throw libnoisemaker::JsError(u"Error", u"unknown op " + name);
     }
 
     Value run_op(const Value& op) {
@@ -426,7 +426,7 @@ struct Scenario {
             std::vector<JsString> names;
             if (values.is_array()) for (const auto& value : values.as_array())
                 if (value.is_string()) names.push_back(value.as_string());
-            methods = nm::MockMethods::from_names(names);
+            methods = libnoisemaker::MockMethods::from_names(names);
             return {};
         }
         if (name == u"host.setEnums") {
@@ -442,7 +442,7 @@ struct Scenario {
             return {};
         }
         if (name == u"setRenderer") {
-            if (nm::jsv::truthy(field(op, u"renderer"))) {
+            if (libnoisemaker::jsv::truthy(field(op, u"renderer"))) {
                 if (!state->renderer()) { state->set_renderer(std::move(detached)); detached.reset(); }
             } else if (state->renderer()) detached = state->take_renderer();
             return {};
@@ -456,7 +456,7 @@ struct Scenario {
             else if (kind == u"std") enums = registry.enums().std().raw();
             else { Object combined = registry.enums().std().raw().as_object();
                    merge(combined, registry.enums().project().raw()); enums = Value(combined); }
-            return nm::convert_parameter_for_uniform(decode(field(op, u"value")),
+            return libnoisemaker::convert_parameter_for_uniform(decode(field(op, u"value")),
                                                      decode(field(op, u"spec")), enums);
         }
         if (name == u"resolveEnumValue") {
@@ -467,7 +467,7 @@ struct Scenario {
             else if (kind == u"std") enums = registry.enums().std().raw();
             else { Object combined = registry.enums().std().raw().as_object();
                    merge(combined, registry.enums().project().raw()); enums = Value(combined); }
-            return nm::resolve_enum_value(decode(field(op, u"path")), enums);
+            return libnoisemaker::resolve_enum_value(decode(field(op, u"path")), enums);
         }
         return run_state_op(op);
     }
@@ -486,7 +486,7 @@ struct Scenario {
         return result;
     }
     Value uniform_deltas() {
-        const nm::MockHost& host = mock_ref();
+        const libnoisemaker::MockHost& host = mock_ref();
         if (!host.pipeline) return Value(Array{});
         const Value passes = field(host.pipeline->graph, u"passes");
         if (!passes.is_array()) return Value(Array{});
@@ -507,7 +507,7 @@ struct Scenario {
         Object out;
         for (const char16_t* key : {u"steps", u"structure", u"compiled", u"routing", u"media", u"text"}) {
             const JsString cache_key = u"st." + JsString(key);
-            out.set(key, same(nm::js_to_utf8(cache_key), encode(field(raw, key))));
+            out.set(key, same(libnoisemaker::js_to_utf8(cache_key), encode(field(raw, key))));
         }
         out.set(u"batch", encode(field(raw, u"batch")));
         out.set(u"dsl", state->renderer() ? encode(field(raw, u"dsl")) : Value::null());
@@ -524,14 +524,14 @@ struct Scenario {
             Value result = encode(run_op(op));
             if (op_name == u"getStructure" || op_name == u"getCompiled" ||
                 op_name == u"getAllStepValues" || op_name == u"serialize") {
-                result = same("res." + nm::js_to_utf8(op_name), result);
+                result = same("res." + libnoisemaker::js_to_utf8(op_name), result);
             }
             record.set(u"r", result);
-        } catch (const nm::JsError& error) {
+        } catch (const libnoisemaker::JsError& error) {
             record.set(u"x", error_record(error));
-        } catch (const nm::DslSyntaxError& error) {
+        } catch (const libnoisemaker::DslSyntaxError& error) {
             record.set(u"x", error_record(error));
-        } catch (const nm::CompilationError& error) {
+        } catch (const libnoisemaker::CompilationError& error) {
             record.set(u"x", error_record(error));
         } catch (const std::exception& error) {
             record.set(u"x", error_record(error));
@@ -561,12 +561,12 @@ int run_program_state_full(int argc, char** argv) {
         std::cerr << "nm-dump run: cannot open input/output\n";
         return 2;
     }
-    nm::EffectRegistry registry;
+    libnoisemaker::EffectRegistry registry;
     registry.loadEmbedded();
     std::string line;
     while (std::getline(input, line)) {
         if (line.empty()) continue;
-        const Value scenario = nm::json::parse(line);
+        const Value scenario = libnoisemaker::json::parse(line);
         if (!field(scenario, u"suite").is_undefined()) continue;
         Scenario context(registry, string_field(scenario, u"name"), field(scenario, u"host"));
         const Value ops = field(scenario, u"ops");

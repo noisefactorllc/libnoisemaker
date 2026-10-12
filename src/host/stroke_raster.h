@@ -15,7 +15,7 @@
 #include <limits>
 #include <vector>
 
-namespace nm::raster {
+namespace libnoisemaker::raster {
 
 // ------------------------------------------------------------ conversions
 // Float to integer conversions that saturate, NaN giving 0: the arithmetic
@@ -216,4 +216,4 @@ private:
 // `canvas` bounds (stroke_fill.cpp).
 void fillStroke(Pt p0, Pt p1, float width, const IRect& canvas, Blitter& blitter);
 
-} // namespace nm::raster
+} // namespace libnoisemaker::raster

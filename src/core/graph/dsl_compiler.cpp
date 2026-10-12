@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -203,9 +203,9 @@ JsString hashSource(const JsString& source) {
 
 Object compileGraphJson(const JsString& source, EffectRegistry& registry,
                         const Object& options) {
-    const auto tokens = nm::lex(source);
-    const JsObject ast(nm::parse(tokens, Value(options)));
-    const JsObject validated = nm::validate(ast, registry);
+    const auto tokens = libnoisemaker::lex(source);
+    const JsObject ast(libnoisemaker::parse(tokens, Value(options)));
+    const JsObject validated = libnoisemaker::validate(ast, registry);
 
     const JsArray diagnostics = validated.value(JsText(u"diagnostics")).toArray();
     for (const JsValue& dv : diagnostics) {
@@ -214,7 +214,7 @@ Object compileGraphJson(const JsString& source, EffectRegistry& registry,
         }
     }
 
-    ExpandResult expanded = nm::expand(validated, registry, JsObject(Value(options)));
+    ExpandResult expanded = libnoisemaker::expand(validated, registry, JsObject(Value(options)));
     if (!expanded.errors.isEmpty()) {
         throw CompilationError(JsText(u"ERR_EXPANSION_FAILED"), JsArray(), expanded.errors);
     }
@@ -229,7 +229,7 @@ Object compileGraphJson(const JsString& source, EffectRegistry& registry,
         for (const auto& kv : p.outputs) io.outputs.append(kv.second);
         passIOs.append(io);
     }
-    const auto allocationsMap = nm::allocateResources(passIOs);
+    const auto allocationsMap = libnoisemaker::allocateResources(passIOs);
     JsObject allocations;
     for (auto it = allocationsMap.constBegin(); it != allocationsMap.constEnd(); ++it) {
         allocations.insert(it.key(), it.value());
@@ -242,15 +242,15 @@ Object compileGraphJson(const JsString& source, EffectRegistry& registry,
                           expanded.programs, expanded.mediaSteps).raw().as_object();
 }
 
-nm::Graph compileGraph(const JsString& source, EffectRegistry& registry,
+libnoisemaker::Graph compileGraph(const JsString& source, EffectRegistry& registry,
                        const Object& options) {
-    return nm::Graph::fromJson(json::stringify(Value(compileGraphJson(source, registry, options))));
+    return libnoisemaker::Graph::fromJson(json::stringify(Value(compileGraphJson(source, registry, options))));
 }
 
-nm::Graph compileGraph(const JsString& source, const Object& options) {
+libnoisemaker::Graph compileGraph(const JsString& source, const Object& options) {
     EffectRegistry registry;
     registry.loadEmbedded();
     return compileGraph(source, registry, options);
 }
 
-} // namespace nm
+} // namespace libnoisemaker

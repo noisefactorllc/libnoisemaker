@@ -1,4 +1,4 @@
-// Unit tests for nm::js::checkFunctionBody (qt/noisemaker/compiler/
+// Unit tests for libnoisemaker::js::checkFunctionBody (qt/noisemaker/compiler/
 // js_syntax.{h,cpp}): whether V8's `new Function('state', body)` accepts a
 // body. Plain assert-style checks, no test framework dependency.
 //
@@ -19,8 +19,8 @@ namespace {
 
 int g_failures = 0;
 
-void check(bool condition, const nm::JsString& description) {
-    std::printf("%s: %s\n", condition ? "PASS" : "FAIL", nm::js_to_utf8(description).c_str());
+void check(bool condition, const libnoisemaker::JsString& description) {
+    std::printf("%s: %s\n", condition ? "PASS" : "FAIL", libnoisemaker::js_to_utf8(description).c_str());
     if (!condition) ++g_failures;
 }
 
@@ -246,25 +246,25 @@ const Case kCases[] = {
 
 int main() {
     for (const Case& c : kCases) {
-        const nm::JsString body = nm::JsString(c.body);
-        const nm::js::CheckResult r = nm::js::checkFunctionBody(nm::JsString(u"state"), body);
-        const nm::js::Verdict expected = c.valid ? nm::js::Verdict::Valid : nm::js::Verdict::Invalid;
+        const libnoisemaker::JsString body = libnoisemaker::JsString(c.body);
+        const libnoisemaker::js::CheckResult r = libnoisemaker::js::checkFunctionBody(libnoisemaker::JsString(u"state"), body);
+        const libnoisemaker::js::Verdict expected = c.valid ? libnoisemaker::js::Verdict::Valid : libnoisemaker::js::Verdict::Invalid;
         check(r.verdict == expected, body + (c.valid ? u" -> valid " : u" -> invalid ") + r.detail);
     }
 
     // Nesting deeper than the checker follows is not decided (V8 itself
     // throws RangeError on deep enough input, at a stack-dependent depth).
-    const nm::JsString deep = nm::JsString(300, u'(') + nm::JsString(u"a") + nm::JsString(300, u')');
-    check(nm::js::checkFunctionBody(nm::JsString(u"state"), deep).verdict == nm::js::Verdict::Unsupported,
-          nm::JsString(u"300 nested parentheses -> unsupported"));
-    const nm::JsString deepRegex = nm::JsString(u"x = /") + nm::JsString(500, u'(') + nm::JsString(u"a")
-                              + nm::JsString(500, u')') + nm::JsString(u"/");
-    check(nm::js::checkFunctionBody(nm::JsString(u"state"), deepRegex).verdict == nm::js::Verdict::Unsupported,
-          nm::JsString(u"500 nested regular-expression groups -> unsupported"));
-    nm::JsString longChain = nm::JsString(u"x = a");
-    for (int i = 0; i < 5000; ++i) longChain += nm::JsString(u" + a");
-    check(nm::js::checkFunctionBody(nm::JsString(u"state"), longChain).verdict == nm::js::Verdict::Valid,
-          nm::JsString(u"a 5000-term sum stays decidable (left-associative chains do not nest)"));
+    const libnoisemaker::JsString deep = libnoisemaker::JsString(300, u'(') + libnoisemaker::JsString(u"a") + libnoisemaker::JsString(300, u')');
+    check(libnoisemaker::js::checkFunctionBody(libnoisemaker::JsString(u"state"), deep).verdict == libnoisemaker::js::Verdict::Unsupported,
+          libnoisemaker::JsString(u"300 nested parentheses -> unsupported"));
+    const libnoisemaker::JsString deepRegex = libnoisemaker::JsString(u"x = /") + libnoisemaker::JsString(500, u'(') + libnoisemaker::JsString(u"a")
+                              + libnoisemaker::JsString(500, u')') + libnoisemaker::JsString(u"/");
+    check(libnoisemaker::js::checkFunctionBody(libnoisemaker::JsString(u"state"), deepRegex).verdict == libnoisemaker::js::Verdict::Unsupported,
+          libnoisemaker::JsString(u"500 nested regular-expression groups -> unsupported"));
+    libnoisemaker::JsString longChain = libnoisemaker::JsString(u"x = a");
+    for (int i = 0; i < 5000; ++i) longChain += libnoisemaker::JsString(u" + a");
+    check(libnoisemaker::js::checkFunctionBody(libnoisemaker::JsString(u"state"), longChain).verdict == libnoisemaker::js::Verdict::Valid,
+          libnoisemaker::JsString(u"a 5000-term sum stays decidable (left-associative chains do not nest)"));
 
     if (g_failures == 0) {
         std::printf("ALL PASS (test_js_syntax)\n");

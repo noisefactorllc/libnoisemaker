@@ -15,27 +15,27 @@
 
 namespace nm_dump {
 namespace {
-struct JsThrown { nm::Value value; };
+struct JsThrown { libnoisemaker::Value value; };
 
-nm::Value field(const nm::Value& base, const char16_t* key) {
+libnoisemaker::Value field(const libnoisemaker::Value& base, const char16_t* key) {
     if (!base.is_object()) return {};
-    const nm::Value* value = base.as_object().find(key);
-    return value ? *value : nm::Value();
+    const libnoisemaker::Value* value = base.as_object().find(key);
+    return value ? *value : libnoisemaker::Value();
 }
 
-nm::Value tagged(const char16_t* name) {
-    nm::Object out;
-    out.set(u"$js", nm::Value(name));
-    return nm::Value(out);
+libnoisemaker::Value tagged(const char16_t* name) {
+    libnoisemaker::Object out;
+    out.set(u"$js", libnoisemaker::Value(name));
+    return libnoisemaker::Value(out);
 }
 
-nm::Value encode(const nm::Value& value) {
+libnoisemaker::Value encode(const libnoisemaker::Value& value) {
     if (value.is_undefined()) return tagged(u"undefined");
     if (value.is_function()) {
-        nm::Object out;
-        out.set(u"$js", nm::Value(u"function"));
-        out.set(u"source", nm::Value(value.as_string()));
-        return nm::Value(out);
+        libnoisemaker::Object out;
+        out.set(u"$js", libnoisemaker::Value(u"function"));
+        out.set(u"source", libnoisemaker::Value(value.as_string()));
+        return libnoisemaker::Value(out);
     }
     if (value.is_number()) {
         const double number = value.as_number();
@@ -44,184 +44,184 @@ nm::Value encode(const nm::Value& value) {
         if (number == 0 && std::signbit(number)) return tagged(u"-0");
     }
     if (value.is_array()) {
-        nm::Array out;
+        libnoisemaker::Array out;
         for (const auto& item : value.as_array()) out.push_back(encode(item));
-        return nm::Value(out);
+        return libnoisemaker::Value(out);
     }
     if (value.is_object()) {
-        nm::Object out;
+        libnoisemaker::Object out;
         for (const auto& key : value.as_object().keys()) {
             out.set(key, encode(*value.as_object().find(key)));
         }
         if (out.find(u"$js")) {
-            nm::Object wrapper;
-            wrapper.set(u"$js", nm::Value(u"object"));
-            wrapper.set(u"members", nm::Value(out));
-            return nm::Value(wrapper);
+            libnoisemaker::Object wrapper;
+            wrapper.set(u"$js", libnoisemaker::Value(u"object"));
+            wrapper.set(u"members", libnoisemaker::Value(out));
+            return libnoisemaker::Value(wrapper);
         }
-        return nm::Value(out);
+        return libnoisemaker::Value(out);
     }
     return value;
 }
 
-nm::Value decode(const nm::Value& value) {
+libnoisemaker::Value decode(const libnoisemaker::Value& value) {
     if (value.is_array()) {
-        nm::Array result;
+        libnoisemaker::Array result;
         for (const auto& item : value.as_array()) result.push_back(decode(item));
-        return nm::Value(result);
+        return libnoisemaker::Value(result);
     }
     if (!value.is_object()) return value;
-    const nm::Value tag = field(value, u"$js");
+    const libnoisemaker::Value tag = field(value, u"$js");
     if (tag.is_string()) {
         const auto& name = tag.as_string();
         if (name == u"undefined") return {};
-        if (name == u"NaN") return nm::Value(std::numeric_limits<double>::quiet_NaN());
-        if (name == u"Infinity") return nm::Value(std::numeric_limits<double>::infinity());
-        if (name == u"-Infinity") return nm::Value(-std::numeric_limits<double>::infinity());
-        if (name == u"-0") return nm::Value(-0.0);
+        if (name == u"NaN") return libnoisemaker::Value(std::numeric_limits<double>::quiet_NaN());
+        if (name == u"Infinity") return libnoisemaker::Value(std::numeric_limits<double>::infinity());
+        if (name == u"-Infinity") return libnoisemaker::Value(-std::numeric_limits<double>::infinity());
+        if (name == u"-0") return libnoisemaker::Value(-0.0);
         if (name == u"function") {
-            const nm::Value source = field(value, u"source");
-            return nm::Value::function(source.is_string() ? source.as_string() : nm::JsString());
+            const libnoisemaker::Value source = field(value, u"source");
+            return libnoisemaker::Value::function(source.is_string() ? source.as_string() : libnoisemaker::JsString());
         }
         if (name == u"Float32Array" || name == u"Float64Array") {
-            const nm::Value values = field(value, u"values");
-            return values.is_array() ? decode(values) : nm::Value(nm::Array{});
+            const libnoisemaker::Value values = field(value, u"values");
+            return values.is_array() ? decode(values) : libnoisemaker::Value(libnoisemaker::Array{});
         }
-        if (name == u"Map") return nm::Value(nm::Object{});
+        if (name == u"Map") return libnoisemaker::Value(libnoisemaker::Object{});
         if (name == u"object") {
-            const nm::Value members = field(value, u"members");
-            return members.is_object() ? decode(members) : nm::Value(nm::Object{});
+            const libnoisemaker::Value members = field(value, u"members");
+            return members.is_object() ? decode(members) : libnoisemaker::Value(libnoisemaker::Object{});
         }
         if (name == u"error") {
-            nm::Object error;
+            libnoisemaker::Object error;
             error.set(u"name", field(value, u"name"));
             error.set(u"message", field(value, u"message"));
-            return nm::Value(error);
+            return libnoisemaker::Value(error);
         }
         if (name == u"effectInstance") {
-            const nm::Value props = field(value, u"props");
-            return props.is_object() ? decode(props) : nm::Value(nm::Object{});
+            const libnoisemaker::Value props = field(value, u"props");
+            return props.is_object() ? decode(props) : libnoisemaker::Value(libnoisemaker::Object{});
         }
-        if (name == u"effectSubclass") return nm::Value::function(u"class extends Effect {}");
+        if (name == u"effectSubclass") return libnoisemaker::Value::function(u"class extends Effect {}");
     }
-    nm::Object result;
+    libnoisemaker::Object result;
     for (const auto& key : value.as_object().keys()) {
         result.set(key, decode(*value.as_object().find(key)));
     }
-    return nm::Value(result);
+    return libnoisemaker::Value(result);
 }
 
-nm::EffectRegistry& registry_instance() {
-    static nm::EffectRegistry registry;
+libnoisemaker::EffectRegistry& registry_instance() {
+    static libnoisemaker::EffectRegistry registry;
     static const bool loaded = (registry.loadEmbedded(), true);
     (void)loaded;
     return registry;
 }
 
-nm::Value run_case(const nm::Value& item) {
-    const nm::Value op = field(item, u"op");
+libnoisemaker::Value run_case(const libnoisemaker::Value& item) {
+    const libnoisemaker::Value op = field(item, u"op");
     if (!op.is_string()) throw std::runtime_error("case has no op");
-    nm::EffectRegistry& registry = registry_instance();
-    const nm::UnparseOptions options = nm::UnparseOptions::from_value(
+    libnoisemaker::EffectRegistry& registry = registry_instance();
+    const libnoisemaker::UnparseOptions options = libnoisemaker::UnparseOptions::from_value(
         decode(field(item, u"options")), &registry);
     if (op.as_string() == u"formatValue") {
-        return nm::format_value(decode(field(item, u"value")),
+        return libnoisemaker::format_value(decode(field(item, u"value")),
                                 decode(field(item, u"spec")), options,
                                 decode(field(item, u"sourceForm")));
     }
     if (op.as_string() == u"unparseCall") {
-        return nm::Value(nm::unparse_call(decode(field(item, u"call")), options));
+        return libnoisemaker::Value(libnoisemaker::unparse_call(decode(field(item, u"call")), options));
     }
     if (op.as_string() == u"unparseChain") {
-        return nm::Value(nm::unparse_chain(decode(field(item, u"chain")), options));
+        return libnoisemaker::Value(libnoisemaker::unparse_chain(decode(field(item, u"chain")), options));
     }
     if (op.as_string() == u"unparse") {
-        return nm::Value(nm::unparse(decode(field(item, u"compiled")),
+        return libnoisemaker::Value(libnoisemaker::unparse(decode(field(item, u"compiled")),
                                      decode(field(item, u"overrides")), options, registry));
     }
     if (op.as_string() == u"listSteps") {
-        return nm::list_steps(decode(field(item, u"compiled")),
+        return libnoisemaker::list_steps(decode(field(item, u"compiled")),
                               decode(field(item, u"options")), registry);
     }
     if (op.as_string() == u"replaceEffect") {
-        return nm::replace_effect(decode(field(item, u"compiled")),
+        return libnoisemaker::replace_effect(decode(field(item, u"compiled")),
                                   decode(field(item, u"stepIndex")),
                                   decode(field(item, u"newEffectName")),
                                   decode(field(item, u"newArgs")),
                                   decode(field(item, u"options")), registry);
     }
     if (op.as_string() == u"replaceEffectUnparse") {
-        const nm::Value result = nm::replace_effect(decode(field(item, u"compiled")),
+        const libnoisemaker::Value result = libnoisemaker::replace_effect(decode(field(item, u"compiled")),
             decode(field(item, u"stepIndex")), decode(field(item, u"newEffectName")),
             decode(field(item, u"newArgs")), decode(field(item, u"options")), registry);
-        const nm::Value success = field(result, u"success");
-        nm::Object output;
+        const libnoisemaker::Value success = field(result, u"success");
+        libnoisemaker::Object output;
         output.set(u"success", success);
         output.set(u"error", field(result, u"error"));
         if (success.is_bool() && success.as_bool()) {
-            const auto unparse_options = nm::UnparseOptions::from_value(
+            const auto unparse_options = libnoisemaker::UnparseOptions::from_value(
                 decode(field(item, u"unparseOptions")), &registry);
-            output.set(u"dsl", nm::Value(nm::unparse(field(result, u"program"), nm::Value(nm::Object{}),
+            output.set(u"dsl", libnoisemaker::Value(libnoisemaker::unparse(field(result, u"program"), libnoisemaker::Value(libnoisemaker::Object{}),
                                                    unparse_options, registry)));
         } else {
-            output.set(u"dsl", nm::Value());
+            output.set(u"dsl", libnoisemaker::Value());
         }
-        return nm::Value(output);
+        return libnoisemaker::Value(output);
     }
     if (op.as_string() == u"getCompatibleReplacements") {
-        return nm::get_compatible_replacements(decode(field(item, u"compiled")),
+        return libnoisemaker::get_compatible_replacements(decode(field(item, u"compiled")),
                                                decode(field(item, u"stepIndex")),
                                                decode(field(item, u"options")), registry);
     }
     if (op.as_string() == u"predictReplacement") {
-        return nm::predict_replacement(decode(field(item, u"resolvedName")),
+        return libnoisemaker::predict_replacement(decode(field(item, u"resolvedName")),
                                        decode(field(item, u"spec")),
                                        decode(field(item, u"newArgs")),
                                        decode(field(item, u"oldInstance")),
                                        decode(field(item, u"options")), registry);
     }
     if (op.as_string() == u"applyParameterUpdates") {
-        const nm::Value compile_error = field(item, u"compileError");
+        const libnoisemaker::Value compile_error = field(item, u"compileError");
         if (!compile_error.is_undefined()) {
             if (field(compile_error, u"$js").is_string() &&
                 field(compile_error, u"$js").as_string() == u"error") {
-                throw nm::JsError(nm::jsv::to_string(field(compile_error, u"name")),
-                                  nm::jsv::to_string(field(compile_error, u"message")));
+                throw libnoisemaker::JsError(libnoisemaker::jsv::to_string(field(compile_error, u"name")),
+                                  libnoisemaker::jsv::to_string(field(compile_error, u"message")));
             }
             throw JsThrown{decode(compile_error)};
         }
-        return nm::Value(nm::apply_parameter_updates(
-            nm::jsv::to_string(decode(field(item, u"dsl"))), decode(field(item, u"compiled")),
+        return libnoisemaker::Value(libnoisemaker::apply_parameter_updates(
+            libnoisemaker::jsv::to_string(decode(field(item, u"dsl"))), decode(field(item, u"compiled")),
             decode(field(item, u"updates")), registry));
     }
     if (op.as_string() == u"validateEffectDefinition") {
-        nm::Array errors;
-        const nm::Value definition = field(item, u"definition");
-        const nm::Value definition_tag = field(definition, u"$js");
-        nm::Value input = decode(definition);
+        libnoisemaker::Array errors;
+        const libnoisemaker::Value definition = field(item, u"definition");
+        const libnoisemaker::Value definition_tag = field(definition, u"$js");
+        libnoisemaker::Value input = decode(definition);
         if (definition_tag.is_string() && (definition_tag.as_string() == u"effectInstance" ||
                                            definition_tag.as_string() == u"effectSubclass")) {
-            nm::Object wrapper = definition.as_object();
+            libnoisemaker::Object wrapper = definition.as_object();
             if (definition_tag.as_string() == u"effectInstance")
                 wrapper.set(u"props", decode(field(definition, u"props")));
             else wrapper.set(u"statics", decode(field(definition, u"statics")));
-            input = nm::Value(wrapper);
+            input = libnoisemaker::Value(wrapper);
         }
-        for (const auto& message : nm::validateEffectDefinition(input)) {
-            errors.emplace_back(nm::utf8_to_js(message));
+        for (const auto& message : libnoisemaker::validateEffectDefinition(input)) {
+            errors.emplace_back(libnoisemaker::utf8_to_js(message));
         }
-        return nm::Value(std::move(errors));
+        return libnoisemaker::Value(std::move(errors));
     }
     if (op.as_string() == u"formatDslError") {
-        nm::Value error = field(item, u"error");
-        const nm::Value tag = field(error, u"$js");
+        libnoisemaker::Value error = field(item, u"error");
+        const libnoisemaker::Value tag = field(error, u"$js");
         if (tag.is_string() && tag.as_string() != u"error") error = decode(error);
-        return nm::Value(nm::format_dsl_error(decode(field(item, u"source")),
+        return libnoisemaker::Value(libnoisemaker::format_dsl_error(decode(field(item, u"source")),
                                               error,
                                               decode(field(item, u"options"))));
     }
     if (op.as_string() == u"isDslSyntaxError") {
-        return nm::Value(nm::is_dsl_syntax_error(field(item, u"error")));
+        return libnoisemaker::Value(libnoisemaker::is_dsl_syntax_error(field(item, u"error")));
     }
     throw std::runtime_error("not implemented");
 }
@@ -240,36 +240,36 @@ int cases(int argc, char** argv) {
     std::string line;
     while (std::getline(input, line)) {
         if (line.empty()) continue;
-        const nm::Value item = nm::json::parse(line);
-        const nm::Value setup = field(item, u"setup");
+        const libnoisemaker::Value item = libnoisemaker::json::parse(line);
+        const libnoisemaker::Value setup = field(item, u"setup");
         if (!setup.is_undefined()) {
             if (setup.is_array()) {
                 for (const auto& action : setup.as_array()) registry_instance().applySetup(decode(action));
             }
             continue;
         }
-        nm::Object record;
+        libnoisemaker::Object record;
         record.set(u"id", field(item, u"id"));
         record.set(u"category", field(item, u"category"));
         try {
             record.set(u"result", encode(run_case(item)));
         } catch (const JsThrown& error) {
-            nm::Object fault;
+            libnoisemaker::Object fault;
             fault.set(u"thrown", encode(error.value));
-            record.set(u"error", nm::Value(fault));
-        } catch (const nm::JsError& error) {
-            nm::Object fault;
-            fault.set(u"name", nm::Value(error.name()));
-            fault.set(u"message", nm::Value(error.message()));
-            record.set(u"error", nm::Value(fault));
+            record.set(u"error", libnoisemaker::Value(fault));
+        } catch (const libnoisemaker::JsError& error) {
+            libnoisemaker::Object fault;
+            fault.set(u"name", libnoisemaker::Value(error.name()));
+            fault.set(u"message", libnoisemaker::Value(error.message()));
+            record.set(u"error", libnoisemaker::Value(fault));
         } catch (const std::exception& error) {
-            nm::Object fault;
+            libnoisemaker::Object fault;
             const std::string message = error.what();
-            fault.set(u"name", nm::Value(message == "Invalid string length" ? u"RangeError" : u"TypeError"));
-            fault.set(u"message", nm::Value(nm::utf8_to_js(message)));
-            record.set(u"error", nm::Value(fault));
+            fault.set(u"name", libnoisemaker::Value(message == "Invalid string length" ? u"RangeError" : u"TypeError"));
+            fault.set(u"message", libnoisemaker::Value(libnoisemaker::utf8_to_js(message)));
+            record.set(u"error", libnoisemaker::Value(fault));
         }
-        output << nm::json::stringify(nm::Value(record)) << '\n';
+        output << libnoisemaker::json::stringify(libnoisemaker::Value(record)) << '\n';
     }
     return 0;
 }

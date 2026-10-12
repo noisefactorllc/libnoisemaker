@@ -1,6 +1,6 @@
 #include "core/lang/diagnostics.h"
 #include <unordered_map>
-namespace nm {
+namespace libnoisemaker {
 namespace {
 struct DiagnosticInfo { const char* message; const char* severity; const char* stage; };
 const std::unordered_map<JsString, DiagnosticInfo>& table() {

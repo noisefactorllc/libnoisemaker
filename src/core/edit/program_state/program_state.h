@@ -10,7 +10,7 @@
 #include <optional>
 #include <utility>
 
-namespace nm {
+namespace libnoisemaker {
 
 struct StepState {
     JsString effect_key;
@@ -153,4 +153,4 @@ private:
 
 Value extract_effects_from_dsl(const JsString& dsl, EffectRegistry& registry);
 
-}  // namespace nm
+}  // namespace libnoisemaker

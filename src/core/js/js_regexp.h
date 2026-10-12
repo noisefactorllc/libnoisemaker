@@ -5,7 +5,7 @@
 
 #include "core/value/js_string.h"
 
-namespace nm::js {
+namespace libnoisemaker::js {
 
 enum class RegexCheck { Valid, Invalid, Undecidable };
 
@@ -15,4 +15,4 @@ enum class RegexCheck { Valid, Invalid, Undecidable };
 // V8 message).
 RegexCheck validateRegExpLiteral(const JsString& pattern, const JsString& flags, JsString* detail);
 
-} // namespace nm::js
+} // namespace libnoisemaker::js

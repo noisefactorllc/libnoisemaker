@@ -7,7 +7,7 @@
 #include <limits>
 #include <optional>
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 Value prop(const Value& value, const JsString& name) { return jsv::get_opt(value, name); }
 Value object(std::initializer_list<std::pair<JsString, Value>> fields) {
@@ -444,4 +444,4 @@ Value get_compatible_replacements(const Value& compiled, const Value& step_index
     return object({{u"success", true}, {u"compatible", position ? starters : non_starters},
                    {u"incompatible", position ? non_starters : starters}, {u"predictions", predictions}});
 }
-} // namespace nm
+} // namespace libnoisemaker

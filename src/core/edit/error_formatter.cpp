@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 
 const Value* member(const Value& object, const char16_t* key) {
@@ -294,4 +294,4 @@ JsString format_compile_error(const JsString& source, const Value& error) {
     if (error.is_object() || error.is_array() || error.is_null()) return utf8_to_js(json::stringify(error));
     return text(error);
 }
-}  // namespace nm
+}  // namespace libnoisemaker

@@ -27,7 +27,7 @@
 //   - Member.path has >= 2 segments; a single segment is an Ident.
 
 
-namespace nm::NodeKind {
+namespace libnoisemaker::NodeKind {
 
 inline const JsString Program = LangString(u"Program");
 inline const JsString VarAssign = LangString(u"VarAssign");
@@ -62,9 +62,9 @@ inline const JsString Oscillator = LangString(u"Oscillator");
 inline const JsString Midi = LangString(u"Midi");
 inline const JsString Audio = LangString(u"Audio");
 
-} // namespace nm::NodeKind
+} // namespace libnoisemaker::NodeKind
 
-namespace nm::ast {
+namespace libnoisemaker::ast {
 
 // {type:'Number', value:double} -- the parse-time constant-folded literal.
 inline JsonObject number(double value) {
@@ -95,4 +95,4 @@ inline JsonObject loc(int line, int col) {
     return o;
 }
 
-} // namespace nm::ast
+} // namespace libnoisemaker::ast

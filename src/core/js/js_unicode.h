@@ -3,7 +3,7 @@
 // js_unicode.h -- ECMAScript source character classes, as V8 applies them
 // (identifier tables from ICU; see js_unicode.cpp).
 
-namespace nm::js {
+namespace libnoisemaker::js {
 
 // IdentifierStartChar: ID_Start, `$` or `_`.
 bool isIdStartCodePoint(char32_t cp);
@@ -14,4 +14,4 @@ bool isWhiteSpace(char32_t cp);
 // LineTerminator: LF, CR, LS, PS.
 bool isLineTerminator(char32_t cp);
 
-} // namespace nm::js
+} // namespace libnoisemaker::js

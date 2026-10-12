@@ -4,7 +4,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -103,13 +103,13 @@ AudioAnalyzer::AudioAnalyzer(const Options& options) : m_ring(kRingCapacity, 0.0
 void AudioAnalyzer::setOptions(const Options& options) {
     const int n = options.fftSize;
     if (n < 32 || n > kRingCapacity || (n & (n - 1)) != 0) {
-        throw std::invalid_argument("nm::AudioAnalyzer: fftSize must be a power of two in 32..32768");
+        throw std::invalid_argument("libnoisemaker::AudioAnalyzer: fftSize must be a power of two in 32..32768");
     }
     if (!(options.minDecibels < options.maxDecibels)) {
-        throw std::invalid_argument("nm::AudioAnalyzer: minDecibels must be below maxDecibels");
+        throw std::invalid_argument("libnoisemaker::AudioAnalyzer: minDecibels must be below maxDecibels");
     }
     if (!(options.smoothingTimeConstant >= 0.0 && options.smoothingTimeConstant <= 1.0)) {
-        throw std::invalid_argument("nm::AudioAnalyzer: smoothingTimeConstant must be in 0..1");
+        throw std::invalid_argument("libnoisemaker::AudioAnalyzer: smoothingTimeConstant must be in 0..1");
     }
     if (n != m_options.fftSize || m_magnitudes.empty()) {
         m_magnitudes.assign(static_cast<size_t>(n / 2), 0.0f);
@@ -213,4 +213,4 @@ void AudioAnalyzer::reset() {
     std::fill(m_magnitudes.begin(), m_magnitudes.end(), 0.0f);
 }
 
-} // namespace nm
+} // namespace libnoisemaker

@@ -1,14 +1,14 @@
 #pragma once
 
-// audio_state.h -- engine-owned audio input state. nm::AudioState ports the
+// audio_state.h -- engine-owned audio input state. libnoisemaker::AudioState ports the
 // reference shaders/src/runtime/external-input.js AudioState (band
 // extraction with rolling smoothing, raw control signal, spectrum and
 // waveform, per-device and default-device channel states, device
-// inventory). nm::AudioInput is the capture-free host feed: it runs
-// nm::AudioAnalyzer instances over interleaved float samples the way the
+// inventory). libnoisemaker::AudioInput is the capture-free host feed: it runs
+// libnoisemaker::AudioAnalyzer instances over interleaved float samples the way the
 // Noisedeck host (app/js/features/audioInput.js) wires Web Audio, and
 // updates an AudioState once per rendered frame. snapshot() returns the
-// object nm::Backend::setAudioState() consumes.
+// object libnoisemaker::Backend::setAudioState() consumes.
 
 #include "audio_analyzer.h"
 
@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 struct AudioDevice {
     JsString id;
@@ -90,7 +90,7 @@ public:
     void resetAggregate();
     void reset();
 
-    // The JSON nm::Backend::setAudioState() consumes: low, mid, high, vol,
+    // The JSON libnoisemaker::Backend::setAudioState() consumes: low, mid, high, vol,
     // raw, rawReady, fft, spectrum, waveform; with a registry also devices
     // {id: {name, connected, channelCount, channels {"n": state}}},
     // defaultChannels (only while the default input is connected) and
@@ -183,4 +183,4 @@ private:
     std::vector<std::unique_ptr<Feed>> m_feeds;
 };
 
-} // namespace nm
+} // namespace libnoisemaker

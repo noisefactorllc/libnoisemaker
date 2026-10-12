@@ -2,7 +2,7 @@
 
 #include "core/lang/enums.h"
 
-namespace nm {
+namespace libnoisemaker {
 
 struct PassIO {
     JsVector<JsText> inputs;
@@ -17,4 +17,4 @@ struct TexLifetime {
 JsMap<JsText, TexLifetime> analyzeLiveness(const JsVector<PassIO>& passes);
 JsObject allocateResources(const JsVector<PassIO>& passes);
 
-}  // namespace nm
+}  // namespace libnoisemaker

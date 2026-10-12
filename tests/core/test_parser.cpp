@@ -1,4 +1,4 @@
-// Unit tests for nm::parse (core/lang/parser.{h,cpp}).
+// Unit tests for libnoisemaker::parse (core/lang/parser.{h,cpp}).
 // Plain assert-style checks, no test framework dependency (matches
 // test_graph_load.cpp / test_lexer.cpp convention).
 //
@@ -23,7 +23,7 @@
 #include <cmath>
 #include <cstdio>
 
-using namespace nm;
+using namespace libnoisemaker;
 namespace {
 JsonArray lexJson(const JsString& src) {
     JsonArray out;
@@ -64,17 +64,17 @@ int main() {
     // ==================================================================
     {
         const JsonObject prog = parseSrc(LangString(u"search synth\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
-        check(prog.value(LangString(u"type")).toString() == nm::NodeKind::Program, "Program root type");
+        check(prog.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Program, "Program root type");
         const JsonArray plans = prog.value(LangString(u"plans")).toArray();
         check(plans.size() == 1, "one plan (chain statement)");
         const JsonObject stmt = plans.at(0).toObject();
         check(!stmt.contains(LangString(u"type")), "chain-statement wrapper has NO type key");
         const JsonArray chain = stmt.value(LangString(u"chain")).toArray();
         check(chain.size() == 2, "chain has 2 elements: Call + Write");
-        check(chain.at(0).toObject().value(LangString(u"type")).toString() == nm::NodeKind::Call, "chain[0] is Call");
+        check(chain.at(0).toObject().value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Call, "chain[0] is Call");
         check(chain.at(0).toObject().value(LangString(u"name")).toString() == LangString(u"solid"),
               "chain[0].name == solid");
-        check(chain.at(1).toObject().value(LangString(u"type")).toString() == nm::NodeKind::Write, "chain[1] is Write");
+        check(chain.at(1).toObject().value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Write, "chain[1] is Write");
         check(stmt.value(LangString(u"write")).toObject().value(LangString(u"name")).toString()
                   == LangString(u"o0"),
               "top-level write shortcut == chain's terminal Write surface");
@@ -99,7 +99,7 @@ int main() {
             parseSrc(LangString(u"search synth,filter\nnoise().write(o0).invert().write(o1)\nrender(o1)\n"));
         const JsonArray chain = prog.value(LangString(u"plans")).toArray().at(0).toObject().value(LangString(u"chain")).toArray();
         check(chain.size() == 4, "mid-chain write: 4 chain elements (Call,Write,Call,Write)");
-        check(chain.at(1).toObject().value(LangString(u"type")).toString() == nm::NodeKind::Write, "chain[1] mid-chain Write present");
+        check(chain.at(1).toObject().value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Write, "chain[1] mid-chain Write present");
         const JsonObject stmt = prog.value(LangString(u"plans")).toArray().at(0).toObject();
         check(stmt.value(LangString(u"write")).toObject().value(LangString(u"name")).toString() == LangString(u"o1"),
               "top-level write reflects the LAST write in the chain, not the first");
@@ -111,7 +111,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nif (1) {\n  // comment\n  solid(0.1,0.2,0.3).write(o0)\n}\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "a comment immediately before a statement INSIDE a block is a syntax error (not collected there)");
@@ -140,7 +140,7 @@ int main() {
         const JsonArray chain = prog.value(LangString(u"plans")).toArray().at(0).toObject().value(LangString(u"chain")).toArray();
         check(chain.size() == 3, "chain: Call, Subchain, Write");
         const JsonObject sub = chain.at(1).toObject();
-        check(sub.value(LangString(u"type")).toString() == nm::NodeKind::Subchain, "subchain node type");
+        check(sub.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Subchain, "subchain node type");
         check(sub.value(LangString(u"name")).toString() == LangString(u"fx"), "subchain kwarg name");
         check(sub.value(LangString(u"id")).toString() == LangString(u"sc1"), "subchain kwarg id");
         check(sub.value(LangString(u"body")).toArray().size() == 1, "subchain body has 1 call");
@@ -172,7 +172,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search filter\nnoise().subchain() {}.write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "empty subchain body throws DslSyntaxError");
@@ -185,7 +185,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nsolid(a: 1, 2).write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "keyword arg followed by positional arg throws (cannot mix)");
@@ -194,7 +194,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nsolid(1, a: 2).write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "positional arg followed by keyword arg throws (cannot mix)");
@@ -215,7 +215,7 @@ int main() {
         const JsonArray vars = prog.value(LangString(u"vars")).toArray();
         check(vars.size() == 1, "one var");
         const JsonObject expr = vars.at(0).toObject().value(LangString(u"expr")).toObject();
-        check(expr.value(LangString(u"type")).toString() == nm::NodeKind::ArrayLiteral, "[1,2,3] -> ArrayLiteral");
+        check(expr.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::ArrayLiteral, "[1,2,3] -> ArrayLiteral");
         const JsonArray elements = expr.value(LangString(u"elements")).toArray();
         check(elements.size() == 3, "3 elements");
         check(elements.at(0).toObject().value(LangString(u"value")).toDouble() == 1
@@ -227,7 +227,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nlet x = [1, 2\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "unterminated array literal (missing ']') throws");
@@ -265,7 +265,7 @@ int main() {
         const JsonObject prog = parseSrc(LangString(u"search synth\nlet a = #fff\nlet b = #8040c0\nlet c = #8040c080\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
         const JsonArray vars = prog.value(LangString(u"vars")).toArray();
         const JsonObject colA = vars.at(0).toObject().value(LangString(u"expr")).toObject();
-        check(colA.value(LangString(u"type")).toString() == nm::NodeKind::Color, "#fff -> Color");
+        check(colA.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Color, "#fff -> Color");
         const JsonArray a = colA.value(LangString(u"value")).toArray();
         check(numEq(a.at(0).toDouble(), 1.0) && numEq(a.at(3).toDouble(), 1.0), "#fff -> [1,1,1,1] (3-digit duplication, alpha default 1)");
         const JsonArray b = vars.at(1).toObject().value(LangString(u"expr")).toObject().value(LangString(u"value")).toArray();
@@ -283,7 +283,7 @@ int main() {
         // isBareOsc: osc() with zero args/kwargs -> Oscillator with ALL defaults.
         const JsonObject prog = parseSrc(LangString(u"search synth\nsolid(osc(), 0.2, 0.3).write(o0)\nrender(o0)\n"));
         const JsonObject arg0 = prog.value(LangString(u"plans")).toArray().at(0).toObject().value(LangString(u"chain")).toArray().at(0).toObject().value(LangString(u"args")).toArray().at(0).toObject();
-        check(arg0.value(LangString(u"type")).toString() == nm::NodeKind::Oscillator, "bare osc() -> Oscillator");
+        check(arg0.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Oscillator, "bare osc() -> Oscillator");
         check(arg0.value(LangString(u"oscType")).toObject().value(LangString(u"path")).toArray().at(1).toString() == LangString(u"sine"),
               "default oscType is oscKind.sine");
         check(numEq(arg0.value(LangString(u"max")).toObject().value(LangString(u"value")).toDouble(), 1.0), "default max is 1");
@@ -295,20 +295,20 @@ int main() {
         // oscillator). Verified against the oracle.
         const JsonObject prog = parseSrc(LangString(u"search synth\nlet x = osc(0.2)\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
         const JsonObject expr = prog.value(LangString(u"vars")).toArray().at(0).toObject().value(LangString(u"expr")).toObject();
-        check(expr.value(LangString(u"type")).toString() == nm::NodeKind::Call, "osc(0.2) (bare positional number, no kwargs) stays a plain Call");
+        check(expr.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Call, "osc(0.2) (bare positional number, no kwargs) stays a plain Call");
         check(expr.value(LangString(u"name")).toString() == LangString(u"osc"), "Call name is osc");
     }
     {
         const JsonObject prog = parseSrc(LangString(u"search synth\nlet x = osc(type: oscKind.noise, min: 0.09, max: 0.46, speed: 3, seed: 5701)\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
         const JsonObject expr = prog.value(LangString(u"vars")).toArray().at(0).toObject().value(LangString(u"expr")).toObject();
-        check(expr.value(LangString(u"type")).toString() == nm::NodeKind::Oscillator, "osc(type: ..., ...) (all-osc-kwargs) -> Oscillator");
+        check(expr.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Oscillator, "osc(type: ..., ...) (all-osc-kwargs) -> Oscillator");
         check(numEq(expr.value(LangString(u"seed")).toObject().value(LangString(u"value")).toDouble(), 5701.0), "osc kwarg seed resolved");
     }
     {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nlet x = osc(type: oscKind.noise, bogus: 1)\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "osc() with an unknown kwarg name throws");
@@ -326,7 +326,7 @@ int main() {
         const JsonObject prog = parseSrc(
             LangString(u"search synth\nlet x = midi(channel: 2, mode: midiMode.trigger, sensitivity: 0.5)\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
         const JsonObject midi = prog.value(LangString(u"vars")).toArray().at(0).toObject().value(LangString(u"expr")).toObject();
-        check(midi.value(LangString(u"type")).toString() == nm::NodeKind::Midi, "midi() -> Midi node");
+        check(midi.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Midi, "midi() -> Midi node");
         check(numEq(midi.value(LangString(u"channel")).toObject().value(LangString(u"value")).toDouble(), 2.0), "midi kwarg channel resolved");
         check(midi.value(LangString(u"mode")).toObject().value(LangString(u"path")).toArray().at(1).toString() == LangString(u"trigger"),
               "midi kwarg mode resolved");
@@ -335,7 +335,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nlet x = midi()\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "midi() with no channel throws (channel is required)");
@@ -343,7 +343,7 @@ int main() {
     {
         const JsonObject prog = parseSrc(LangString(u"search synth\nlet x = audio(audioBand.low)\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
         const JsonObject audio = prog.value(LangString(u"vars")).toArray().at(0).toObject().value(LangString(u"expr")).toObject();
-        check(audio.value(LangString(u"type")).toString() == nm::NodeKind::Audio, "audio() -> Audio node");
+        check(audio.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Audio, "audio() -> Audio node");
         check(audio.value(LangString(u"band")).toObject().value(LangString(u"path")).toArray().at(1).toString() == LangString(u"low"),
               "audio positional band resolved");
     }
@@ -398,7 +398,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(source);
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "midi/audio selector invariants reject incomplete identity");
@@ -416,7 +416,7 @@ int main() {
         LangString message;
         try {
             parseSrc(testCase.first);
-        } catch (const nm::DslSyntaxError& error) {
+        } catch (const libnoisemaker::DslSyntaxError& error) {
             message = error.message();
         }
         check(message == testCase.second, "midi/audio reports the first unknown keyword in source order");
@@ -433,7 +433,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nfoo.bar.baz()\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "a 2+-segment dotted call (foo.bar.baz()) is a syntax error, not a namespaced call (verified against oracle: 'Expect (' )");
@@ -442,7 +442,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nnd.noise().write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "inline single-segment namespace call (nd.noise()) is explicitly forbidden");
@@ -450,7 +450,7 @@ int main() {
     {
         const JsonObject prog = parseSrc(LangString(u"search synth3d\nlet a = read3d(vol0)\nread3d(vol0, geo0).write3d(vol1, geo1)\nrender(o0)\n"));
         const JsonObject single = prog.value(LangString(u"vars")).toArray().at(0).toObject().value(LangString(u"expr")).toObject();
-        check(single.value(LangString(u"type")).toString() == nm::NodeKind::Read3D, "read3d(vol0) -> Read3D");
+        check(single.value(LangString(u"type")).toString() == libnoisemaker::NodeKind::Read3D, "read3d(vol0) -> Read3D");
         check(single.value(LangString(u"geo")).isNull(), "single-arg read3d() leaves geo == null");
         const JsonObject stmt = prog.value(LangString(u"plans")).toArray().at(0).toObject();
         check(stmt.value(LangString(u"write3d")).toObject().value(LangString(u"tex3d")).toObject().value(LangString(u"name")).toString()
@@ -465,7 +465,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"solid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError& e) {
+        } catch (const libnoisemaker::DslSyntaxError& e) {
             threw = true;
             check(e.line() == 3, "missing-search error has EOF location line 3");
             check(!LangString(e.message()).contains(LangString(u"at line")), "missing-search error has no 'at line' suffix");
@@ -477,7 +477,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search bogus\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "invalid namespace name throws");
@@ -486,7 +486,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nsearch filter\nsolid(0.1,0.2,0.3).write(o0)\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "a second search directive throws");
@@ -495,7 +495,7 @@ int main() {
         bool threw = false;
         try {
             parseSrc(LangString(u"search synth\nsolid(0.1,0.2,0.3).write(o0)\nsearch filter\nrender(o0)\n"));
-        } catch (const nm::DslSyntaxError&) {
+        } catch (const libnoisemaker::DslSyntaxError&) {
             threw = true;
         }
         check(threw, "a search directive after other statements throws");
@@ -551,7 +551,7 @@ int main() {
             bool caught = false;
             try {
                 parseSrc(c.source);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 check(err.message() == c.message,
                       LangString(u"parser diagnostic message matches for %1").arg(LangString::fromUtf8(c.name)).toStdString().c_str());
@@ -607,7 +607,7 @@ int main() {
             bool caught = false;
             try {
                 parseSrc(c.source);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 const JsonObject d = JsonValue(err.diagnostic()).toObject();
                 const JsonObject loc = d.value(LangString(u"location")).toObject();
@@ -635,7 +635,7 @@ int main() {
             bool caughtBare = false;
             try {
                 parseJson(bare);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caughtBare = true;
                 const JsonObject d = JsonValue(err.diagnostic()).toObject();
                 check(d.value(LangString(u"code")).toString() == LangString(u"P006") && d.value(LangString(u"location")).isNull()
@@ -654,7 +654,7 @@ int main() {
             bool caught = false;
             try {
                 parseSrc(source);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = err.message() == expected.second
                          && JsonValue(err.diagnostic()).toObject().value(LangString(u"code")).toString() == expected.first;
             }
@@ -699,7 +699,7 @@ int main() {
             bool caught = false;
             try {
                 parseJson(modifiedTokens);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 check(err.message() == cc.expectedMsg, "parser error message with unavailable coords matches");
                 const JsonObject d = JsonValue(err.diagnostic()).toObject();
@@ -777,7 +777,7 @@ int main() {
             bool caught = false;
             try {
                 parseSrc(c.source);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 check(err.message() == c.message,
                       LangString(u"automation diagnostic message matches for %1").arg(LangString::fromUtf8(c.name)).toStdString().c_str());
@@ -843,7 +843,7 @@ int main() {
             bool caught = false;
             try {
                 parseSrc(c.source);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 check(err.message() == c.message,
                       LangString(u"search diagnostic message matches for %1").arg(LangString::fromUtf8(c.name)).toStdString().c_str());
@@ -916,7 +916,7 @@ int main() {
             bool caught = false;
             try {
                 parseSrc(c.source);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 check(err.message() == c.message,
                       LangString(u"output diagnostic message matches for %1").arg(LangString::fromUtf8(c.name)).toStdString().c_str());
@@ -971,7 +971,7 @@ int main() {
             bool caught = false;
             try {
                 parseSrc(c.source);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 check(err.message() == c.message, "precedence error message matches");
                 const JsonObject d = JsonValue(err.diagnostic()).toObject();
@@ -1001,7 +1001,7 @@ int main() {
             bool caught = false;
             try {
                 parseJson(modifiedTokens);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 const JsonObject d = JsonValue(err.diagnostic()).toObject();
                 check(d.value(LangString(u"code")).toString().startsWith(u'P'), "code starts with P");
@@ -1017,7 +1017,7 @@ int main() {
         bool caught = false;
         try {
             parseJson(lexJson(LangString(u"search synth\nlet x = synth.noise()\nrender x")));
-        } catch (const nm::DslSyntaxError& err) {
+        } catch (const libnoisemaker::DslSyntaxError& err) {
             caught = true;
             const JsonObject d = JsonValue(err.diagnostic()).toObject();
             check(d.value(LangString(u"code")).toString() == LangString(u"P007"), "inline namespace emits P007");
@@ -1034,7 +1034,7 @@ int main() {
         caught = false;
         try {
             parseJson(lexJson(LangString(u"search synth\nlet x = noise(1, freq: 2)\nrender x")));
-        } catch (const nm::DslSyntaxError& err) {
+        } catch (const libnoisemaker::DslSyntaxError& err) {
             caught = true;
             const JsonObject d = JsonValue(err.diagnostic()).toObject();
             check(d.value(LangString(u"code")).toString() == LangString(u"P007"), "mixed positional/keyword emits P007");
@@ -1047,7 +1047,7 @@ int main() {
         caught = false;
         try {
             parseJson(lexJson(LangString(u"search synth\nlet x = from(ns: synth, noise())\nrender x")));
-        } catch (const nm::DslSyntaxError& err) {
+        } catch (const libnoisemaker::DslSyntaxError& err) {
             caught = true;
             const JsonObject d = JsonValue(err.diagnostic()).toObject();
             check(d.value(LangString(u"code")).toString() == LangString(u"P007"), "from() kwargs emits P007");
@@ -1058,7 +1058,7 @@ int main() {
         caught = false;
         try {
             parseJson(lexJson(LangString(u"search synth\nlet x = from(synth)\nrender x")));
-        } catch (const nm::DslSyntaxError& err) {
+        } catch (const libnoisemaker::DslSyntaxError& err) {
             caught = true;
             const JsonObject d = JsonValue(err.diagnostic()).toObject();
             check(d.value(LangString(u"code")).toString() == LangString(u"P007"), "from() arity emits P007");
@@ -1074,7 +1074,7 @@ int main() {
         bool caught = false;
         try {
             parseJson(lexJson(LangString(u"search synth\nlet x = [1, 2] + 3\nrender x")));
-        } catch (const nm::DslSyntaxError& err) {
+        } catch (const libnoisemaker::DslSyntaxError& err) {
             caught = true;
             const JsonObject d = JsonValue(err.diagnostic()).toObject();
             check(d.value(LangString(u"code")).toString() == LangString(u"P001"), "array coercion emits P001");
@@ -1173,7 +1173,7 @@ int main() {
             bool caught = false;
             try {
                 parseJson(lexJson(LangString(u"search synth\nnoise().subchain(nme: \"typo\", name: \"ok\") {\n.bloom()\n}.write(o0)\n")), opts);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 const JsonObject d = JsonValue(err.diagnostic()).toObject();
                 check(d.value(LangString(u"code")).toString() == LangString(u"P008"), "strict unknown key emits P008");
@@ -1192,7 +1192,7 @@ int main() {
             bool caught = false;
             try {
                 parseJson(lexJson(LangString(u"search synth\nnoise().subchain(name: \"a\", name: \"b\") {\n.bloom()\n}.write(o0)\n")), opts);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 const JsonObject d = JsonValue(err.diagnostic()).toObject();
                 check(d.value(LangString(u"code")).toString() == LangString(u"P009"), "strict duplicate key emits P009");
@@ -1208,7 +1208,7 @@ int main() {
             bool caught = false;
             try {
                 parseJson(lexJson(LangString(u"search synth\nnoise().subchain(name: \"a\" id: \"b\") {\n.bloom()\n}.write(o0)\n")), opts);
-            } catch (const nm::DslSyntaxError& err) {
+            } catch (const libnoisemaker::DslSyntaxError& err) {
                 caught = true;
                 const JsonObject d = JsonValue(err.diagnostic()).toObject();
                 check(d.value(LangString(u"code")).toString() == LangString(u"P010"), "strict missing separator emits P010");
@@ -1240,15 +1240,15 @@ int main() {
     }
 
     {
-        const nm::Value native = nm::parse(nm::lex(u"search synth\nnoise().write(o0)\nrender(o0)\n"));
-        const nm::Value* plans = native.is_object() ? native.as_object().find(u"plans") : nullptr;
+        const libnoisemaker::Value native = libnoisemaker::parse(libnoisemaker::lex(u"search synth\nnoise().write(o0)\nrender(o0)\n"));
+        const libnoisemaker::Value* plans = native.is_object() ? native.as_object().find(u"plans") : nullptr;
         check(plans && plans->is_array() && plans->as_array().size() == 1,
               "native parse API returns a Value AST with one plan");
     }
     {
         bool matched = false;
-        try { nm::parse(nm::lex(u"search synth\nnoise(constructor)")); }
-        catch (const nm::DslSyntaxError& err) {
+        try { libnoisemaker::parse(libnoisemaker::lex(u"search synth\nnoise(constructor)")); }
+        catch (const libnoisemaker::DslSyntaxError& err) {
             matched = err.message() == u"Unexpected token function Object() { [native code] } at line 2 col 7";
         }
         check(matched, "inherited constructor token preserves JS SyntaxError text");

@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <limits>
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 Value field(const Value& value, const JsString& key) { return jsv::member(value, key); }
 bool named(const std::vector<JsString>& names, const JsString& name) {
@@ -197,7 +197,7 @@ bool write_uniform_aliases(Value& pass, const JsString& param_name,
 }
 
 Value MockHost::convert_parameter_for_uniform(const Value& value, const Value& spec) const {
-    return convert == MockConvert::Passthrough ? value : nm::convert_parameter_for_uniform(value, spec, enums);
+    return convert == MockConvert::Passthrough ? value : libnoisemaker::convert_parameter_for_uniform(value, spec, enums);
 }
 std::vector<Value>* MockHost::graph_passes() {
     if (!pipeline || !pipeline->graph.is_object()) return nullptr;
@@ -241,4 +241,4 @@ std::vector<Value> MockHost::take_calls() {
     return calls;
 }
 
-}  // namespace nm
+}  // namespace libnoisemaker

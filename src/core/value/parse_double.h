@@ -10,7 +10,7 @@
 #include <xlocale.h>
 #endif
 
-namespace nm {
+namespace libnoisemaker {
 
 inline std::from_chars_result parse_double(const char* first, const char* last, double& value) {
 #ifdef __APPLE__
@@ -50,4 +50,4 @@ inline std::from_chars_result parse_double(const char* first, const char* last, 
 #endif
 }
 
-} // namespace nm
+} // namespace libnoisemaker

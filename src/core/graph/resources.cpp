@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace nm {
+namespace libnoisemaker {
 namespace {
 bool isGlobal(const JsText& id) { return id.startsWith(u"global_"); }
 
@@ -62,4 +62,4 @@ JsObject allocateResources(const JsVector<PassIO>& passes) {
     return allocations;
 }
 
-}  // namespace nm
+}  // namespace libnoisemaker

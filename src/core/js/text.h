@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace nm::js {
+namespace libnoisemaker::js {
 
 // Local UTF-16 text operations used by the parser. Offsets are code units.
 class JsText : public JsString {
@@ -103,11 +103,11 @@ JsText mapValue(const Map& map, const JsText& key) {
     return it == map.end() ? JsText{} : it->second;
 }
 
-} // namespace nm::js
+} // namespace libnoisemaker::js
 
 template<>
-struct std::hash<nm::js::JsText> {
-    std::size_t operator()(const nm::js::JsText& value) const noexcept {
-        return std::hash<nm::JsString>{}(value);
+struct std::hash<libnoisemaker::js::JsText> {
+    std::size_t operator()(const libnoisemaker::js::JsText& value) const noexcept {
+        return std::hash<libnoisemaker::JsString>{}(value);
     }
 };

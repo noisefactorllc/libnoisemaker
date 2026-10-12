@@ -6,7 +6,7 @@
 #include "core/lang/tokens.h"
 
 
-namespace nm {
+namespace libnoisemaker {
 
 namespace {
 
@@ -487,4 +487,4 @@ std::vector<Token> lex(const JsString& source) {
     return std::vector<Token>(tokens.begin(), tokens.end());
 }
 
-} // namespace nm
+} // namespace libnoisemaker

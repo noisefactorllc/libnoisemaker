@@ -7,7 +7,7 @@
 //
 // The host feeds raw MIDI message bytes with a stable port identity; it
 // never builds state JSON by hand. snapshot() returns the object that
-// nm::Backend::setMidiState() consumes. The library contains no MIDI
+// libnoisemaker::Backend::setMidiState() consumes. The library contains no MIDI
 // capture or device code.
 
 #include "host/json_types.h"
@@ -22,7 +22,7 @@
 #include <optional>
 #include <vector>
 
-namespace nm {
+namespace libnoisemaker {
 
 // Identity of one MIDI input port (reference Web MIDI {id, name}).
 struct MidiPort {
@@ -66,7 +66,7 @@ public:
 
     double clockCount() const { return m_clockCount; }
 
-    // The JSON nm::Backend::setMidiState() consumes: clockCount, mpeZones,
+    // The JSON libnoisemaker::Backend::setMidiState() consumes: clockCount, mpeZones,
     // channels "1".."16" (key, velocity, gate, time, keys, cc, cc14, nrpn,
     // rpn, pitchBend, pressure, polyPressure, heldNotes), and with a
     // registry also ports {id: {name, connected, state}}, unscopedState
@@ -161,4 +161,4 @@ private:
     std::optional<int> m_mpeUpper;
 };
 
-} // namespace nm
+} // namespace libnoisemaker

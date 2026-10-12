@@ -1,7 +1,7 @@
 #pragma once
 #include "core/lang/compat.h"
 #include <cmath>
-namespace nm {
+namespace libnoisemaker {
 namespace TokenType {
 // literals / identifiers
 inline const JsString NUMBER = LangString(u"NUMBER");
@@ -137,4 +137,4 @@ inline Token tokenFromJson(const Value& value) {
     }
     return t;
 }
-} // namespace nm
+} // namespace libnoisemaker
