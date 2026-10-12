@@ -100,6 +100,9 @@ if (!sourceReady) {
   const listed = execFileSync('git', ['-C', reference, 'ls-tree', '-r', '-z', '--name-only', lock.commit, '--',
     'shaders/effects', 'shaders/src'], { encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(Boolean)
   const wanted = listed.filter(path => path.startsWith('shaders/effects/') ? /\.(wgsl|glsl)$/.test(path) : path.endsWith('.js'))
+  // cat-file --batch reads one request per line.
+  const unsafe = wanted.find(path => /[\n\r]/.test(path))
+  if (unsafe) throw new Error(`reference path with a line break cannot be read: ${JSON.stringify(unsafe)}`)
   const batch = execFileSync('git', ['-C', reference, 'cat-file', '--batch'], {
     input: wanted.map(path => `${lock.commit}:${path}`).join('\n') + '\n', maxBuffer: 1 << 30
   })

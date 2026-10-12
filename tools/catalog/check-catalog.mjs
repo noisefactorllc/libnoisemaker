@@ -135,17 +135,29 @@ execFileSync(process.execPath, [join(root, 'tools/catalog/extract-runtime-shader
   '--src', join(reference, 'shaders/src'), '--out', runtimeOut, '--sites', join(runtimeOut, 'sites.json')],
 { stdio: ['ignore', 'ignore', 'inherit'] })
 // Every createShaderModule call in the runtime's source text either compiles a
-// program's own source (compileProgram's `code: source` and `code:
-// vertexSource`) or is one the extractor captured.
+// program's own source (`code: source` or `code: vertexSource` inside
+// WebGPUBackend's compileComputeProgram and compileRenderProgram) or is one the
+// extractor captured. Comment lines are not calls.
 const capturedSites = new Set(Object.values(JSON.parse(readFileSync(join(runtimeOut, 'sites.json'), 'utf8'))))
 const sourceSites = []
+const programSites = []
 for (const path of files(join(reference, 'shaders/src')).filter(path => path.endsWith('.js'))) {
+  const rel = relative(join(reference, 'shaders/src'), path).replaceAll('\\', '/')
+  let method = null
   readFileSync(path, 'utf8').split('\n').forEach((line, index) => {
-    if (!line.includes('createShaderModule(')) return
-    if (/createShaderModule\(\{\s*code:\s*(source|vertexSource)\s*\}\)/.test(line)) return
-    sourceSites.push(`${relative(join(reference, 'shaders/src'), path).replaceAll('\\', '/')}:${index + 1}`)
+    const definition = line.match(/^ {4}(?:async )?([A-Za-z_$][\w$]*)\s*\(.*\)\s*\{\s*$/)
+    if (definition) method = definition[1]
+    if (!/createShaderModule\s*\(/.test(line) || /^\s*(\/\/|\/\*|\*)/.test(line)) return
+    const site = `${rel}:${index + 1}`
+    if (rel === 'runtime/backends/webgpu.js' && (method === 'compileComputeProgram' || method === 'compileRenderProgram') &&
+        /createShaderModule\s*\(\s*\{\s*code:\s*(source|vertexSource)\s*\}\s*\)/.test(line)) {
+      programSites.push(site)
+      return
+    }
+    sourceSites.push(site)
   })
 }
+if (programSites.length !== 3) errors.push(`runtime: expected 3 compileProgram shader sites, found ${programSites.length} (${programSites.join(', ')})`)
 for (const site of sourceSites) if (!capturedSites.has(site)) errors.push(`runtime: shader module at ${site} is not extracted`)
 for (const site of capturedSites) if (!sourceSites.includes(site)) errors.push(`runtime: extracted site ${site} is not a createShaderModule call`)
 const runtimeExpected = JSON.parse(readFileSync(join(runtimeOut, 'runtime/shaders.json'), 'utf8'))
