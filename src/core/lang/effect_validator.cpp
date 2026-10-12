@@ -21,6 +21,7 @@
 
 
 #include <cmath>
+#include <iterator>
 #include <map>
 #include <set>
 #include <vector>
@@ -506,7 +507,7 @@ void validateLayoutEntry(const JsObject& entry, Errors& errors, const std::strin
             return;
         }
     }
-    for (int i = 1; i < cs.size(); ++i) {
+    for (int i = 1; i < std::ssize(cs); ++i) {
         if (componentOrder(cs.at(i)) <= componentOrder(cs.at(i - 1))) {
             errors.push_back(label + ": \"components\" '" + toStd(cs) + "' must be in ascending xyzw order");
             break;
@@ -550,7 +551,7 @@ void validateUniformLayout(const JsValue& layout, Errors& errors, const std::str
     if (layout.isArray()) {
         const JsArray arr = layout.toArray();
         std::vector<SlotClaim> entries;
-        for (int i = 0; i < arr.size(); ++i) {
+        for (int i = 0; i < std::ssize(arr); ++i) {
             const JsValue entry = arr.at(i);
             const std::string entryLabel = label + "[" + numToStd(i) + "]";
             if (entry.isObject()) {
@@ -589,7 +590,7 @@ void validateUniformLayout(const JsValue& layout, Errors& errors, const std::str
             }
         }
         const JsArray arr = inner.toArray();
-        for (int i = 0; i < arr.size(); ++i) {
+        for (int i = 0; i < std::ssize(arr); ++i) {
             const JsValue entry = arr.at(i);
             const std::string entryLabel = label + ".layout[" + numToStd(i) + "]";
             if (!entry.isObject()) {
@@ -621,7 +622,7 @@ void validateUniformLayout(const JsValue& layout, Errors& errors, const std::str
         }
         // Byte-layout duplicate/overlap diagnosis over fully valid entries
         // (reference checkByteLayoutConflicts).
-        for (int i = 0; i < arr.size(); ++i) {
+        for (int i = 0; i < std::ssize(arr); ++i) {
             if (!arr.at(i).isObject()) continue;
             const JsObject a = arr.at(i).toObject();
             const JsValue aName = a.value(JsText(u"name"));
@@ -629,7 +630,7 @@ void validateUniformLayout(const JsValue& layout, Errors& errors, const std::str
             const JsValue aSize = a.value(JsText(u"size"));
             if (!isNonEmptyString(aName) || !isJsInteger(aOffset) || aOffset.toDouble() < 0 ||
                 !isJsInteger(aSize) || aSize.toDouble() <= 0) continue;
-            for (int j = i + 1; j < arr.size(); ++j) {
+            for (int j = i + 1; j < std::ssize(arr); ++j) {
                 if (!arr.at(j).isObject()) continue;
                 const JsObject b = arr.at(j).toObject();
                 const JsValue bName = b.value(JsText(u"name"));
@@ -846,7 +847,7 @@ void validateDefault(const JsObject& spec, Errors& errors, const std::string& la
         bool ok = value.isArray();
         if (ok) {
             const JsArray arr = value.toArray();
-            ok = arr.size() == dims;
+            ok = std::ssize(arr) == dims;
             for (const JsValue& v : arr) {
                 if (!isFiniteNumber(v)) { ok = false; break; }
             }
@@ -956,7 +957,7 @@ void validateRangeBounds(const JsObject& spec, Errors& errors, const std::string
             if (!isFiniteNumber(v)) { allFinite = false; break; }
         }
         if (allFinite) {
-            for (int i = 0; i < arr.size(); ++i) {
+            for (int i = 0; i < std::ssize(arr); ++i) {
                 const double mn = minVals.size() == 1 ? minVals[0] : minVals[i];
                 const double mx = maxVals.size() == 1 ? maxVals[0] : maxVals[i];
                 if (arr.at(i).toDouble() < mn || arr.at(i).toDouble() > mx) {
@@ -1612,7 +1613,7 @@ std::vector<std::string> validateEffectDefinition(const JsValue& def) {
             // Port-authored array form emitted by tools/convert-definitions.mjs
             // (effects/render/meshLoader.json): [{name, path}].
             const JsArray arr = builtinMeshes.toArray();
-            for (int i = 0; i < arr.size(); ++i) {
+            for (int i = 0; i < std::ssize(arr); ++i) {
                 const JsValue entry = arr.at(i);
                 if (!entry.isObject()) {
                     errors.push_back("builtinMeshes[" + numToStd(i)
@@ -1668,7 +1669,7 @@ std::vector<std::string> validateEffectDefinition(const JsValue& def) {
         errors.push_back("Missing or empty \"passes\" array");
     } else {
         const JsArray passesArr = passes.toArray();
-        for (int index = 0; index < passesArr.size(); ++index) {
+        for (int index = 0; index < std::ssize(passesArr); ++index) {
             const JsValue passV = passesArr.at(index);
             if (passV.isObject()) {
                 validatePass(source, passV.toObject(), index, errors, context);

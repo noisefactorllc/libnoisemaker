@@ -29,6 +29,7 @@
 
 
 #include <cstdio>
+#include <iterator>
 #include <stdexcept>
 
 namespace {
@@ -664,7 +665,7 @@ int main() {
     {
         try {
             const libnoisemaker::JsList modes{"cc", "cc14", "nrpn", "pitchBend", "pressure", "polyPressure"};
-            for (int i = 0; i < modes.size(); ++i) {
+            for (int i = 0; i < std::ssize(modes); ++i) {
                 const auto out = validateSrc(libnoisemaker::JsText(u"search synth\nnoise(scaleX: midi(1, midiMode.%1, nrpn: 42)).write(o0)\nrender(o0)\n").arg(modes.at(i)));
                 const auto midi = args(out, 0, 0).value("scaleX").toObject();
                 check(diags(out).isEmpty() && midi.value("mode").toInt() == i + 5,

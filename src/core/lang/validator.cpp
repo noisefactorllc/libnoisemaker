@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 
@@ -134,8 +135,8 @@ JsText decodeJsonStringLiteralContent(const JsText& raw) {
     } catch (const json::ParseError&) {}
 
     JsText decoded;
-    for (int i = 0; i < raw.size(); ++i) {
-        if (raw.at(i) != u'\\' || i + 1 >= raw.size()) {
+    for (int i = 0; i < std::ssize(raw); ++i) {
+        if (raw.at(i) != u'\\' || i + 1 >= std::ssize(raw)) {
             decoded.append(raw.at(i));
             continue;
         }
@@ -249,7 +250,7 @@ JsList normalizeMemberPath(const JsValue& value) {
 bool pathStartsWith(const JsList& path, const JsList& prefix) {
     if (prefix.isEmpty()) return true;
     if (path.size() < prefix.size()) return false;
-    for (int i = 0; i < prefix.size(); ++i) {
+    for (int i = 0; i < std::ssize(prefix); ++i) {
         if (path.at(i) != prefix.at(i)) return false;
     }
     return true;
@@ -259,7 +260,7 @@ JsList applyEnumPrefix(const JsList& path, const JsList& prefix) {
     if (path.isEmpty()) return path;
     if (prefix.isEmpty()) return path;
     if (pathStartsWith(path, prefix)) return path;
-    for (int i = 1; i < prefix.size(); ++i) {
+    for (int i = 1; i < std::ssize(prefix); ++i) {
         const JsList suffix = prefix.mid(i);
         if (pathStartsWith(path, suffix)) {
             return prefix.mid(0, i) + path;
@@ -492,7 +493,7 @@ JsValue Validator::resolveEnum(const JsList& path) {
         cur = reg_.enums().tryGetHead(head);
         if (cur.isUndefined()) return JsValue(JsValue::Undefined);
     }
-    for (int i = 1; i < path.size(); ++i) {
+    for (int i = 1; i < std::ssize(path); ++i) {
         if (!isTruthy(cur)) return JsValue(JsValue::Undefined);
         const std::optional<JsValue> next = jsOwnProperty(cur, path.at(i));
         if (!next) return JsValue(JsValue::Undefined);
@@ -593,7 +594,7 @@ JsValue Validator::getStarterInfo(const JsValue& node) {
     }
     if (t == NodeKind::Chain) {
         const JsArray chain = o.value(JsText(u"chain")).toArray();
-        for (int i = 0; i < chain.size(); ++i) {
+        for (int i = 0; i < std::ssize(chain); ++i) {
             if (nodeType(chain.at(i)) == NodeKind::Call && reg_.isStarterOp(queryName(chain.at(i).toObject()))) {
                 JsObject info;
                 info.insert(JsText(u"call"), chain.at(i));
@@ -1351,10 +1352,10 @@ JsValue Validator::resolveArgs(JsArray& chain, const OpSpec& spec, const JsObjec
     JsObject argSources;
     bool haveArgSources = false;
 
-    for (int i = 0; i < spec.args.size(); ++i) {
+    for (int i = 0; i < std::ssize(spec.args); ++i) {
         const ParamDef& def = spec.args.at(i);
         JsValue node = (hasKw && kw.contains(def.name)) ? kw.value(def.name)
-                                                             : (i < callArgs.size() ? callArgs.at(i) : JsValue(JsValue::Undefined));
+                                                             : (i < std::ssize(callArgs) ? callArgs.at(i) : JsValue(JsValue::Undefined));
         node = substitute(node);
         const JsText argKey = def.name;
 
@@ -1364,7 +1365,7 @@ JsValue Validator::resolveArgs(JsArray& chain, const OpSpec& spec, const JsObjec
         // effect declares consecutive r/g/b globals) -- ported for
         // fidelity, never exercised.
         if (!hasKw && nodeType(node) == NodeKind::Color && def.type != JsText(u"color") && def.name == JsText(u"r")
-            && i + 2 < spec.args.size() && spec.args.at(i + 1).name == JsText(u"g")
+            && i + 2 < std::ssize(spec.args) && spec.args.at(i + 1).name == JsText(u"g")
             && spec.args.at(i + 2).name == JsText(u"b")) {
             const JsArray cv = node.toObject().value(JsText(u"value")).toArray();
             args.insert(JsText(u"r"), cv.at(0));
@@ -1666,7 +1667,7 @@ void Validator::resolveVecArg(const ParamDef& def, const JsValue& node, const Js
         return;
     }
     if (nodeType(node) == NodeKind::Call && node.toObject().value(JsText(u"name")).toString() == ctor
-        && node.toObject().value(JsText(u"args")).toArray().size() == n) {
+        && std::ssize(node.toObject().value(JsText(u"args")).toArray()) == n) {
         JsArray value;
         for (const JsValue& a : node.toObject().value(JsText(u"args")).toArray()) {
             if (nodeType(a) == NodeKind::Number) {
@@ -1683,7 +1684,7 @@ void Validator::resolveVecArg(const ParamDef& def, const JsValue& node, const Js
     if (nodeType(node) == NodeKind::Color) {
         const JsArray cv = node.toObject().value(JsText(u"value")).toArray();
         JsArray value;
-        for (int i = 0; i < n && i < cv.size(); ++i) value.append(cv.at(i));
+        for (int i = 0; i < n && i < std::ssize(cv); ++i) value.append(cv.at(i));
         args.insert(argKey, value);
         return;
     }

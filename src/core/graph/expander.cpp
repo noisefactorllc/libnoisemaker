@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <stdexcept>
 
 namespace libnoisemaker {
@@ -139,7 +140,7 @@ public:
         : registry_(registry), shaderOverrides_(options.value(JsText(u"shaderOverrides")).toObject()) {}
 
     ExpandResult run(const JsArray& plans, const JsValue& renderDirective) {
-        for (int planIndex = 0; planIndex < plans.size(); ++planIndex) {
+        for (int planIndex = 0; planIndex < std::ssize(plans); ++planIndex) {
             expandPlan(plans.at(planIndex).toObject(), planIndex);
         }
         resolveVolumeHandoffs();
@@ -347,7 +348,7 @@ private:
         volumeSizeParam_ = JsText(u"volumeSize_") + chainScopeId_;
 
         const JsArray chain = plan.value(JsText(u"chain")).toArray();
-        for (int stepPos = 0; stepPos < chain.size(); ++stepPos) {
+        for (int stepPos = 0; stepPos < std::ssize(chain); ++stepPos) {
             const JsObject step = chain.at(stepPos).toObject();
             const bool builtin = step.value(JsText(u"builtin")).toBool(false);
             const JsText op = step.value(JsText(u"op")).toString();
@@ -868,7 +869,7 @@ private:
             }
         }
 
-        for (int i = 0; i < effectPasses.size(); ++i) {
+        for (int i = 0; i < std::ssize(effectPasses); ++i) {
             const JsObject passDef = effectPasses.at(i).toObject();
 
             ExpandedPass pass;
@@ -1101,7 +1102,7 @@ private:
                     const JsVector<PassKeyOrder>& keyOrders, ExpandedPass& pass) {
         const JsObject inputs = passDef.value(JsText(u"inputs")).toObject();
         if (inputs.isEmpty()) return;
-        JsList order = (passIndex < keyOrders.size() && keyOrders.at(passIndex).inputs.size() == inputs.size())
+        JsList order = (passIndex < std::ssize(keyOrders) && keyOrders.at(passIndex).inputs.size() == inputs.size())
                                  ? keyOrders.at(passIndex).inputs
                                  : inputs.keys();
 
@@ -1244,12 +1245,12 @@ private:
                      int passCount, int stepPos, const JsVector<PassKeyOrder>& keyOrders, ExpandedPass& pass) {
         const JsObject outputs = passDef.value(JsText(u"outputs")).toObject();
         if (outputs.isEmpty()) return;
-        JsList order = (passIndex < keyOrders.size() && keyOrders.at(passIndex).outputs.size() == outputs.size())
+        JsList order = (passIndex < std::ssize(keyOrders) && keyOrders.at(passIndex).outputs.size() == outputs.size())
                                  ? keyOrders.at(passIndex).outputs
                                  : outputs.keys();
 
         const JsArray chain = plan.value(JsText(u"chain")).toArray();
-        const bool isLastStep = stepPos == chain.size() - 1;
+        const bool isLastStep = stepPos == std::ssize(chain) - 1;
         const bool isLastPass = passIndex == passCount - 1;
         const JsValue writeVal = plan.value(JsText(u"write"));
 

@@ -5,6 +5,7 @@
 #include "core/lang/tokens.h"
 
 
+#include <iterator>
 #include <utility>
 
 namespace libnoisemaker {
@@ -164,12 +165,12 @@ private:
     bool hasNamespaceDefault_ = false;
 
     // --- cursor helpers ---------------------------------------------
-    bool inBounds(int idx) const { return idx >= 0 && idx < tokens_.size(); }
+    bool inBounds(int idx) const { return idx >= 0 && idx < std::ssize(tokens_); }
     // Clamped read (defensive: the reference's `undefined` semantics for
     // an out-of-range peek() never trigger on a well-formed grammar walk,
     // but clamping to the trailing EOF token avoids any UB if one ever
     // did -- same defensive posture as the godot port's _peek()).
-    const Token& peek() const { return tokens_.at(current_ < tokens_.size() ? current_ : tokens_.size() - 1); }
+    const Token& peek() const { return tokens_.at(current_ < std::ssize(tokens_) ? current_ : std::ssize(tokens_) - 1); }
     Token advance() {
         const Token t = peek();
         current_++;
@@ -1025,7 +1026,7 @@ JsonObject Parser::transformOscInvocation(const JsonObject& call, const Token& n
 
     auto resolve = [&](const LangString& name, int index, const JsonValue& dflt) -> JsonValue {
         if (kwargs.contains(name)) return kwargs.value(name);
-        if (index < args.size()) return args.at(index);
+        if (index < std::ssize(args)) return args.at(index);
         return dflt;
     };
 
@@ -1082,13 +1083,13 @@ JsonObject Parser::transformMidiInvocation(const JsonObject& call, const Token& 
     for (const LangString& paramName : paramOrder) {
         if (kwargs.contains(paramName)) {
             resolved.insert(paramName, kwargs.value(paramName));
-        } else if (posCursor < args.size()) {
+        } else if (posCursor < std::ssize(args)) {
             resolved.insert(paramName, args.at(posCursor++));
         } else if (defaults.contains(paramName)) {
             resolved.insert(paramName, defaults.value(paramName));
         }
     }
-    if (posCursor < args.size()) {
+    if (posCursor < std::ssize(args)) {
         throw parserErrorAt(LangString(u"P003"),
                             LangString(u"midi() has an excess positional argument"),
                             nameToken);
@@ -1181,13 +1182,13 @@ JsonObject Parser::transformAudioInvocation(const JsonObject& call, const Token&
     for (const LangString& paramName : paramOrder) {
         if (kwargs.contains(paramName)) {
             resolved.insert(paramName, kwargs.value(paramName));
-        } else if (posCursor < args.size()) {
+        } else if (posCursor < std::ssize(args)) {
             resolved.insert(paramName, args.at(posCursor++));
         } else if (defaults.contains(paramName)) {
             resolved.insert(paramName, defaults.value(paramName));
         }
     }
-    if (posCursor < args.size()) {
+    if (posCursor < std::ssize(args)) {
         throw parserErrorAt(LangString(u"P003"),
                             LangString(u"audio() has an excess positional argument"),
                             nameToken);

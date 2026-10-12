@@ -23,6 +23,7 @@
 
 
 #include <cstdio>
+#include <iterator>
 #include <stdexcept>
 
 namespace {
@@ -119,7 +120,7 @@ int main() {
             };
             bool orderMatches = (noise->args.size() == expected.size());
             if (orderMatches) {
-                for (int i = 0; i < expected.size(); ++i) {
+                for (int i = 0; i < std::ssize(expected); ++i) {
                     if (noise->args.at(i).name != expected.at(i)) {
                         orderMatches = false;
                         break;

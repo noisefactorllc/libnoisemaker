@@ -34,6 +34,7 @@
 
 
 #include <cstdio>
+#include <iterator>
 
 using namespace libnoisemaker;
 namespace {
@@ -303,7 +304,7 @@ int main() {
             libnoisemaker::TokenType::FALSE,  libnoisemaker::TokenType::SUBCHAIN, libnoisemaker::TokenType::IDENT,
         };
         bool allMatch = toks.size() == expected.size() + 1;
-        for (int i = 0; allMatch && i < expected.size(); ++i) {
+        for (int i = 0; allMatch && i < std::ssize(expected); ++i) {
             allMatch = at(toks, i).type == expected.at(i);
         }
         check(allMatch, "every RESERVED_KEYWORDS entry lexes to its keyword type; non-keyword stays IDENT");

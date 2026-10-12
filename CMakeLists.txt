@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(NM_BUILD_TESTS "Build the libnoisemaker tests" ${PROJECT_IS_TOP_LEVEL})
 option(NM_BUILD_GPU "Build the Dawn executor. OFF builds only the GPU-free core and host helpers, with no Dawn tree" ON)
+option(NM_WARNINGS_AS_ERRORS "Build libnoisemaker's own targets with -Wall -Wextra -Wpedantic -Werror, or /W4 /WX" OFF)
 set(NM_DAWN_SOURCE_DIR "${PROJECT_SOURCE_DIR}/.cache/dawn/src" CACHE PATH
     "Dawn source tree prepared by tools/fetch_dawn.py")
 set(NM_CATALOG_CACHE_DIR "" CACHE PATH "Prefilled, verified catalog cache for offline builds")
@@ -39,7 +40,19 @@ add_custom_target(noisemaker_catalog_generated DEPENDS "${_nm_catalog_cpp}" "${_
 
 if(NM_BUILD_GPU)
   include(cmake/Dawn.cmake)
+endif()
 
+# After Dawn's subdirectory, so these reach only the targets defined below and
+# the tool and test subdirectories added after this point.
+if(NM_WARNINGS_AS_ERRORS)
+  if(MSVC)
+    add_compile_options(/W4 /WX)
+  else()
+    add_compile_options(-Wall -Wextra -Wpedantic -Werror)
+  endif()
+endif()
+
+if(NM_BUILD_GPU)
   add_library(noisemaker_gpu STATIC src/gpu/device.cpp)
   target_include_directories(noisemaker_gpu PUBLIC ${PROJECT_SOURCE_DIR}/src)
   target_link_libraries(noisemaker_gpu PUBLIC dawn::webgpu_dawn)

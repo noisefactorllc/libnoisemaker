@@ -19,11 +19,6 @@ struct DepthGuard {
     ~DepthGuard() { --format_depth; }
 };
 Value field(const Value& v, const JsString& key) { return jsv::get_opt(v, key); }
-Value own(const Value& v, const JsString& key) {
-    if (!v.is_object()) return {};
-    const Value* item = v.as_object().find(key);
-    return item ? *item : Value();
-}
 bool is(const Value& v, const char16_t* type) { return jsv::strict_equals(field(v, u"type"), Value(type)); }
 JsString text(const Value& v) { return jsv::to_string(v); }
 Value fallback(const Value& a, const Value& b) { return jsv::truthy(a) ? a : b; }

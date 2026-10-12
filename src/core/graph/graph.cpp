@@ -3,6 +3,7 @@
 #include "core/value/json.h"
 
 
+#include <iterator>
 #include <stdexcept>
 
 namespace libnoisemaker {
@@ -137,7 +138,7 @@ Graph Graph::fromJson(const std::string& json) {
     const JsArray passesArray = passesValue.toArray();
     const JsObject programs = root.value(JsText(u"programs")).toObject();
     graph.passes.reserve(passesArray.size());
-    for (int i = 0; i < passesArray.size(); ++i) {
+    for (int i = 0; i < std::ssize(passesArray); ++i) {
         graph.passes.append(parsePass(passesArray.at(i), i, programs));
     }
 

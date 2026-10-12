@@ -5,6 +5,7 @@
 #include <vector>
 
 
+#include <iterator>
 #include <stdexcept>
 
 namespace libnoisemaker {
@@ -38,7 +39,7 @@ bool isWs(char16_t c) {
 bool isValidIdentifier(const JsText& name) {
     if (name.isEmpty()) return false;
     if (!(isAlpha(name.at(0)) || name.at(0) == u'_')) return false;
-    for (int i = 1; i < name.size(); ++i) {
+    for (int i = 1; i < std::ssize(name); ++i) {
         const char16_t c = name.at(i);
         if (!(isAlpha(c) || isDigitChar(c) || c == u'_')) return false;
     }

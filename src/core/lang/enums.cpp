@@ -1,4 +1,5 @@
 #include "enums.h"
+#include <iterator>
 
 namespace libnoisemaker {
 
@@ -100,7 +101,7 @@ JsObject buildStd() {
 
     JsObject palette;
     const JsList& keys = paletteKeys();
-    for (int i = 0; i < keys.size(); ++i) {
+    for (int i = 0; i < std::ssize(keys); ++i) {
         palette.insert(keys.at(i), Enums::leaf(i));
     }
     root.insert(JsText(u"palette"), palette);
@@ -123,7 +124,7 @@ JsObject buildStd() {
 // themselves registered as leaves).
 JsObject insertLeaf(const JsObject& node, const JsList& path, int idx, const JsValue& value) {
     JsObject out = node;
-    if (idx == path.size() - 1) {
+    if (idx == std::ssize(path) - 1) {
         out.insert(path.at(idx), Enums::leaf(value));
         return out;
     }
