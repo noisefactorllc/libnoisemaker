@@ -17,35 +17,34 @@ concurrency:
 
 jobs:
   gates:
-    name: frontend parity gates
+    name: scripts/test in the Worker Elves toolchain
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
+    # Emulates the toolchain of scaffold's apps/scaffold-cloud/Dockerfile.agent, where the
+    # Worker Elves supervisor runs scripts/test: its base image digest, and from its packages
+    # the compiler, CMake and Python (GCC 12, CMake 3.25, Python 3.11 as python3 and a
+    # uv-managed Python 3.13). It runs as root; the check image runs as node.
+    container: node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73
+    env:
+      UV_PYTHON_DOWNLOADS: never
+      UV_PYTHON_INSTALL_DIR: /opt/python
     steps:
+      - name: Install the check image's toolchain
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git python3 python3-dev \
+            build-essential pkg-config cmake curl
+          curl -fsSLo /tmp/uv.tar.gz https://github.com/astral-sh/uv/releases/download/0.11.6/uv-x86_64-unknown-linux-gnu.tar.gz
+          echo "0c6bab77a67a445dc849ed5e8ee8d3cb333b6e2eba863643ce1e228075f27943  /tmp/uv.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1
+          UV_PYTHON_DOWNLOADS=manual uv python install --no-bin 3.13.13
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.13"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "26"
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/catalog
           key: catalog-${{ hashFiles('parity/reference.json') }}
-      - name: Build parity driver
-        run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNM_BUILD_GPU=OFF
-          cmake --build build --target nm-dump --parallel
-      - name: Run push parity smoke
-        if: github.event_name == 'push'
-        run: |
-          export NM_REFERENCE_ROOT="$(scripts/reference)"
-          export NM_RENDER="$PWD/build/nm-dump"
-          node parity/check_frontend.mjs tokens ast --programs parity/programs/*.dsl
-      - name: Run full parity gates
-        if: github.event_name != 'push'
-        run: scripts/gates
+      - name: Unit tests and parity gates
+        run: scripts/test
 
   core-macos13:
     name: core for macOS 13.0

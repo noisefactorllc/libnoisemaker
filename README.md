@@ -44,6 +44,12 @@ ctest --test-dir build --output-on-failure
 To build only the GPU-free compiler core and host helpers, with no Dawn tree, configure with
 `-DNM_BUILD_GPU=OFF` and skip `fetch_dawn.py`.
 
+## Testing
+
+`scripts/test` builds the GPU-free tree, runs its unit tests and the tool tests, then runs every
+parity gate (`scripts/gates`) against the reference engine at the commit locked in
+`parity/reference.json`. It needs network access to clone the reference and fetch the catalog.
+
 ## Contributing
 
 Contributions follow the Noise Factor
@@ -60,7 +66,7 @@ src/gpu/              Dawn device
 src/capi/             C API implementation
 tests/                C API, core, GPU, host and tool tests
 parity/               reference lock, corpus and checks against the reference engine
-scripts/              gate and reference entry points
+scripts/              test, gate and reference entry points
 tools/                Dawn fetch, catalog tools, reference oracles and dump tools
 cmake/, third_party/  Dawn build integration and its lock
 ```
