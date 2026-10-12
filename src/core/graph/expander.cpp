@@ -99,6 +99,7 @@ JsText jsStringOf(const JsValue& v) {
     if (v.isString()) return v.toString();
     if (v.isNull()) return JsText(u"null");
     if (v.isUndefined()) return JsText(u"undefined");
+    if (v.raw().is_float32_array()) return v.toVariant();
     if (v.isObject()) return JsText(u"[object Object]");
     JsText result;
     const JsArray elements = v.toArray();

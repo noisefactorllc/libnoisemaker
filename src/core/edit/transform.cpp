@@ -26,7 +26,7 @@ JsString type_of(const Value& value) {
     case Value::Kind::Bool: return u"boolean";
     case Value::Kind::Number: return u"number";
     case Value::Kind::String: return u"string";
-    case Value::Kind::Array: case Value::Kind::Object: return u"object";
+    case Value::Kind::Array: case Value::Kind::Object: case Value::Kind::Float32Array: return u"object";
     case Value::Kind::Function: return u"function";
     }
     return u"undefined";

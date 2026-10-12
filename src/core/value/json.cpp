@@ -75,6 +75,22 @@ void append_value(std::string& out, const Value& value, int indent, int depth) {
             out.push_back(']');
             return;
         }
+        case Value::Kind::Float32Array: {
+            // A typed array serializes as an object keyed by index.
+            out.push_back('{');
+            const auto& elements = value.as_float32_array();
+            for (size_t i = 0; i < elements.size(); ++i) {
+                if (i) out.push_back(',');
+                if (indent) spaces(out, depth + 1, indent);
+                append_quoted(out, utf8_to_js(std::to_string(i)));
+                out.push_back(':');
+                if (indent) out.push_back(' ');
+                append_value(out, Value(static_cast<double>(elements[i])), indent, depth + 1);
+            }
+            if (!elements.empty() && indent) spaces(out, depth, indent);
+            out.push_back('}');
+            return;
+        }
         case Value::Kind::Object: {
             out.push_back('{');
             bool first = true;

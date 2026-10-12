@@ -2,8 +2,9 @@
 #define NOISEMAKER_VALUE_HPP
 
 // JavaScript values as libnoisemaker's C++ API passes them: JSON plus
-// undefined and function sources, with JavaScript string semantics (UTF-16)
-// and member insertion order.
+// undefined, function sources and Float32Array (host inputs such as audio
+// waveforms), with JavaScript string semantics (UTF-16) and member insertion
+// order.
 
 #include <noisemaker/core.h>
 
@@ -37,7 +38,7 @@ using Array = std::vector<Value>;
 
 class NM_CXX_API Value {
  public:
-    enum class Kind { Undefined, Null, Bool, Number, String, Array, Object, Function };
+    enum class Kind { Undefined, Null, Bool, Number, String, Array, Object, Function, Float32Array };
 
     Value();
     static Value null();
@@ -49,6 +50,7 @@ class NM_CXX_API Value {
     Value(Array value);
     Value(Object value);
     static Value function(JsString source);
+    static Value float32_array(std::vector<float> values);
     Value(const Value& other);
     Value& operator=(const Value& other);
     Value(Value&&) noexcept = default;
@@ -63,6 +65,7 @@ class NM_CXX_API Value {
     bool is_array() const { return kind_ == Kind::Array; }
     bool is_object() const { return kind_ == Kind::Object; }
     bool is_function() const { return kind_ == Kind::Function; }
+    bool is_float32_array() const { return kind_ == Kind::Float32Array; }
     bool as_bool() const;
     double as_number() const;
     const JsString& as_string() const;
@@ -70,11 +73,13 @@ class NM_CXX_API Value {
     Array& as_array();
     const Object& as_object() const;
     Object& as_object();
+    const std::vector<float>& as_float32_array() const;
 
  private:
     Kind kind_ = Kind::Undefined;
     using Storage = std::variant<std::monostate, bool, double, JsString,
-                                 std::shared_ptr<Array>, std::shared_ptr<Object>>;
+                                 std::shared_ptr<Array>, std::shared_ptr<Object>,
+                                 std::shared_ptr<std::vector<float>>>;
     Storage data_;
 };
 

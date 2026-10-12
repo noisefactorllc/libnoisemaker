@@ -53,6 +53,15 @@ JsString text(const Value& value) {
             return result;
         }
         case Value::Kind::Function: return u"function";
+        case Value::Kind::Float32Array: {
+            JsString result;
+            const auto& elements = value.as_float32_array();
+            for (size_t i = 0; i < elements.size(); ++i) {
+                if (i) result += u",";
+                result += js_number_to_string(static_cast<double>(elements[i]));
+            }
+            return result;
+        }
         case Value::Kind::Object: {
             const Value* own_to_string = value.as_object().find(u"toString");
             if (own_to_string && !own_to_string->is_function()) {
@@ -91,7 +100,8 @@ double js_max(double a, double b) {
 }
 
 double add_context(double line, const Value& context) {
-    if (context.is_string() || context.is_array() || context.is_object() || context.is_function()) {
+    if (context.is_string() || context.is_array() || context.is_object() || context.is_function() ||
+        context.is_float32_array()) {
         return number(Value(js_number_to_string(line) + text(context)));
     }
     return line + number(context);

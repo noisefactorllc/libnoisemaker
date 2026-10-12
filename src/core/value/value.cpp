@@ -18,9 +18,16 @@ Value Value::function(JsString source) {
     v.kind_ = Kind::Function;
     return v;
 }
+Value Value::float32_array(std::vector<float> values) {
+    Value v;
+    v.kind_ = Kind::Float32Array;
+    v.data_ = std::make_shared<std::vector<float>>(std::move(values));
+    return v;
+}
 Value::Value(const Value& other) : kind_(other.kind_) {
     if (kind_ == Kind::Array) data_ = std::make_shared<Array>(other.as_array());
     else if (kind_ == Kind::Object) data_ = std::make_shared<Object>(other.as_object());
+    else if (kind_ == Kind::Float32Array) data_ = std::make_shared<std::vector<float>>(other.as_float32_array());
     else data_ = other.data_;
 }
 Value& Value::operator=(const Value& other) {
@@ -38,6 +45,7 @@ const Array& Value::as_array() const { return *std::get<std::shared_ptr<Array>>(
 Array& Value::as_array() { return *std::get<std::shared_ptr<Array>>(data_); }
 const Object& Value::as_object() const { return *std::get<std::shared_ptr<Object>>(data_); }
 Object& Value::as_object() { return *std::get<std::shared_ptr<Object>>(data_); }
+const std::vector<float>& Value::as_float32_array() const { return *std::get<std::shared_ptr<std::vector<float>>>(data_); }
 
 bool Object::has(const JsString& key) const { return index_.contains(key) || hidden_.contains(key); }
 const Value* Object::find(const JsString& key) const {

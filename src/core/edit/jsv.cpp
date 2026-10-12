@@ -2,9 +2,7 @@
 #include "core/value/json.h"
 #include "core/value/js_number.h"
 #include "core/value/js_string.h"
-#include "core/value/parse_double.h"
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <limits>
 
@@ -24,6 +22,14 @@ bool object_proto(const JsString& key) {
     return in_names(key, {u"constructor",u"__defineGetter__",u"__defineSetter__",u"hasOwnProperty",
        u"__lookupGetter__",u"__lookupSetter__",u"isPrototypeOf",u"propertyIsEnumerable",
        u"toString",u"valueOf",u"__proto__",u"toLocaleString"});
+}
+// Own names of Float32Array.prototype and %TypedArray%.prototype (V8, Node 26.10.0).
+bool typed_array_proto(const JsString& key) {
+    return in_names(key, {u"constructor",u"BYTES_PER_ELEMENT",u"buffer",u"byteLength",u"byteOffset",u"length",
+       u"entries",u"keys",u"values",u"at",u"copyWithin",u"every",u"fill",u"filter",u"find",u"findIndex",
+       u"findLast",u"findLastIndex",u"forEach",u"includes",u"indexOf",u"join",u"lastIndexOf",u"map",u"reverse",
+       u"reduce",u"reduceRight",u"set",u"slice",u"some",u"sort",u"subarray",u"toReversed",u"toSorted",u"with",
+       u"toLocaleString",u"toString"});
 }
 bool array_index(const JsString& key, size_t& index) {
     if (key.empty() || (key.size()>1 && key[0]==u'0')) return false;
@@ -58,6 +64,18 @@ Value member(const Value& base, const JsString& key) {
         size_t i=0; if(array_index(key,i)) return i<a.size()?a[i]:Value();
         return inherited(key,u"Array");
     }
+    if (base.is_float32_array()) {
+        const auto& a=base.as_float32_array();
+        if(key==u"length") return Value(static_cast<double>(a.size()));
+        size_t i=0; if(array_index(key,i)) return i<a.size()?Value(static_cast<double>(a[i])):Value();
+        if(key==u"byteLength") return Value(static_cast<double>(a.size()*4));
+        if(key==u"byteOffset") return Value(0.0);
+        if(key==u"BYTES_PER_ELEMENT") return Value(4.0);
+        // The ArrayBuffer reads as a plain object here.
+        if(key==u"buffer") return Value(Object{});
+        if(key!=u"constructor"&&typed_array_proto(key)) return Value::function(native_function(key));
+        return inherited(key,u"Float32Array");
+    }
     if (base.is_string()) {
         const auto& s=base.as_string();
         if(key==u"length") return Value(static_cast<double>(s.size()));
@@ -79,6 +97,7 @@ bool has_property(const Value& base,const JsString& key) {
     if(base.is_object()) return base.as_object().has(key)||object_proto(key);
     if(base.is_array()) { size_t i=0; return key==u"length" || (array_index(key,i)&&i<base.as_array().size()) || object_proto(key); }
     if(base.is_function()) return key==u"prototype"||key==u"name"||key==u"length"||object_proto(key);
+    if(base.is_float32_array()) { size_t i=0; return (array_index(key,i)&&i<base.as_float32_array().size()) || typed_array_proto(key) || object_proto(key); }
     return false;
 }
 JsString to_property_key(const Value& value) { return to_string(value); }
@@ -89,6 +108,12 @@ JsString to_string(const Value& value) {
     if(value.is_number()) return number_text(value.as_number());
     if(value.is_string()||value.is_function()) return value.as_string();
     if(value.is_array()) return join(value.as_array(),u",");
+    if(value.is_float32_array()) {
+        JsString out;
+        const auto& a=value.as_float32_array();
+        for(size_t i=0;i<a.size();++i) { if(i) out+=u","; out+=number_text(static_cast<double>(a[i])); }
+        return out;
+    }
     if(value.is_object()) {
         const Value* own= value.as_object().find(u"toString");
         if(!own || own->is_function()) return u"[object Object]";
@@ -103,17 +128,7 @@ double to_number(const Value& value) {
     if(value.is_null()) return 0;
     if(value.is_bool()) return value.as_bool()?1:0;
     if(value.is_number()) return value.as_number();
-    JsString s=value.is_string()?value.as_string():to_string(value);
-    const auto first=s.find_first_not_of(u" \t\n\r\v\f");
-    if(first==JsString::npos) return 0;
-    const auto last=s.find_last_not_of(u" \t\n\r\v\f");
-    std::string ascii=js_to_utf8(s.substr(first,last-first+1));
-    double n=0;
-    auto parsed=parse_double(ascii.data(),ascii.data()+ascii.size(),n);
-    if(parsed.ec==std::errc()&&parsed.ptr==ascii.data()+ascii.size()) return n;
-    if(ascii=="Infinity"||ascii=="+Infinity") return std::numeric_limits<double>::infinity();
-    if(ascii=="-Infinity") return -std::numeric_limits<double>::infinity();
-    return std::numeric_limits<double>::quiet_NaN();
+    return js::stringToNumber(value.is_string()?value.as_string():to_string(value));
 }
 bool truthy(const Value& value) {
     if(value.is_undefined()||value.is_null()) return false;
@@ -140,12 +155,13 @@ JsString join(const Array& values,const JsString& separator) {
     for(size_t i=0;i<values.size();++i) { if(i) out+=separator; if(!values[i].is_null()&&!values[i].is_undefined()) out+=to_string(values[i]); }
     return out;
 }
-bool is_object_like(const Value& value) { return value.is_object()||value.is_array(); }
+bool is_object_like(const Value& value) { return value.is_object()||value.is_array()||value.is_float32_array(); }
 Entries entries(const Value& value) {
     Entries out;
     if(value.is_object()) for(const auto& key:value.as_object().keys()) out.emplace_back(key,*value.as_object().find(key));
     else if(value.is_array()) for(size_t i=0;i<value.as_array().size();++i) out.emplace_back(decimal(i),value.as_array()[i]);
     else if(value.is_string()) for(size_t i=0;i<value.as_string().size();++i) out.emplace_back(decimal(i),JsString(1,value.as_string()[i]));
+    else if(value.is_float32_array()) for(size_t i=0;i<value.as_float32_array().size();++i) out.emplace_back(decimal(i),Value(static_cast<double>(value.as_float32_array()[i])));
     return out;
 }
 Entries entries_strict(const Value& value) {
@@ -158,11 +174,12 @@ void set_plain(Object& object,const JsString& key,Value value) { if(key!=u"__pro
 void spread_into(Object& target,const Value& source) { for(const auto& [k,v]:entries(source)) target.set(k,v); }
 Array iterate(const Value& value,const JsString& expression) {
     if(value.is_array()) return value.as_array();
+    if(value.is_float32_array()) { Array out; for(float f:value.as_float32_array()) out.emplace_back(static_cast<double>(f)); return out; }
     if(value.is_string()) { Array out; for(char16_t c:value.as_string()) out.emplace_back(JsString(1,c)); return out; }
     throw JsError(u"TypeError",expression+u" is not iterable");
 }
 Array iterate_anon(const Value& value) {
-    if(value.is_array()||value.is_string())return iterate(value,u"object");
+    if(value.is_array()||value.is_string()||value.is_float32_array())return iterate(value,u"object");
     JsString type=u"object";
     if(value.is_number())type=u"number "+js_number_to_string(value.as_number());
     else if(value.is_bool())type=value.as_bool()?u"boolean true":u"boolean false";
@@ -171,7 +188,7 @@ Array iterate_anon(const Value& value) {
 }
 bool in_operator(const Value& key,const Value& object) {
     JsString name=to_property_key(key);
-    if(object.is_object()||object.is_array()||object.is_function()) return has_property(object,name);
+    if(object.is_object()||object.is_array()||object.is_function()||object.is_float32_array()) return has_property(object,name);
     throw JsError(u"TypeError",u"Cannot use 'in' operator to search for '"+name+u"' in "+to_string(object));
 }
 JsString repeat(const JsString& source,double count) {

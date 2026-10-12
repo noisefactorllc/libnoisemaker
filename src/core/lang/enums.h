@@ -158,6 +158,7 @@ public:
             case Value::Kind::Function: return Function;
             case Value::Kind::Array: return Array;
             case Value::Kind::Object: return Object;
+            case Value::Kind::Float32Array: return Object;  // typeof is "object"
         }
         return Undefined;
     }
@@ -168,7 +169,7 @@ public:
     bool isString() const { return value_.is_string(); }
     bool isFunction() const { return value_.is_function(); }
     bool isArray() const { return value_.is_array(); }
-    bool isObject() const { return value_.is_object(); }
+    bool isObject() const { return value_.is_object() || value_.is_float32_array(); }
     double toDouble(double fallback = 0) const { return isDouble() ? value_.as_number() : fallback; }
     int toInt(int fallback = 0) const { return isDouble() ? static_cast<int>(value_.as_number()) : fallback; }
     bool toBool(bool fallback = false) const { return isBool() ? value_.as_bool() : fallback; }
@@ -202,6 +203,14 @@ public:
     JsObject() = default;
     JsObject(std::initializer_list<std::pair<JsText, JsValue>> init) { for (const auto& item : init) insert(item.first, item.second); }
     explicit JsObject(const Value& value) {
+        if (value.is_float32_array()) {
+            // A typed array reads as an object keyed by index.
+            const auto& elements = value.as_float32_array();
+            for (size_t i = 0; i < elements.size(); ++i) {
+                insert(JsText(utf8_to_js(std::to_string(i))), Value(static_cast<double>(elements[i])));
+            }
+            return;
+        }
         if (!value.is_object()) return;
         for (const auto& key : value.as_object().keys()) {
             const Value* item = value.as_object().find(key);
@@ -271,6 +280,15 @@ inline JsText JsValue::toVariant() const {
         case String: return toString();
         case Function: return value_.as_string();
         case Object: {
+            if (value_.is_float32_array()) {
+                JsText result;
+                const auto& elements = value_.as_float32_array();
+                for (std::size_t i = 0; i < elements.size(); ++i) {
+                    if (i) result += u",";
+                    result += js_number_to_string(static_cast<double>(elements[i]));
+                }
+                return result;
+            }
             const JsObject object = toObject();
             if (object.contains(u"toString") && !object.value(u"toString").isFunction()) {
                 throw std::runtime_error("Cannot convert object to primitive value");
