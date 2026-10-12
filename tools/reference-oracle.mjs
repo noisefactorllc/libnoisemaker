@@ -10,7 +10,7 @@
 //
 // Usage:
 //   node tools/reference-oracle.mjs <stage> --out results.jsonl <program.dsl>...
-//   stage: tokens | ast | validated | expanded | graph
+//   stage: tokens | ast | validated | expanded | graph | graph-normalized
 //
 // Each line of the output is {"program": <file stem>, "stage": <stage>,
 // "result": <stage output>} or {"program", "stage", "error": <thrown value>}.
@@ -22,6 +22,7 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { normalizeGraph as normalizeForHosts } from './normalize-graph.mjs'
 
 if (!process.env.NM_REFERENCE_ROOT) {
   console.error('NM_REFERENCE_ROOT is not set; point it at a checkout of the noisemaker reference repository')
@@ -37,12 +38,16 @@ console.log = (...args) => process.stderr.write(args.map(String).join(' ') + '\n
 console.warn = console.log
 console.info = console.log
 
-const STAGES = ['tokens', 'ast', 'validated', 'expanded', 'graph']
+const STAGES = ['tokens', 'ast', 'validated', 'expanded', 'graph', 'graph-normalized']
 const SHADER_SOURCE_KEYS = new Set(['glsl', 'wgsl', 'vertex', 'fragment'])
 
 function sortedDirs (dir) {
   return readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
 }
+
+// {"<ns>.<func>": {globalKey: defineName}}, filled by bootstrapReference() from
+// the definitions' globals, as noisemaker-for-qt's export-graph.mjs builds it.
+export const defineMap = {}
 
 export async function bootstrapReference () {
   const mod = await import(pathToFileURL(join(SHADERS, 'src', 'index.js')).href)
@@ -96,6 +101,11 @@ export async function bootstrapReference () {
       registerEffect(`${namespace}.${instance.func}`, instance)
       registerEffect(`${namespace}/${effectName}`, instance)
       registerEffect(`${namespace}.${effectName}`, instance)
+      const defines = {}
+      for (const [key, spec] of Object.entries(instance.globals || {})) {
+        if (spec && spec.define) defines[key] = spec.define
+      }
+      if (Object.keys(defines).length) defineMap[`${namespace}.${instance.func}`] = defines
       if (instance.func) {
         const choicesToRegister = {}
         const args = Object.entries(instance.globals || {}).map(([key, spec]) => {
@@ -179,6 +189,7 @@ export function runStage (mod, stage, src) {
   if (stage === 'validated') return plain(validated)
   if (stage === 'expanded') return plain(mod.expand(validated))
   if (stage === 'graph') return normalizeGraph(mod.compileGraph(src))
+  if (stage === 'graph-normalized') return plain(normalizeForHosts(mod.compileGraph(src), defineMap))
   throw new Error(`unknown stage ${stage}`)
 }
 

@@ -7,6 +7,7 @@
 #include "core/lang/validator.h"
 #include "core/graph/dsl_compiler.h"
 #include "core/graph/expander.h"
+#include "core/graph/normalize.h"
 #include "core/value/json.h"
 
 #include <algorithm>
@@ -102,6 +103,10 @@ libnoisemaker::Value normalized_graph(const libnoisemaker::JsString& source) {
 libnoisemaker::Value result_for(const std::string& stage, const libnoisemaker::JsString& source,
                      const libnoisemaker::Value* isolated) {
     if (stage == "graph") return normalized_graph(source);
+    if (stage == "graph-normalized") {
+        const libnoisemaker::Object graph = libnoisemaker::compileGraphJson(source, registry_instance());
+        return libnoisemaker::normalizeGraphJson(libnoisemaker::Value(graph), registry_instance().defineMap().raw());
+    }
     if (stage == "expanded") {
         const libnoisemaker::Value validated = isolated ? *isolated : libnoisemaker::validate(libnoisemaker::parse(libnoisemaker::lex(source)), registry_instance());
         return expansion_json(libnoisemaker::expand(libnoisemaker::JsObject(validated), registry_instance()));
@@ -140,7 +145,7 @@ int dump(int argc, char** argv) {
     }
     const std::string stage = argv[0];
     if (stage != "tokens" && stage != "ast" && stage != "validated" &&
-        stage != "expanded" && stage != "graph") {
+        stage != "expanded" && stage != "graph" && stage != "graph-normalized") {
         std::cerr << "nm-dump: stage " << stage << " is not implemented\n";
         return 2;
     }

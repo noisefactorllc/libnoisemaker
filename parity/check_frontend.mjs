@@ -10,7 +10,7 @@
 // Usage:
 //   NM_REFERENCE_ROOT=<reference-checkout> node parity/check_frontend.mjs [stage...] \
 //       [--isolated] [--programs file...] [--verbose]
-//   stages default to: tokens ast validated expanded graph
+//   stages default to: tokens ast validated expanded graph graph-normalized
 //
 // --isolated checks each stage on the reference's output of the stage before it
 // (validated <- ast, expanded <- validated, graph <- validated) instead of
@@ -28,7 +28,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const ALL_STAGES = ['tokens', 'ast', 'validated', 'expanded', 'graph']
+const ALL_STAGES = ['tokens', 'ast', 'validated', 'expanded', 'graph', 'graph-normalized']
 
 if (!process.env.NM_REFERENCE_ROOT) {
   console.error('NM_REFERENCE_ROOT is not set; point it at a checkout of the noisemaker reference repository')

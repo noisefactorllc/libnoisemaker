@@ -19,7 +19,7 @@ export NM_DIFF_EVIDENCE_DIR="$repo_root/.cache/evidence"
 node tools/catalog/fetch-catalog.mjs --cache .cache/catalog --offline
 node tools/catalog/check-catalog.mjs "$build_dir/catalog"
 node parity/check_func_bodies_differential.mjs
-node parity/check_frontend.mjs tokens ast validated expanded graph
+node parity/check_frontend.mjs tokens ast validated expanded graph graph-normalized
 node parity/check_frontend.mjs validated expanded graph --isolated
 node parity/check_registry.mjs
 node parity/check_midi_state.mjs

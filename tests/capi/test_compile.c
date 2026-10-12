@@ -18,6 +18,22 @@ int main(void) {
     CHECK(nm_compile(source, strlen(source), &compiled, &diagnostics) == NM_OK);
     CHECK(compiled != NULL);
     CHECK(strstr(nm_compiled_graph_json(compiled), "\"passes\"") != NULL);
+    CHECK(strstr(nm_compiled_graph_json_normalized(compiled), "\"passType\":\"effect\"") != NULL);
+    nm_compiled_destroy(compiled);
+    nm_diagnostics_destroy(diagnostics);
+
+    /* synth/noise's type global carries define NOISE_TYPE, so the normalized
+     * graph moves it from the pass's uniforms into its defines. */
+    compiled = NULL;
+    diagnostics = NULL;
+    const char noise[] = "search synth\nnoise().write(o0)\nrender(o0)\n";
+    CHECK(nm_compile(noise, strlen(noise), &compiled, &diagnostics) == NM_OK);
+    const char* normalized = nm_compiled_graph_json_normalized(compiled);
+    CHECK(strstr(normalized, "\"func\":\"noise\"") != NULL);
+    CHECK(strstr(normalized, "\"progName\":\"noise\"") != NULL);
+    CHECK(strstr(normalized, "\"NOISE_TYPE\":10") != NULL);
+    CHECK(strstr(normalized, "\"type\":10") == NULL);
+    CHECK(strstr(nm_compiled_graph_json(compiled), "\"type\":10") != NULL);
     nm_compiled_destroy(compiled);
     nm_diagnostics_destroy(diagnostics);
 

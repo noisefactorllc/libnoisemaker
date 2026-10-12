@@ -77,6 +77,7 @@ add_library(noisemaker_core STATIC
   src/core/graph/dsl_compiler.cpp
   src/core/graph/expander.cpp
   src/core/graph/graph.cpp
+  src/core/graph/normalize.cpp
   src/core/graph/resources.cpp
   src/core/js/js_unicode.cpp
   src/core/js/js_regexp.cpp

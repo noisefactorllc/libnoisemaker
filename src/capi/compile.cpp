@@ -2,6 +2,7 @@
 
 #include "capi/error.h"
 #include "core/graph/dsl_compiler.h"
+#include "core/graph/normalize.h"
 #include "core/edit/unparser.h"
 #include "core/lang/diagnostics.h"
 #include "core/lang/effect_registry.h"
@@ -18,6 +19,7 @@
 
 struct nm_compiled {
     std::string graph_json;
+    std::string normalized_json;
     libnoisemaker::JsString source;
 };
 
@@ -81,6 +83,8 @@ static nm_status compile_impl(const char* source, size_t length,
         const libnoisemaker::Object graph = libnoisemaker::compileGraphJson(text, registry());
         auto compiled = std::make_unique<nm_compiled>();
         compiled->graph_json = libnoisemaker::json::stringify(libnoisemaker::Value(graph));
+        compiled->normalized_json = libnoisemaker::json::stringify(
+            libnoisemaker::normalizeGraphJson(libnoisemaker::Value(graph), registry().defineMap().raw()));
         compiled->source = text;
         *out = compiled.release();
         return NM_OK;
@@ -127,6 +131,9 @@ extern "C" nm_status nm_compile(const char* source, size_t length,
 extern "C" void nm_compiled_destroy(nm_compiled* compiled) { delete compiled; }
 extern "C" const char* nm_compiled_graph_json(const nm_compiled* compiled) {
     return compiled ? compiled->graph_json.c_str() : "";
+}
+extern "C" const char* nm_compiled_graph_json_normalized(const nm_compiled* compiled) {
+    return compiled ? compiled->normalized_json.c_str() : "";
 }
 extern "C" size_t nm_diagnostics_count(const nm_diagnostics* diagnostics) {
     return diagnostics ? diagnostics->entries.size() : 0;

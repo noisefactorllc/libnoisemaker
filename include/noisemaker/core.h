@@ -47,6 +47,9 @@ NM_API nm_status nm_compile(const char* source, size_t length,
 NM_API void nm_compiled_destroy(nm_compiled* compiled);
 /* Valid until nm_compiled_destroy is called. */
 NM_API const char* nm_compiled_graph_json(const nm_compiled* compiled);
+/* The normalized render graph: each pass carries passType, namespace, func,
+ * progName and defines. Valid until nm_compiled_destroy is called. */
+NM_API const char* nm_compiled_graph_json_normalized(const nm_compiled* compiled);
 NM_API size_t nm_diagnostics_count(const nm_diagnostics* diagnostics);
 NM_API const char* nm_diagnostics_json(const nm_diagnostics* diagnostics, size_t index);
 NM_API void nm_diagnostics_destroy(nm_diagnostics* diagnostics);
