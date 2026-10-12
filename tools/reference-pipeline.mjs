@@ -10,8 +10,10 @@
 // Ops: create {graph, options}; init and resize {width, height}; recompile
 // {graph}, the steps of compiler.js recompile() once it has the graph;
 // updateParameterTextures {uniforms}; resolveDimension {spec, screenSize,
-// uniforms}, whose result is the number as text ("-0" for negative zero). A
-// graph's textures and allocations, objects in JSON, are Maps again here.
+// uniforms}, whose result is the number as text ("-0" for negative zero);
+// render {time}; syncTime {time}; setTileRegion {offset, fullResolution,
+// renderScale}; clearTileRegion; clearSurface {name}. A graph's textures and
+// allocations, objects in JSON, are Maps again here.
 //
 //   NM_REFERENCE_ROOT=<reference-checkout> node tools/reference-pipeline.mjs < ops.jsonl
 import { createInterface } from 'node:readline'
@@ -65,7 +67,14 @@ const state = () => {
     textures,
     passUniforms: passes.map(pass => pass?.uniforms ?? null),
     textureSpecs: pipeline.graph?.textures ?? null,
-    resourcePlan: pipeline.getResourcePlan()
+    resourcePlan: pipeline.getResourcePlan(),
+    globalUniforms: pipeline.globalUniforms,
+    frameIndex: pipeline.frameIndex,
+    lastTime: pipeline.lastTime,
+    lastPassCount: pipeline.lastPassCount,
+    frameReadTextures: pipeline.frameReadTextures ? [...pipeline.frameReadTextures] : null,
+    frameWriteTextures: pipeline.frameWriteTextures ? [...pipeline.frameWriteTextures] : null,
+    passViewports: passes.map(pass => pass?.viewportResolved ?? null)
   })
 }
 
@@ -94,6 +103,11 @@ for await (const line of lines) {
         break
       }
       case 'updateParameterTextures': pipeline.updateParameterTextures(op.uniforms); break
+      case 'render': pipeline.render(op.time); break
+      case 'syncTime': pipeline.syncTime(op.time); break
+      case 'setTileRegion': pipeline.setTileRegion({ offset: op.offset, fullResolution: op.fullResolution, renderScale: op.renderScale }); break
+      case 'clearTileRegion': pipeline.clearTileRegion(); break
+      case 'clearSurface': pipeline.clearSurface(op.name); break
       case 'resolveDimension': {
         const value = pipeline.resolveDimension(op.spec, op.screenSize, op.uniforms)
         result = Object.is(value, -0) ? '-0' : String(value)

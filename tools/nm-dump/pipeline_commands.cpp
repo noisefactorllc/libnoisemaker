@@ -6,6 +6,7 @@
 #include "gpu/backend/pipeline.h"
 #include "gpu/backend/recording_device.h"
 
+#include <array>
 #include <cmath>
 #include <exception>
 #include <iostream>
@@ -39,6 +40,7 @@ nm::Value surfaceRecord(const be::Surface& surface) {
         record.set(u"uvs", nm::Value(surface.uvs));
         record.set(u"width", nm::Value(surface.width));
         record.set(u"height", nm::Value(surface.height));
+        if (surface.meshCurrentFrame) record.set(u"currentFrame", nm::Value(surface.currentFrame));
     } else {
         record.set(u"read", optionalId(surface.read));
         record.set(u"write", optionalId(surface.write));
@@ -98,6 +100,25 @@ nm::Value state(const be::Pipeline& pipeline, const be::WebGPUBackend& backend) 
     const nm::Value textureSpecs = field(graph, u"textures");
     out.set(u"textureSpecs", textureSpecs.is_undefined() ? nm::Value::null() : textureSpecs);
     out.set(u"resourcePlan", pipeline.getResourcePlan());
+    out.set(u"globalUniforms", pipeline.globalUniforms());
+    out.set(u"frameIndex", nm::Value(pipeline.frameIndex()));
+    out.set(u"lastTime", nm::Value(pipeline.lastTime()));
+    out.set(u"lastPassCount", nm::Value(pipeline.lastPassCount()));
+    const auto bindings = [](const be::Pipeline::FrameBindings& map) {
+        nm::Array out;
+        for (const auto& [name, id] : map) out.emplace_back(nm::Array{nm::Value(name), id ? nm::Value(*id) : nm::Value::null()});
+        return nm::Value(std::move(out));
+    };
+    out.set(u"frameReadTextures", bindings(pipeline.frameReadTextures()));
+    out.set(u"frameWriteTextures", bindings(pipeline.frameWriteTextures()));
+    nm::Array viewports;
+    if (passes.is_array()) {
+        for (const nm::Value& pass : passes.as_array()) {
+            const nm::Value resolved = pass.is_object() ? field(pass, u"viewportResolved") : nm::Value();
+            viewports.push_back(resolved.is_undefined() || resolved.is_null() ? nm::Value::null() : resolved);
+        }
+    }
+    out.set(u"passViewports", nm::Value(std::move(viewports)));
     return nm::Value(std::move(out));
 }
 
@@ -147,6 +168,23 @@ int pipeline(int, char**) {
                 } else if (kind == u"updateParameterTextures") {
                     const nm::Value uniforms = field(op, u"uniforms");
                     pipeline->updateParameterTextures(uniforms.is_undefined() ? nm::Value(nm::Object{}) : uniforms);
+                } else if (kind == u"render") {
+                    pipeline->render(number(field(op, u"time"), u"time"));
+                } else if (kind == u"syncTime") {
+                    pipeline->syncTime(number(field(op, u"time"), u"time"));
+                } else if (kind == u"setTileRegion") {
+                    const auto pair = [&](const char16_t* key) {
+                        const nm::Value value = field(op, key);
+                        return std::array<double, 2>{number(nm::jsv::get(value, u"0"), key), number(nm::jsv::get(value, u"1"), key)};
+                    };
+                    const nm::Value renderScale = field(op, u"renderScale");
+                    pipeline->setTileRegion(pair(u"offset"), pair(u"fullResolution"),
+                                            renderScale.is_undefined() || renderScale.is_null() ? std::nullopt
+                                                                                                : std::optional<double>(number(renderScale, u"renderScale")));
+                } else if (kind == u"clearTileRegion") {
+                    pipeline->clearTileRegion();
+                } else if (kind == u"clearSurface") {
+                    pipeline->clearSurface(field(op, u"name").as_string());
                 } else if (kind == u"resolveDimension") {
                     const nm::Value uniforms = field(op, u"uniforms");
                     const double value = pipeline->resolveDimension(field(op, u"spec"), number(field(op, u"screenSize"), u"screenSize"),

@@ -1,6 +1,7 @@
 #include "gpu/backend/uniforms.h"
 
 #include "core/edit/jsv.h"
+#include "core/value/js_math.h"
 #include "core/value/js_number.h"
 #include "gpu/wgsl/jsre.h"
 #include "gpu/wgsl/wgsl.h"

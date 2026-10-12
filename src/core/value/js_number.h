@@ -22,16 +22,6 @@ bool isWhiteSpaceOrLineTerminator(char16_t c);
 double parseFloat(const JsString& text);
 double parseFloatPrefix(std::u16string_view token);
 
-// Math.round (halves toward +Infinity, -0 kept), Math.max and Math.min of two
-// numbers (NaN wins; +0 sorts above -0) and Math.pow (NaN for a NaN exponent
-// and for 1 or -1 to an infinite power, where C's pow gives 1). Math.pow
-// equals V8's when the result is exact, as for the integer powers of the
-// texture sizes it computes here.
-double round(double x);
-double max(double a, double b);
-double min(double a, double b);
-double pow(double base, double exponent);
-
 namespace detail {
 // The shortest round-trip digits of a finite double above zero, as "d.ddde±x".
 std::string shortest_scientific(double magnitude);

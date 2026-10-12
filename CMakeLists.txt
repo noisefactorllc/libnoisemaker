@@ -104,6 +104,7 @@ add_library(noisemaker_core_objects OBJECT
   src/core/lang/lexer.cpp
   src/core/lang/parser.cpp
   src/core/value/js_string.cpp
+  src/core/value/js_math.cpp
   src/core/value/js_number.cpp
   src/core/value/value.cpp
   src/core/value/json.cpp)
@@ -153,9 +154,13 @@ add_library(noisemaker::host ALIAS noisemaker_host)
 # (src/gpu/backend/device.h) and the parts they use that need no GPU: WGSL
 # source analysis and uniform packing. With RecordingDevice it builds and is gated in every configuration.
 add_library(noisemaker_backend STATIC src/gpu/wgsl/jsre.cpp src/gpu/wgsl/wgsl.cpp src/gpu/backend/uniforms.cpp
-            src/gpu/backend/backend.cpp src/gpu/backend/pipeline.cpp src/gpu/backend/recording_device.cpp)
+            src/gpu/backend/automation.cpp src/gpu/backend/backend.cpp src/gpu/backend/pipeline.cpp
+            src/gpu/backend/recording_device.cpp)
 target_include_directories(noisemaker_backend PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(noisemaker_backend PUBLIC noisemaker_core_impl)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(noisemaker_backend PRIVATE -ffp-contract=off)
+endif()
 add_subdirectory(tools/nm-dump)
 
 if(NM_BUILD_GPU)

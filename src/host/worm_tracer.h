@@ -80,12 +80,5 @@ TraceResult traceWorms(StrokeCanvas& canvas, const WormTraceOptions& opts,
                        const std::function<bool()>& isCancelled = {},
                        const std::function<void()>& onProgress = {});
 
-namespace detail {
-// Math.sin, Math.cos and Math.log as V8 returns them: correctly rounded
-// (worm_tracer.cpp explains the evaluation). Exposed for the tests.
-double jsSin(double x);
-double jsCos(double x);
-double jsLog(double x);
-} // namespace detail
 
 } // namespace libnoisemaker

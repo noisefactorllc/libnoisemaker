@@ -329,33 +329,6 @@ double parseFloat(const JsString& text) {
     while (i < text.size() && isWhiteSpaceOrLineTerminator(text[i])) ++i;
     return parseFloatPrefix(std::u16string_view(text).substr(i));
 }
-
-double round(double x) {
-    if (!std::isfinite(x) || std::trunc(x) == x) return x;
-    if (x < 0 && x >= -0.5) return -0.0;
-    const double floor = std::floor(x);
-    return x - floor >= 0.5 ? floor + 1 : floor;
-}
-
-double max(double a, double b) {
-    if (std::isnan(a) || std::isnan(b)) return kNaN;
-    if (a == b) return std::signbit(a) ? b : a;
-    return a > b ? a : b;
-}
-
-double min(double a, double b) {
-    if (std::isnan(a) || std::isnan(b)) return kNaN;
-    if (a == b) return std::signbit(a) ? a : b;
-    return a < b ? a : b;
-}
-
-double pow(double base, double exponent) {
-    if (std::isnan(exponent)) return kNaN;
-    if (exponent == 0) return 1;
-    if (std::isnan(base)) return kNaN;
-    if (std::fabs(base) == 1 && std::isinf(exponent)) return kNaN;
-    return std::pow(base, exponent);
-}
 }  // namespace libnoisemaker::js
 
 namespace libnoisemaker {

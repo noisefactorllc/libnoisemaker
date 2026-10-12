@@ -1,7 +1,10 @@
 #include "gpu/backend/pipeline.h"
 
+#include "gpu/backend/automation.h"
+
 #include "core/catalog/catalog.h"
 #include "core/edit/jsv.h"
+#include "core/value/js_math.h"
 #include "core/value/js_number.h"
 #include "core/value/json.h"
 
@@ -69,14 +72,18 @@ double mrtFormatBytes(const Value& format) {
 // them (func, namespace.func, namespace/effect, namespace.effect, in
 // namespace and effect order, a later effect replacing an earlier one), with
 // the lifecycle hooks each defines (the catalog's jsHooks).
-const std::unordered_map<JsString, std::vector<JsString>>& effectHooks() {
-    static const std::unordered_map<JsString, std::vector<JsString>> index = [] {
+struct EffectHooks {
+    JsString id;  // namespace/effect
+    std::vector<JsString> hooks;
+};
+const std::unordered_map<JsString, EffectHooks>& effectHooks() {
+    static const std::unordered_map<JsString, EffectHooks> index = [] {
         std::vector<const CatalogFile*> files;
         for (const auto& file : catalog_files()) {
             if (file.path.starts_with("effects/") && file.path.ends_with(".json")) files.push_back(&file);
         }
         std::sort(files.begin(), files.end(), [](const auto* a, const auto* b) { return a->path < b->path; });
-        std::unordered_map<JsString, std::vector<JsString>> out;
+        std::unordered_map<JsString, EffectHooks> out;
         for (const CatalogFile* file : files) {
             const std::string_view path = file->path.substr(8, file->path.size() - 8 - 5);
             const size_t slash = path.find('/');
@@ -89,13 +96,15 @@ const std::unordered_map<JsString, std::vector<JsString>>& effectHooks() {
                 if (hook.is_string()) hooks.push_back(hook.as_string());
             }
             const JsString func = jsv::to_string(jsv::member(definition, u"func"));
-            for (const JsString& key : {func, ns + u"." + func, ns + u"/" + name, ns + u"." + name}) out[key] = hooks;
+            for (const JsString& key : {func, ns + u"." + func, ns + u"/" + name, ns + u"." + name}) {
+                out[key] = EffectHooks{ns + u"/" + name, hooks};
+            }
         }
         return out;
     }();
     return index;
 }
-const std::vector<JsString>* getEffect(const Value& key) {
+const EffectHooks* getEffect(const Value& key) {
     if (!key.is_string()) return nullptr;
     const auto& index = effectHooks();
     const auto it = index.find(key.as_string());
@@ -106,7 +115,11 @@ bool hasLifecycleHook(const std::vector<JsString>& hooks, const char16_t* hook) 
 }  // namespace
 
 Pipeline::Pipeline(Value graph, WebGPUBackend& backend, Options options)
-    : graph_(std::move(graph)), backend_(backend), texturePooling_(options.texturePooling) {}
+    : graph_(std::move(graph)), backend_(backend), texturePooling_(options.texturePooling) {
+    Object proxy;
+    proxy.set(u"uniforms", Value(Object{}));
+    oscillatorPassProxy_ = Value(std::move(proxy));
+}
 
 // this.graph.<key>: only an object graph has members the pipeline reads.
 const Value* Pipeline::graphMember(const char16_t* key) const {
@@ -208,17 +221,19 @@ void Pipeline::initLifecycleEffects() {
             continue;
         }
         seen.push_back(effectKey);
-        const std::vector<JsString>* hooks = getEffect(effectKey);
-        if (!hooks) continue;
+        const EffectHooks* effect = getEffect(effectKey);
+        if (!effect) continue;
+        const std::vector<JsString>* hooks = &effect->hooks;
         if (!hasLifecycleHook(*hooks, u"onInit") && !hasLifecycleHook(*hooks, u"onUpdate") &&
             !hasLifecycleHook(*hooks, u"onDestroy")) {
             continue;
         }
         const JsString& key = effectKey.as_string();
         if (!contains(lifecycleEffects_, key)) lifecycleEffects_.push_back(key);
+        // synth/media is the catalog's only effect with these hooks.
+        if (effect->id != u"synth/media") throw JsError(u"Error", u"the lifecycle hooks of " + effect->id + u" are outside the port");
         if (hasLifecycleHook(*hooks, u"onInit") && !initLifecycleDone_.contains(key)) {
             initLifecycleDone_.insert(key);
-            // synth/media is the only effect with onInit.
             mediaImageWidth_ = 1;
             mediaImageHeight_ = 1;
         }
@@ -855,6 +870,424 @@ double Pipeline::resolveDimension(const Value& spec, double screenSize, const Va
         }
     }
     return screenSize;
+}
+
+// The frame.
+
+namespace {
+
+// Map.get and Map.set on the frame's surface bindings.
+const std::optional<JsString>* binding(const Pipeline::FrameBindings& map, const JsString& name) {
+    for (const auto& [key, value] : map) if (key == name) return &value;
+    return nullptr;
+}
+void setBinding(Pipeline::FrameBindings& map, const JsString& name, std::optional<JsString> value) {
+    for (auto& [key, current] : map) {
+        if (key == name) {
+            current = std::move(value);
+            return;
+        }
+    }
+    map.emplace_back(name, std::move(value));
+}
+
+// g[key][0] = a; g[key][1] = b on an existing array or object.
+void setPair(Object& g, const JsString& key, double a, double b) {
+    Value& target = g[key];
+    if (target.is_array()) {
+        Array& array = target.as_array();
+        if (array.size() < 2) array.resize(2);
+        array[0] = Value(a);
+        array[1] = Value(b);
+    } else if (target.is_object()) {
+        target.as_object().set(u"0", Value(a));
+        target.as_object().set(u"1", Value(b));
+    } else {
+        throw JsError(u"Error", u"a global uniform " + key + u" other than an array or object is outside the port");
+    }
+}
+
+// /^(xyz|vel|rgba|points_trail)_node_\d+$/
+bool isScopedParticleTexture(const JsString& name) {
+    for (const JsString prefix : {u"xyz_node_", u"vel_node_", u"rgba_node_", u"points_trail_node_"}) {
+        if (name.size() <= prefix.size() || name.compare(0, prefix.size(), prefix) != 0) continue;
+        return std::all_of(name.begin() + static_cast<std::ptrdiff_t>(prefix.size()), name.end(),
+                           [](char16_t c) { return c >= u'0' && c <= u'9'; });
+    }
+    return false;
+}
+bool endsWith(const JsString& text, const char16_t* suffix) {
+    const JsString s(suffix);
+    return text.size() >= s.size() && text.compare(text.size() - s.size(), s.size(), s) == 0;
+}
+// Surfaces that persist their final bindings across frames.
+bool isStateSurface(const JsString& name) {
+    if (name == u"xyz" || name == u"vel" || name == u"rgba" || name == u"trail") return true;
+    if (endsWith(name, u"_xyz") || endsWith(name, u"_vel") || endsWith(name, u"_rgba") || endsWith(name, u"_trail")) return true;
+    if (name.find(u"state") != JsString::npos || name.find(u"State") != JsString::npos) return true;
+    return isScopedParticleTexture(name);
+}
+
+// Value equality for the viewport spec a pass caches its resolution under.
+bool sameJson(const Value& a, const Value& b) { return json::stringify(a) == json::stringify(b); }
+
+}  // namespace
+
+void Pipeline::setTileRegion(std::array<double, 2> offset, std::array<double, 2> fullResolution,
+                             std::optional<double> renderScale) {
+    tileOffset_ = offset;
+    fullResolution_ = fullResolution;
+    renderScale_ = renderScale.value_or(1);
+}
+
+void Pipeline::clearTileRegion() {
+    tileOffset_.reset();
+    fullResolution_.reset();
+    renderScale_.reset();
+}
+
+void Pipeline::updateGlobalUniforms(double time, double deltaTime) {
+    Object& g = globalUniforms_.as_object();
+    const double aspectValue = width_ / height_;
+    g.set(u"time", Value(time));
+    g.set(u"deltaTime", Value(deltaTime));
+    g.set(u"frame", Value(frameIndex_));
+    const auto pair = [](double a, double b) { return Value(Array{Value(a), Value(b)}); };
+    if (!jsv::truthy(jsv::member(globalUniforms_, u"resolution"))) g.set(u"resolution", pair(width_, height_));
+    else setPair(g, u"resolution", width_, height_);
+    // Tile uniforms for tiled export; the defaults change nothing.
+    if (!jsv::truthy(jsv::member(globalUniforms_, u"tileOffset"))) g.set(u"tileOffset", pair(0, 0));
+    if (!jsv::truthy(jsv::member(globalUniforms_, u"fullResolution"))) g.set(u"fullResolution", pair(width_, height_));
+    if (tileOffset_) setPair(g, u"tileOffset", (*tileOffset_)[0], (*tileOffset_)[1]);
+    else setPair(g, u"tileOffset", 0, 0);
+    if (fullResolution_) {
+        setPair(g, u"fullResolution", (*fullResolution_)[0], (*fullResolution_)[1]);
+        // A tile's aspect is the full image's.
+        const double fullAspect = (*fullResolution_)[0] / (*fullResolution_)[1];
+        g.set(u"aspect", Value(fullAspect));
+        g.set(u"aspectRatio", Value(fullAspect));
+        g.set(u"aspectInv", Value(1.0 / fullAspect));
+        g.set(u"invFullResolution", pair(1.0 / (*fullResolution_)[0], 1.0 / (*fullResolution_)[1]));
+    } else {
+        setPair(g, u"fullResolution", width_, height_);
+        g.set(u"aspect", Value(aspectValue));
+        g.set(u"aspectRatio", Value(aspectValue));
+        g.set(u"aspectInv", Value(1.0 / aspectValue));
+        g.set(u"invFullResolution", pair(1.0 / width_, 1.0 / height_));
+    }
+    // this._renderScale || 1.0
+    g.set(u"renderScale", Value(renderScale_ && *renderScale_ != 0 && !std::isnan(*renderScale_) ? *renderScale_ : 1.0));
+
+    // No MIDI state: the note grid, when a pass reads it, is empty.
+    if (needsMidiNoteGrid_.value_or(false)) {
+        static const std::vector<float> emptyNoteGrid(128 * 16 * 4, 0.0f);
+        backend_.uploadDataTexture(u"midiNoteGrid", emptyNoteGrid, Value(128.0), Value(16.0));
+    }
+    const Value clockCount = jsv::member(globalUniforms_, u"midiClockCount");
+    g.set(u"midiClockCount", jsv::truthy(clockCount) ? clockCount : Value(0.0));
+}
+
+// Every managed effect's onUpdate, and the uniforms it returns.
+void Pipeline::invokeUpdateHooks() {
+    hasRuntimeUniforms_ = false;
+    runtimeUniforms_.clear();
+    for (const JsString& key : lifecycleEffects_) {
+        const EffectHooks* effect = getEffect(Value(key));
+        if (!effect || !hasLifecycleHook(effect->hooks, u"onUpdate")) continue;
+        // synth/media's onUpdate: its media dimensions as imageSize.
+        const auto orOne = [](double v) { return v == 0 || std::isnan(v) ? 1.0 : v; };
+        Object uniforms;
+        uniforms.set(u"imageSize", Value(Array{Value(orOne(mediaImageWidth_)), Value(orOne(mediaImageHeight_))}));
+        runtimeUniforms_.emplace_back(key, Value(std::move(uniforms)));
+        hasRuntimeUniforms_ = true;
+    }
+}
+
+// The pass, or the proxy carrying its uniforms with automation values
+// evaluated for the frame (resolvePassUniforms with resolveUniformValue).
+Value* Pipeline::resolvePassUniforms(Value& pass, double time) {
+    const Value uniforms = jsv::get(pass, u"uniforms");
+    if (!jsv::truthy(uniforms)) return &pass;
+
+    // Clear the reused object: its keys stay, set to undefined.
+    Object& resolved = resolvedUniforms_.as_object();
+    for (const JsString& key : resolved.keys()) resolved.set(key, Value());
+
+    bool hasOscillators = false;
+    const Value uniformSpecs = jsv::get(pass, u"uniformSpecs");
+    for (const auto& [name, value] : jsv::entries(uniforms)) {
+        const Value spec = nullish(uniformSpecs) ? Value() : jsv::get(uniformSpecs, name);
+        if (isAutomationValue(value)) {
+            double result = evaluateAutomation(value, time, spec);
+            const bool isInt = !nullish(spec) && jsv::strict_equals(jsv::get(spec, u"type"), Value(u"int"));
+            if (isInt) result = js::round(result);
+            jsv::set_plain(resolved, name, Value(result));
+            hasOscillators = true;
+        } else {
+            jsv::set_plain(resolved, name, value);
+            // resolved !== value holds only for NaN.
+            if (value.is_number() && std::isnan(value.as_number())) hasOscillators = true;
+        }
+    }
+    if (!hasOscillators) return &pass;
+
+    Object& proxy = oscillatorPassProxy_.as_object();
+    for (const char16_t* key : {u"id", u"program", u"inputs", u"outputs", u"clear", u"blend", u"drawMode", u"count",
+                                u"repeat", u"conditions", u"viewport", u"viewportResolved", u"drawBuffers",
+                                u"storageTextures", u"samplerTypes", u"entryPoint"}) {
+        proxy.set(key, jsv::get(pass, key));
+    }
+    // The proxy takes the resolved object; the next resolution fills the other.
+    std::swap(proxy[u"uniforms"], resolvedUniforms_);
+    return &oscillatorPassProxy_;
+}
+
+bool Pipeline::shouldSkipPass(const Value& pass) const {
+    const Value conditions = jsv::get(pass, u"conditions");
+    if (!jsv::truthy(conditions)) return false;
+    const Value skipIf = jsv::get(conditions, u"skipIf");
+    const Value runIf = jsv::get(conditions, u"runIf");
+    // pass.uniforms?.[name] ?? this.globalUniforms[name]
+    const auto valueOf = [&](const Value& condition) {
+        const Value name = jsv::get(condition, u"uniform");
+        const Value uniforms = jsv::get(pass, u"uniforms");
+        const Value own = nullish(uniforms) ? Value() : jsv::get_v(uniforms, name);
+        return nullish(own) ? jsv::get_v(globalUniforms_, name) : own;
+    };
+    if (jsv::truthy(skipIf)) {
+        for (const Value& condition : jsv::iterate(skipIf, u"skipIf")) {
+            if (jsv::strict_equals(valueOf(condition), jsv::get(condition, u"equals"))) return true;
+        }
+    }
+    if (jsv::truthy(runIf)) {
+        for (const Value& condition : jsv::iterate(runIf, u"runIf")) {
+            if (!jsv::strict_equals(valueOf(condition), jsv::get(condition, u"equals"))) return true;
+        }
+    }
+    return false;
+}
+
+double Pipeline::resolveRepeatCount(const Value& pass) const {
+    const Value repeat = jsv::get(pass, u"repeat");
+    if (!jsv::truthy(repeat)) return 1;
+    if (repeat.is_number()) return js::max(1, std::floor(repeat.as_number()));
+    // A uniform name: the global value, else the pass's.
+    if (repeat.is_string()) {
+        Value value = jsv::member(globalUniforms_, repeat.as_string());
+        if (nullish(value)) {
+            const Value uniforms = jsv::get(pass, u"uniforms");
+            value = nullish(uniforms) ? Value() : jsv::get(uniforms, repeat.as_string());
+        }
+        if (value.is_number()) return js::max(1, std::floor(value.as_number()));
+    }
+    return 1;
+}
+
+// The authored viewport resolved to { x, y, w, h } on viewportResolved. The
+// cache lives on the compiled pass (cacheHolder) as hidden members: the spec
+// it was made for, and the box, or null for a numeric spec, which passes
+// through unchanged.
+void Pipeline::resolvePassViewport(Value& pass, Value& cacheHolder) {
+    const Value spec = jsv::get(cacheHolder, u"viewport");
+    if (!jsv::truthy(spec) || !isObjectType(spec)) return;
+    Object& holder = cacheHolder.as_object();
+    const auto setResolved = [&](const Value& resolved) {
+        holder.set(u"viewportResolved", resolved);
+        if (&pass != &cacheHolder) pass.as_object().set(u"viewportResolved", resolved);
+    };
+
+    const Value* source = holder.find(u"_viewportSpecSource");
+    if (!source || !sameJson(*source, spec)) {
+        holder.define_hidden(u"_viewportSpecSource", spec);
+        const bool numericBox = jsv::get(spec, u"x").is_number() && jsv::get(spec, u"y").is_number() &&
+                                jsv::get(spec, u"w").is_number() && jsv::get(spec, u"h").is_number();
+        if (numericBox) {
+            holder.define_hidden(u"_viewportBox", Value::null());
+            setResolved(spec);
+            return;
+        }
+        Object box;
+        for (const char16_t* key : {u"x", u"y", u"w", u"h"}) box.set(key, Value(0.0));
+        holder.define_hidden(u"_viewportBox", Value(std::move(box)));
+    }
+    if (holder.find(u"_viewportBox")->is_null()) {
+        if (&pass != &cacheHolder) pass.as_object().set(u"viewportResolved", spec);
+        return;
+    }
+
+    const Value passUniforms = jsv::get(pass, u"uniforms");
+    const Value uniforms = jsv::truthy(passUniforms) ? passUniforms : Value(Object{});
+    Object box;
+    box.set(u"x", Value(resolveDimension(orElse(jsv::get(spec, u"x"), Value(0.0)), width_, uniforms)));
+    box.set(u"y", Value(resolveDimension(orElse(jsv::get(spec, u"y"), Value(0.0)), height_, uniforms)));
+    const Value widthSpec = orElse(jsv::get(spec, u"w"), jsv::get(spec, u"width"));
+    const Value heightSpec = orElse(jsv::get(spec, u"h"), jsv::get(spec, u"height"));
+    box.set(u"w", Value(widthSpec.is_undefined() ? width_ : resolveDimension(widthSpec, width_, uniforms)));
+    box.set(u"h", Value(heightSpec.is_undefined() ? height_ : resolveDimension(heightSpec, height_, uniforms)));
+    const Value resolved(std::move(box));
+    holder.define_hidden(u"_viewportBox", resolved);
+    setResolved(resolved);
+}
+
+// A repeated pass's frame-local ping-pong bindings, mirrored into the
+// cross-frame surface record after each iteration.
+void Pipeline::adoptIterationBindings(const Value& pass) {
+    const Value outputs = jsv::get(pass, u"outputs");
+    const Value written = jsv::truthy(outputs) ? outputs : jsv::get(pass, u"storageTextures");
+    if (!jsv::truthy(written)) return;
+    for (const Value& outputName : jsv::values(written)) {
+        if (!outputName.is_string()) continue;
+        const std::optional<JsString> name = parseGlobalName(outputName);
+        if (!name) continue;
+        Surface* target = surface(*name);
+        if (!target) continue;
+        if (const auto* read = binding(frameReadTextures_, *name); read && *read) target->read = *read;
+        if (const auto* write = binding(frameWriteTextures_, *name); write && *write) target->write = *write;
+    }
+}
+
+// Within-frame ping-pong: after a pass writes a surface, later passes read
+// what it wrote and write the buffer it read.
+void Pipeline::updateFrameSurfaceBindings(const Value& pass, const FrameState& state) {
+    const Value outputs = jsv::get(pass, u"outputs");
+    const Value written = jsv::truthy(outputs) ? outputs : jsv::get(pass, u"storageTextures");
+    if (!jsv::truthy(written)) return;
+    for (const Value& outputName : jsv::values(written)) {
+        if (!outputName.is_string()) continue;
+        const std::optional<JsString> name = parseGlobalName(outputName);
+        if (!name) continue;
+        Value writeId;
+        for (const auto& [key, id] : state.writeSurfaces) if (key == *name) writeId = id;
+        if (!jsv::truthy(writeId)) continue;
+        const auto* current = binding(frameReadTextures_, *name);
+        const std::optional<JsString> currentReadId = current ? *current : std::nullopt;
+        setBinding(frameReadTextures_, *name, writeId.as_string());
+        if (currentReadId && !currentReadId->empty()) setBinding(frameWriteTextures_, *name, currentReadId);
+    }
+}
+
+// State, feedback and persistent surfaces keep the frame's final bindings;
+// display surfaces swap.
+void Pipeline::swapBuffers() {
+    for (auto& [name, target] : surfaces_) {
+        target.currentFrame = frameIndex_;
+        if (target.mesh) target.meshCurrentFrame = true;
+        const Object* specs = textures();
+        const Value* spec = specs ? specs->find(u"global_" + name) : nullptr;
+        const bool persistent = spec && !nullish(*spec) && jsv::strict_equals(jsv::member(*spec, u"persistent"), Value(true));
+        const bool feedback = feedbackSurfaces_ && contains(*feedbackSurfaces_, name);
+        if (isStateSurface(name) || feedback || persistent) {
+            const auto* finalRead = binding(frameReadTextures_, name);
+            const auto* finalWrite = binding(frameWriteTextures_, name);
+            if (finalRead && *finalRead && !(*finalRead)->empty() && finalWrite && *finalWrite && !(*finalWrite)->empty()) {
+                target.read = *finalRead;
+                target.write = *finalWrite;
+            }
+        } else {
+            std::swap(target.read, target.write);
+        }
+    }
+}
+
+FrameState Pipeline::getFrameState() const {
+    FrameState state;
+    state.globalUniforms = globalUniforms_;
+    for (const auto& [name, target] : surfaces_) {
+        const auto* read = binding(frameReadTextures_, name);
+        const std::optional<JsString> readId = read && *read ? *read : target.read;
+        if (readId && backend_.texture(*readId)) state.surfaces.emplace_back(name, *readId);
+        const auto* write = binding(frameWriteTextures_, name);
+        const std::optional<JsString> writeId = write && *write ? *write : target.write;
+        state.writeSurfaces.emplace_back(name, writeId ? Value(*writeId) : Value());
+    }
+    const Value* renderSurface = graphMember(u"renderSurface");
+    state.renderSurface = renderSurface ? *renderSurface : Value();
+    state.screenWidth = Value(width_);
+    state.screenHeight = Value(height_);
+    return state;
+}
+
+void Pipeline::clearSurface(const JsString& name) {
+    const Surface* target = surface(name);
+    if (!target) return;
+    if (target->read) backend_.clearTexture(*target->read);
+    if (target->write) backend_.clearTexture(*target->write);
+}
+
+void Pipeline::render(double time) {
+    // Programs still compiling.
+    if (isCompiling_) return;
+
+    // Normalized time wraps from about 1 to about 0: then a small positive delta.
+    double deltaTime = lastTime_ > 0 ? time - lastTime_ : 0;
+    if (deltaTime < 0) deltaTime = 1.0 / 60.0 / 10.0;
+    lastTime_ = time;
+
+    updateGlobalUniforms(time, deltaTime);
+    invokeUpdateHooks();
+
+    frameReadTextures_.clear();
+    frameWriteTextures_.clear();
+    for (const auto& [name, target] : surfaces_) {
+        setBinding(frameReadTextures_, name, target.read);
+        setBinding(frameWriteTextures_, name, target.write);
+    }
+
+    backend_.beginFrame();
+    double passCount = 0;
+    if (Array* list = passes()) {
+        for (size_t i = 0; i < list->size(); ++i) {
+            Value& originalPass = (*list)[i];
+            // The authored viewport resolves before and after the uniforms do.
+            const bool hasViewport = !jsv::get(originalPass, u"viewport").is_undefined();
+            if (hasViewport) resolvePassViewport(originalPass, originalPass);
+            Value* pass = resolvePassUniforms(originalPass, time);
+            if (hasViewport) resolvePassViewport(*pass, originalPass);
+            // onUpdate uniforms bind only where the pass resolves no value.
+            Value withRuntime;
+            if (hasRuntimeUniforms_) {
+                const Value effectKey = jsv::get(*pass, u"effectKey");
+                const Value* runtime = nullptr;
+                if (effectKey.is_string()) {
+                    for (const auto& [key, uniforms] : runtimeUniforms_) if (key == effectKey.as_string()) runtime = &uniforms;
+                }
+                if (runtime) {
+                    const Value passUniforms = jsv::get(*pass, u"uniforms");
+                    Object merged;
+                    if (!nullish(passUniforms)) jsv::spread_into(merged, passUniforms);
+                    for (const auto& [key, value] : jsv::entries(*runtime)) {
+                        if (jsv::member(Value(merged), key).is_undefined()) merged.set(key, value);
+                    }
+                    Object copy;
+                    jsv::spread_into(copy, *pass);
+                    copy.set(u"uniforms", Value(std::move(merged)));
+                    withRuntime = Value(std::move(copy));
+                    pass = &withRuntime;
+                }
+            }
+            if (shouldSkipPass(*pass)) continue;
+
+            const double repeatCount = resolveRepeatCount(*pass);
+            for (double iteration = 0; iteration < repeatCount; ++iteration) {
+                const FrameState state = getFrameState();
+                backend_.executePass(*pass, state);
+                ++passCount;
+                updateFrameSurfaceBindings(*pass, state);
+                if (repeatCount > 1) adoptIterationBindings(*pass);
+            }
+        }
+    }
+
+    // Mip chains regenerate from the level 0 this frame wrote.
+    if (!mipTargets_.empty()) {
+        std::vector<JsString> ids;
+        for (const auto& id : mipTargets_) if (id) ids.push_back(*id);
+        backend_.generateMipmaps(ids);
+    }
+    backend_.endFrame();
+    swapBuffers();
+    lastPassCount_ = passCount;
+    frameIndex_ += 1;
 }
 
 }  // namespace libnoisemaker::backend
