@@ -97,7 +97,8 @@ Contributions follow the Noise Factor
 include/noisemaker/   public C API headers
 src/core/             GPU-free core: DSL lexer, parser and compiler, render graph, effect catalog, editing
 src/host/             host inputs: audio and MIDI state, OBJ parsing, stroke raster, worm tracer
-src/gpu/              Dawn device; wgsl/, the reference backend's WGSL source analysis (no GPU)
+src/gpu/              Dawn device; wgsl/ and backend/, the reference backend's WGSL source analysis
+                      and uniform packing (no GPU)
 src/capi/             C API implementation
 tests/                C API, core, GPU, host and tool tests
 parity/               reference lock, corpus and checks against the reference engine

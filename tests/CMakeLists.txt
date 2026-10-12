@@ -37,7 +37,7 @@ set_tests_properties(test_effect_validator PROPERTIES WORKING_DIRECTORY "${PROJE
 
 add_executable(test_jsre wgsl/test_jsre.cpp)
 target_include_directories(test_jsre PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(test_jsre PRIVATE noisemaker_wgsl)
+target_link_libraries(test_jsre PRIVATE noisemaker_backend)
 add_test(NAME test_jsre COMMAND test_jsre)
 
 foreach(name test_midi_state test_obj_parser)

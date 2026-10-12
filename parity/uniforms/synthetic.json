@@ -1,0 +1,2171 @@
+{
+  "shaders": {
+    "none": "@fragment fn main() -> @location(0) vec4f { return vec4f(0.0); }\n",
+    "slots": "struct Uniforms { data: array<vec4<f32>, 3> }\n@group(0) @binding(0) var<uniform> uniforms: Uniforms;\n@fragment fn main() -> @location(0) vec4f { let resolution = uniforms.data[0].xy; let time = uniforms.data[0].z; let speed = uniforms.data[1].x; let tint = uniforms.data[2].xyz; return vec4f(time); }\n",
+    "named": "struct Uniforms { time: f32, resolution: vec2<f32>, count: i32, flags: u32, tint: vec3<f32>, on: u32, width: f32, channelCount: i32 }\n@group(0) @binding(0) var<uniform> u: Uniforms;\n@fragment fn main() -> @location(0) vec4f { return vec4f(u.time); }\n"
+  },
+  "sequences": [
+    {
+      "id": "pack-order-and-carry",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "a": 1,
+            "b": 2.5,
+            "v": [
+              1,
+              2,
+              3
+            ],
+            "m": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          "globalUniforms": {
+            "time": 2,
+            "resolution": [
+              640,
+              480
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "b": 7
+          },
+          "globalUniforms": {
+            "time": 3
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "z": true,
+            "10": 6,
+            "2": 5
+          },
+          "globalUniforms": {}
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {},
+          "globalUniforms": {}
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": null,
+          "globalUniforms": {
+            "aspect": 1,
+            "deltaTime": 0,
+            "frame": 7
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": [
+            4,
+            5
+          ],
+          "globalUniforms": {
+            "0": 9,
+            "q": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "pack-numbers",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "i": 2147483648,
+            "j": -2147483649,
+            "k": 4294967296.5,
+            "n": 0,
+            "big": 1e+40,
+            "tiny": 1e-46,
+            "sub": 1e-40,
+            "max": 1.7976931348623157e+308,
+            "fmax": 3.4028235677973366e+38,
+            "fmaxDown": 3.4028234663852886e+38,
+            "time": 4,
+            "deltaTime": 0,
+            "aspect": 3
+          },
+          "globalUniforms": {}
+        }
+      ]
+    },
+    {
+      "id": "pack-arrays",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "empty": [],
+            "one": [
+              7
+            ],
+            "five": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "mat4": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16
+            ],
+            "mixed": [
+              null,
+              "2.5",
+              [
+                3
+              ],
+              [
+                1,
+                2
+              ],
+              true,
+              {},
+              ""
+            ],
+            "pair": [
+              "1e3",
+              null
+            ],
+            "obj": {
+              "x": 1
+            },
+            "s": "text"
+          },
+          "globalUniforms": {}
+        }
+      ]
+    },
+    {
+      "id": "pack-realloc",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "v0": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "v1": [
+              2,
+              2,
+              2,
+              2
+            ],
+            "v2": [
+              3,
+              3,
+              3,
+              3
+            ],
+            "v3": [
+              4,
+              4,
+              4,
+              4
+            ],
+            "v4": [
+              5,
+              5,
+              5,
+              5
+            ],
+            "v5": [
+              6,
+              6,
+              6,
+              6
+            ],
+            "v6": [
+              7,
+              7,
+              7,
+              7
+            ],
+            "v7": [
+              8,
+              8,
+              8,
+              8
+            ],
+            "v8": [
+              9,
+              9,
+              9,
+              9
+            ],
+            "v9": [
+              10,
+              10,
+              10,
+              10
+            ],
+            "v10": [
+              11,
+              11,
+              11,
+              11
+            ],
+            "v11": [
+              12,
+              12,
+              12,
+              12
+            ],
+            "v12": [
+              13,
+              13,
+              13,
+              13
+            ],
+            "v13": [
+              14,
+              14,
+              14,
+              14
+            ],
+            "v14": [
+              15,
+              15,
+              15,
+              15
+            ],
+            "v15": [
+              16,
+              16,
+              16,
+              16
+            ],
+            "v16": [
+              17,
+              17,
+              17,
+              17
+            ],
+            "v17": [
+              18,
+              18,
+              18,
+              18
+            ],
+            "v18": [
+              19,
+              19,
+              19,
+              19
+            ],
+            "v19": [
+              20,
+              20,
+              20,
+              20
+            ],
+            "v20": [
+              21,
+              21,
+              21,
+              21
+            ],
+            "v21": [
+              22,
+              22,
+              22,
+              22
+            ],
+            "v22": [
+              23,
+              23,
+              23,
+              23
+            ],
+            "v23": [
+              24,
+              24,
+              24,
+              24
+            ],
+            "v24": [
+              25,
+              25,
+              25,
+              25
+            ],
+            "v25": [
+              26,
+              26,
+              26,
+              26
+            ],
+            "v26": [
+              27,
+              27,
+              27,
+              27
+            ],
+            "v27": [
+              28,
+              28,
+              28,
+              28
+            ],
+            "v28": [
+              29,
+              29,
+              29,
+              29
+            ],
+            "v29": [
+              30,
+              30,
+              30,
+              30
+            ],
+            "v30": [
+              31,
+              31,
+              31,
+              31
+            ],
+            "v31": [
+              32,
+              32,
+              32,
+              32
+            ],
+            "v32": [
+              33,
+              33,
+              33,
+              33
+            ],
+            "v33": [
+              34,
+              34,
+              34,
+              34
+            ],
+            "v34": [
+              35,
+              35,
+              35,
+              35
+            ],
+            "v35": [
+              36,
+              36,
+              36,
+              36
+            ],
+            "v36": [
+              37,
+              37,
+              37,
+              37
+            ],
+            "v37": [
+              38,
+              38,
+              38,
+              38
+            ],
+            "v38": [
+              39,
+              39,
+              39,
+              39
+            ],
+            "v39": [
+              40,
+              40,
+              40,
+              40
+            ]
+          },
+          "globalUniforms": {}
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "a": 0.5
+          },
+          "globalUniforms": {}
+        }
+      ]
+    },
+    {
+      "id": "pack-overflow",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "n0": 1,
+            "w0": [
+              1,
+              2,
+              3
+            ],
+            "n1": 1,
+            "w1": [
+              1,
+              2,
+              3
+            ],
+            "n2": 1,
+            "w2": [
+              1,
+              2,
+              3
+            ],
+            "n3": 1,
+            "w3": [
+              1,
+              2,
+              3
+            ],
+            "n4": 1,
+            "w4": [
+              1,
+              2,
+              3
+            ],
+            "n5": 1,
+            "w5": [
+              1,
+              2,
+              3
+            ],
+            "n6": 1,
+            "w6": [
+              1,
+              2,
+              3
+            ],
+            "n7": 1,
+            "w7": [
+              1,
+              2,
+              3
+            ],
+            "n8": 1,
+            "w8": [
+              1,
+              2,
+              3
+            ],
+            "n9": 1,
+            "w9": [
+              1,
+              2,
+              3
+            ],
+            "n10": 1,
+            "w10": [
+              1,
+              2,
+              3
+            ],
+            "n11": 1,
+            "w11": [
+              1,
+              2,
+              3
+            ],
+            "n12": 1,
+            "w12": [
+              1,
+              2,
+              3
+            ],
+            "n13": 1,
+            "w13": [
+              1,
+              2,
+              3
+            ],
+            "n14": 1,
+            "w14": [
+              1,
+              2,
+              3
+            ],
+            "n15": 1,
+            "w15": [
+              1,
+              2,
+              3
+            ],
+            "n16": 1,
+            "w16": [
+              1,
+              2,
+              3
+            ],
+            "n17": 1,
+            "w17": [
+              1,
+              2,
+              3
+            ],
+            "n18": 1,
+            "w18": [
+              1,
+              2,
+              3
+            ],
+            "n19": 1,
+            "w19": [
+              1,
+              2,
+              3
+            ],
+            "n20": 1,
+            "w20": [
+              1,
+              2,
+              3
+            ],
+            "n21": 1,
+            "w21": [
+              1,
+              2,
+              3
+            ],
+            "n22": 1,
+            "w22": [
+              1,
+              2,
+              3
+            ],
+            "n23": 1,
+            "w23": [
+              1,
+              2,
+              3
+            ],
+            "n24": 1,
+            "w24": [
+              1,
+              2,
+              3
+            ],
+            "n25": 1,
+            "w25": [
+              1,
+              2,
+              3
+            ],
+            "n26": 1,
+            "w26": [
+              1,
+              2,
+              3
+            ],
+            "n27": 1,
+            "w27": [
+              1,
+              2,
+              3
+            ],
+            "n28": 1,
+            "w28": [
+              1,
+              2,
+              3
+            ],
+            "n29": 1,
+            "w29": [
+              1,
+              2,
+              3
+            ]
+          },
+          "globalUniforms": {}
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "a": 2
+          },
+          "globalUniforms": {}
+        }
+      ]
+    },
+    {
+      "id": "globals-skip-and-inherited",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "time": 9,
+            "constructor": 1
+          },
+          "globalUniforms": {
+            "time": 1,
+            "toString": 5,
+            "frame": 3,
+            "hasOwnProperty": 8
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {},
+          "globalUniforms": {}
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "x": 1
+          },
+          "globalUniforms": {
+            "valueOf": 2
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "speed": 2
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": "toString",
+              "slot": 0,
+              "components": "x"
+            },
+            {
+              "name": "isPrototypeOf",
+              "slot": 0,
+              "components": "q"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "proto-primitive",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "__proto__": 5,
+            "a": 1
+          },
+          "globalUniforms": {
+            "__proto__": true
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": null,
+          "globalUniforms": {
+            "__proto__": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "slots",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "resolution": [
+              800,
+              600
+            ],
+            "time": 1.5,
+            "speed": true,
+            "tint": [
+              0.1,
+              0.2
+            ]
+          },
+          "globalUniforms": {}
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "resolution": [
+              320,
+              200,
+              9
+            ]
+          },
+          "globalUniforms": {
+            "time": 2
+          },
+          "uniformLayout": [
+            {
+              "name": "width",
+              "slot": 0,
+              "components": "x"
+            },
+            {
+              "name": "height",
+              "slot": 0,
+              "components": "y"
+            },
+            {
+              "name": "channels",
+              "slot": 0,
+              "components": "z"
+            },
+            {
+              "name": "channelCount",
+              "slot": 0,
+              "components": "w"
+            }
+          ]
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "time": 2,
+            "resolution": [
+              1,
+              2,
+              3
+            ],
+            "v": 7,
+            "s": 4,
+            "t": 5,
+            "u": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "w4": [
+              9,
+              8,
+              7,
+              6,
+              5
+            ]
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "time": {
+              "slot": 1,
+              "components": "w"
+            },
+            "resolution": {
+              "slot": 0,
+              "components": "zw"
+            },
+            "v": {
+              "slot": 2,
+              "components": "xyzw"
+            },
+            "s": {
+              "slot": 3,
+              "components": "q"
+            },
+            "t": {
+              "slot": 3,
+              "components": [
+                "y"
+              ]
+            },
+            "u": {
+              "slot": 3,
+              "components": "xyzwx"
+            },
+            "w4": {
+              "slot": 4,
+              "components": "yzw"
+            }
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": "a",
+              "slot": 0,
+              "components": "x"
+            },
+            null
+          ]
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": "a",
+              "slot": 0
+            }
+          ]
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": "a",
+              "slot": -2,
+              "components": "x"
+            }
+          ]
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1,
+            "b": 2
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": "a",
+              "slot": "3",
+              "components": "y"
+            },
+            {
+              "name": "b",
+              "slot": null,
+              "components": "x"
+            }
+          ]
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": "a",
+              "slot": "x",
+              "components": "x"
+            }
+          ]
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": "a",
+              "slot": 2.5,
+              "components": "x"
+            }
+          ]
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": {}
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": []
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "a": null
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": [
+              1,
+              2
+            ]
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": [
+                "a"
+              ],
+              "slot": [
+                1
+              ],
+              "components": {
+                "length": 2,
+                "0": "y"
+              }
+            },
+            {
+              "name": "missing",
+              "slot": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "byte-definition",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "i": 2.5,
+            "j": -2.5,
+            "k": -0.4,
+            "u": -1,
+            "u2": 4294967296.7,
+            "f": 1e+40,
+            "b": true,
+            "bi": false,
+            "vi": [
+              1.5,
+              -1.5,
+              "3"
+            ],
+            "vu": [
+              -1,
+              2
+            ],
+            "vf": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "sv": 3,
+            "bv": true,
+            "resolution": [
+              64,
+              32
+            ]
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "structSize": 999,
+            "layout": [
+              {
+                "name": "i",
+                "offset": 0,
+                "size": 4,
+                "type": "int",
+                "components": 1
+              },
+              {
+                "name": "j",
+                "offset": 4,
+                "size": 4,
+                "type": "int",
+                "components": 1
+              },
+              {
+                "name": "k",
+                "offset": 8,
+                "size": 4,
+                "type": "int",
+                "components": 1
+              },
+              {
+                "name": "u",
+                "offset": 12,
+                "size": 4,
+                "type": "uint",
+                "components": 1
+              },
+              {
+                "name": "u2",
+                "offset": 16,
+                "size": 4,
+                "type": "uint",
+                "components": 1
+              },
+              {
+                "name": "f",
+                "offset": 20,
+                "size": 4,
+                "type": "float",
+                "components": 1
+              },
+              {
+                "name": "b",
+                "offset": 24,
+                "size": 4,
+                "type": "uint",
+                "components": 1
+              },
+              {
+                "name": "bi",
+                "offset": 28,
+                "size": 4,
+                "type": "float",
+                "components": 1
+              },
+              {
+                "name": "vi",
+                "offset": 32,
+                "size": 12,
+                "type": "int",
+                "components": 3
+              },
+              {
+                "name": "vu",
+                "offset": 48,
+                "size": 8,
+                "type": "uint",
+                "components": 2
+              },
+              {
+                "name": "vf",
+                "offset": 64,
+                "size": 16,
+                "type": "float",
+                "components": 4
+              },
+              {
+                "name": "sv",
+                "offset": 80,
+                "size": 8,
+                "type": "int",
+                "components": 2
+              },
+              {
+                "name": "bv",
+                "offset": 88,
+                "size": 8,
+                "type": "float",
+                "components": 2
+              },
+              {
+                "name": "width",
+                "offset": 96,
+                "size": 4,
+                "type": "float",
+                "components": 1
+              },
+              {
+                "name": "height",
+                "offset": 100,
+                "size": 4,
+                "type": "int",
+                "components": 1
+              },
+              {
+                "name": "channelCount",
+                "offset": 104,
+                "size": 4,
+                "type": "int",
+                "components": 1
+              },
+              {
+                "name": "channels",
+                "offset": 108,
+                "size": 4,
+                "type": "float",
+                "components": 1
+              },
+              {
+                "name": "vi",
+                "offset": "8",
+                "size": 8,
+                "type": "int",
+                "components": 2
+              }
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": [
+              {
+                "name": "a",
+                "offset": 8,
+                "size": 4,
+                "type": "float",
+                "components": 4
+              }
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": [
+              {
+                "name": "a",
+                "offset": 0,
+                "size": "x",
+                "type": "float",
+                "components": 1
+              }
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": []
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": [
+              null
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": 1
+          },
+          "globalUniforms": {},
+          "uniformLayout": {
+            "type": "byte",
+            "layout": {
+              "a": {
+                "slot": 1,
+                "components": "x"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "byte-parsed",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "named",
+          "passUniforms": {
+            "time": 1,
+            "resolution": [
+              1920,
+              1080
+            ],
+            "count": 3.5,
+            "flags": -3,
+            "tint": [
+              1,
+              0.5
+            ],
+            "on": true,
+            "channelCount": 9
+          },
+          "globalUniforms": {}
+        },
+        {
+          "op": "struct",
+          "shader": "named",
+          "passUniforms": {},
+          "globalUniforms": {
+            "resolution": [
+              10,
+              20
+            ]
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "named",
+          "defines": {
+            "UNUSED": 1
+          },
+          "passUniforms": {
+            "count": -7.5
+          },
+          "globalUniforms": {}
+        }
+      ]
+    },
+    {
+      "id": "single",
+      "ops": [
+        {
+          "op": "single",
+          "value": true,
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": false,
+          "typeDecl": "i32"
+        },
+        {
+          "op": "single",
+          "value": true,
+          "typeDecl": "u32"
+        },
+        {
+          "op": "single",
+          "value": 2.5,
+          "typeDecl": "i32"
+        },
+        {
+          "op": "single",
+          "value": -2.5,
+          "typeDecl": "u32"
+        },
+        {
+          "op": "single",
+          "value": 2147483648,
+          "typeDecl": "i32"
+        },
+        {
+          "op": "single",
+          "value": 1e+40,
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": 0,
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2
+          ],
+          "typeDecl": "vec2<f32>"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2,
+            3
+          ],
+          "typeDecl": "vec3<f32>"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "typeDecl": "vec4<f32>"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "typeDecl": "mat3x3<f32>"
+        },
+        {
+          "op": "single",
+          "value": [
+            1
+          ],
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": [],
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "typeDecl": "array<vec4<f32>, 2>"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20
+          ],
+          "typeDecl": "array<vec4<f32>, 4>"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "typeDecl": "array<vec4f, 3>"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "typeDecl": "array<vec4<f32>>"
+        },
+        {
+          "op": "single",
+          "value": [
+            "a",
+            null,
+            true,
+            [
+              2
+            ],
+            {}
+          ],
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "typeDecl": "array<f32, 6>"
+        },
+        {
+          "op": "single",
+          "value": "str",
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": {},
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": null,
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": [
+            1,
+            2
+          ],
+          "typeDecl": "i32"
+        },
+        {
+          "op": "single",
+          "value": 7.7,
+          "typeDecl": "bool"
+        }
+      ]
+    },
+    {
+      "id": "float32-and-number-strings",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "a": 1,
+            "wave": {
+              "$float32": [
+                1,
+                2,
+                3,
+                4
+              ]
+            },
+            "b": [
+              5,
+              6
+            ]
+          },
+          "globalUniforms": {
+            "audioSpectrum": {
+              "$float32": [
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.5
+              ]
+            }
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "time": {
+              "$float32": [
+                7
+              ]
+            },
+            "resolution": {
+              "$float32": [
+                1,
+                2
+              ]
+            },
+            "speed": {
+              "$float32": []
+            }
+          },
+          "globalUniforms": {}
+        },
+        {
+          "op": "struct",
+          "shader": "named",
+          "passUniforms": {
+            "time": {
+              "$float32": [
+                7
+              ]
+            },
+            "tint": {
+              "$float32": [
+                1,
+                2,
+                3
+              ]
+            },
+            "count": 3
+          },
+          "globalUniforms": {}
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": [
+              0.1,
+              0.2
+            ]
+          },
+          "typeDecl": "vec2<f32>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": [
+              0.1,
+              0.2,
+              0.3
+            ]
+          },
+          "typeDecl": "vec3<f32>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "typeDecl": "vec4<f32>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ]
+          },
+          "typeDecl": "mat3x3<f32>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": [
+              0.0,
+              0.14285714285714285,
+              0.2857142857142857,
+              0.42857142857142855,
+              0.5714285714285714,
+              0.7142857142857143,
+              0.8571428571428571,
+              1.0,
+              1.1428571428571428,
+              1.2857142857142858,
+              1.4285714285714286,
+              1.5714285714285714,
+              1.7142857142857142,
+              1.8571428571428572,
+              2.0,
+              2.142857142857143,
+              2.2857142857142856,
+              2.4285714285714284,
+              2.5714285714285716,
+              2.7142857142857144,
+              2.857142857142857,
+              3.0,
+              3.142857142857143,
+              3.2857142857142856,
+              3.4285714285714284,
+              3.5714285714285716,
+              3.7142857142857144,
+              3.857142857142857,
+              4.0,
+              4.142857142857143,
+              4.285714285714286,
+              4.428571428571429,
+              4.571428571428571,
+              4.714285714285714,
+              4.857142857142857,
+              5.0,
+              5.142857142857143,
+              5.285714285714286,
+              5.428571428571429,
+              5.571428571428571,
+              5.714285714285714,
+              5.857142857142857,
+              6.0,
+              6.142857142857143,
+              6.285714285714286,
+              6.428571428571429,
+              6.571428571428571,
+              6.714285714285714,
+              6.857142857142857,
+              7.0,
+              7.142857142857143,
+              7.285714285714286,
+              7.428571428571429,
+              7.571428571428571,
+              7.714285714285714,
+              7.857142857142857,
+              8.0,
+              8.142857142857142,
+              8.285714285714286,
+              8.428571428571429,
+              8.571428571428571,
+              8.714285714285714,
+              8.857142857142858,
+              9.0,
+              9.142857142857142,
+              9.285714285714286,
+              9.428571428571429,
+              9.571428571428571,
+              9.714285714285714,
+              9.857142857142858,
+              10.0,
+              10.142857142857142,
+              10.285714285714286,
+              10.428571428571429,
+              10.571428571428571,
+              10.714285714285714,
+              10.857142857142858,
+              11.0,
+              11.142857142857142,
+              11.285714285714286,
+              11.428571428571429,
+              11.571428571428571,
+              11.714285714285714,
+              11.857142857142858,
+              12.0,
+              12.142857142857142,
+              12.285714285714286,
+              12.428571428571429,
+              12.571428571428571,
+              12.714285714285714,
+              12.857142857142858,
+              13.0,
+              13.142857142857142,
+              13.285714285714286,
+              13.428571428571429,
+              13.571428571428571,
+              13.714285714285714,
+              13.857142857142858,
+              14.0,
+              14.142857142857142,
+              14.285714285714286,
+              14.428571428571429,
+              14.571428571428571,
+              14.714285714285714,
+              14.857142857142858,
+              15.0,
+              15.142857142857142,
+              15.285714285714286,
+              15.428571428571429,
+              15.571428571428571,
+              15.714285714285714,
+              15.857142857142858,
+              16.0,
+              16.142857142857142,
+              16.285714285714285,
+              16.428571428571427,
+              16.571428571428573,
+              16.714285714285715,
+              16.857142857142858,
+              17.0,
+              17.142857142857142,
+              17.285714285714285,
+              17.428571428571427,
+              17.571428571428573,
+              17.714285714285715,
+              17.857142857142858,
+              18.0,
+              18.142857142857142
+            ]
+          },
+          "typeDecl": "array<vec4<f32>, 32>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": [
+              0.0,
+              0.3333333333333333,
+              0.6666666666666666,
+              1.0,
+              1.3333333333333333,
+              1.6666666666666667,
+              2.0,
+              2.3333333333333335,
+              2.6666666666666665,
+              3.0,
+              3.3333333333333335,
+              3.6666666666666665,
+              4.0,
+              4.333333333333333,
+              4.666666666666667,
+              5.0
+            ]
+          },
+          "typeDecl": "array<vec4<f32>, 4>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          "typeDecl": "array<vec4<f32>, 4>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": []
+          },
+          "typeDecl": "f32"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32": [
+              3.5
+            ]
+          },
+          "typeDecl": "i32"
+        },
+        {
+          "op": "single",
+          "value": [
+            "0x10",
+            "+2",
+            "0b11",
+            "\u00a03"
+          ],
+          "typeDecl": "vec4<f32>"
+        },
+        {
+          "op": "single",
+          "value": [
+            "1e400",
+            "-0x1",
+            "0o17",
+            " 7 \u3000",
+            "Infinity",
+            "1_0"
+          ],
+          "typeDecl": "array<f32, 6>"
+        }
+      ]
+    },
+    {
+      "id": "float32-nan-payloads",
+      "ops": [
+        {
+          "op": "single",
+          "value": {
+            "$float32bits": [
+              "7f800001",
+              "7fc12345"
+            ]
+          },
+          "typeDecl": "vec2<f32>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32bits": [
+              "7f800001",
+              "ffa00001",
+              "7fc12345"
+            ]
+          },
+          "typeDecl": "vec3<f32>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32bits": [
+              "7f800001",
+              "ffa00001",
+              "7fc12345",
+              "3f800000"
+            ]
+          },
+          "typeDecl": "vec4<f32>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32bits": [
+              "7f800001",
+              "1",
+              "2",
+              "ffa00001",
+              "7fffffff",
+              "ff800000",
+              "7f800000",
+              "80000000",
+              "7fc00000"
+            ]
+          },
+          "typeDecl": "mat3x3<f32>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32bits": [
+              "7f800001",
+              "ffa00001",
+              "7fc12345",
+              "3f800000",
+              "7fbfffff",
+              "0",
+              "1",
+              "80000001"
+            ]
+          },
+          "typeDecl": "array<vec4<f32>, 2>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32bits": [
+              "7f800001",
+              "ffa00001",
+              "7fc12345",
+              "3f800000",
+              "7fbfffff",
+              "0",
+              "1",
+              "80000001"
+            ]
+          },
+          "typeDecl": "array<vec4<f32>, 3>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32bits": [
+              "7f800001",
+              "ffa00001",
+              "7fc12345",
+              "3f800000",
+              "7fbfffff"
+            ]
+          },
+          "typeDecl": "array<f32, 5>"
+        },
+        {
+          "op": "single",
+          "value": {
+            "$float32bits": [
+              "7f800001"
+            ]
+          },
+          "typeDecl": "f32"
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "n": {
+              "$float32bits": [
+                "7f800001",
+                "7fc12345"
+              ]
+            },
+            "a": 1
+          },
+          "globalUniforms": {}
+        }
+      ]
+    },
+    {
+      "id": "float32-pass-uniforms",
+      "ops": [
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "$float32": [
+              1.5,
+              2
+            ]
+          },
+          "globalUniforms": {
+            "byteLength": 3,
+            "buffer": 1,
+            "x": 2,
+            "0": 5,
+            "push": 7,
+            "valueOf": 4
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "none",
+          "passUniforms": {
+            "$float32": []
+          },
+          "globalUniforms": {
+            "subarray": 1,
+            "y": true
+          }
+        },
+        {
+          "op": "struct",
+          "shader": "slots",
+          "passUniforms": {
+            "a": {
+              "$float32": [
+                1,
+                2,
+                3
+              ]
+            }
+          },
+          "globalUniforms": {},
+          "uniformLayout": [
+            {
+              "name": "a",
+              "slot": {
+                "$float32": [
+                  1
+                ]
+              },
+              "components": "x"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
