@@ -9,7 +9,8 @@
 // Outside the port: a program source that is not a string (the compiler never
 // makes one; the reference runs part of compileProgram on it before a string
 // method throws), which compileProgram refuses before any device call, and
-// texture ids other than strings, which the pipeline never uses.
+// texture ids and compute entry points other than strings, which the pipeline
+// never uses (the reference keys its Maps by the value itself).
 
 #include "gpu/backend/device.h"
 #include "gpu/backend/uniforms.h"
@@ -21,6 +22,17 @@
 #include <vector>
 
 namespace libnoisemaker::backend {
+
+// A value the reference throws that is not an Error, such as
+// `throw { code: 'ERR_TEXTURE_NOT_FOUND', pass, texture }`.
+class ThrownValue : public JsError {
+public:
+    explicit ThrownValue(Value value) : JsError(u"object", u"[object Object]"), value_(std::move(value)) {}
+    const Value& value() const { return value_; }
+
+private:
+    Value value_;
+};
 
 // One record of this.textures. Members the reference leaves undefined are
 // empty or false.
@@ -99,6 +111,9 @@ public:
 
     void beginFrame();
     void endFrame();
+    // executePass(pass, state): the pass's render or compute pass on the
+    // frame's command encoder.
+    void executePass(const Value& pass, const FrameState& state);
     // createBindGroup(pass, program, state, pipeline)
     Handle createBindGroup(const Value& pass, const ProgramInfo& program, const FrameState& state,
                            std::optional<Handle> pipeline = std::nullopt);
@@ -125,6 +140,29 @@ private:
     std::optional<Handle> outputStorageView(const FrameState& state);
     Handle legacyBindGroup(const Value& pass, const ProgramInfo& program, const FrameState& state);
     Handle createBindGroupFromEntries(Handle layout, const std::vector<BindGroupEntry>& entries);
+
+    struct Viewport {
+        Value x, y, w, h;
+    };
+    void executeRenderPass(const Value& pass, ProgramInfo& program, const FrameState& state);
+    void executeMRTRenderPass(const Value& pass, ProgramInfo& program, const FrameState& state,
+                              const std::vector<JsString>& outputKeys);
+    void executeComputePass(const Value& pass, ProgramInfo& program, const FrameState& state);
+    Handle resolveRenderPipeline(ProgramInfo& program, const Value& blend, const JsString& topology, const Value& format);
+    Handle resolveMRTRenderPipeline(ProgramInfo& program, const Value& blend, const JsString& topology,
+                                    const std::vector<Value>& formats);
+    Handle resolve3DRenderPipeline(ProgramInfo& program, const Value& blend, const Value& format);
+    Handle renderPipeline(ProgramInfo& program, const JsString& key, RenderPipelineDescriptor descriptor);
+    Handle getDepthTexture(const Value& width, const Value& height);
+    std::optional<Viewport> resolveViewport(const Value& pass, const TextureRecord* tex) const;
+    Value resolvePointCount(const Value& pass, const FrameState& state, const Value& outputId, const TextureRecord* outputTex) const;
+    Value resolveMeshVertexCount(const Value& pass, const FrameState& state, const TextureRecord* outputTex) const;
+    Handle getComputePipeline(ProgramInfo& program, const Value& entryPoint);
+    std::vector<Value> resolveWorkgroups(const Value& pass, const FrameState& state) const;
+    void copyBufferToTexture(const FrameState& state, const Value& outputId, const JsString& bufferName);
+    Handle getBufferToTextureRenderPipeline(const Value& format);
+    Handle encoder() const;
+    void drawPass(Handle passEncoder, const Value& pass, const FrameState& state, const Value& outputId, const TextureRecord* tex);
     Handle sampler(const Value& type) const;
     const TextureRecord* surfaceTexture(const FrameState& state, const JsString& name) const;
 
@@ -141,6 +179,10 @@ private:
     std::unordered_map<JsString, Buffer> storageBuffers_;
     std::vector<Buffer> retiredStorageBuffers_;
     std::unordered_map<JsString, Handle> fallbackStorageViews_;
+    Handle depthTexture_ = 0;
+    Value depthTextureWidth_;
+    Value depthTextureHeight_;
+    std::vector<std::pair<JsString, Handle>> bufferToTexturePipelines_;
     UniformPacker packer_;
 };
 

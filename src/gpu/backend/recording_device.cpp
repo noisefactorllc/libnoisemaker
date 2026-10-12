@@ -8,6 +8,8 @@ namespace libnoisemaker::backend {
 namespace {
 
 Value optional_string(const std::optional<JsString>& value) { return value ? Value(*value) : Value::null(); }
+// An object reference: handle 0 is no object, which the reference passes as undefined.
+Value ref(Handle handle) { return handle ? Value(double(handle)) : Value::null(); }
 Value optional_number(const std::optional<double>& value) { return value ? Value(*value) : Value::null(); }
 Value extent(const Extent3D& size) { return Value(Array{Value(size.width), Value(size.height), Value(size.depthOrArrayLayers)}); }
 
@@ -63,7 +65,7 @@ Handle RecordingDevice::createView(Handle texture, const TextureViewDescriptor& 
     Object call;
     call.set(u"call", Value(u"createView"));
     call.set(u"id", Value(double(id)));
-    call.set(u"texture", Value(double(texture)));
+    call.set(u"texture", ref(texture));
     call.set(u"format", optional_string(descriptor.format));
     call.set(u"dimension", optional_string(descriptor.dimension));
     call.set(u"aspect", Value(descriptor.aspect));
@@ -78,7 +80,7 @@ Handle RecordingDevice::createView(Handle texture, const TextureViewDescriptor& 
 void RecordingDevice::destroyTexture(Handle texture) {
     Object call;
     call.set(u"call", Value(u"destroyTexture"));
-    call.set(u"texture", Value(double(texture)));
+    call.set(u"texture", ref(texture));
     log(std::move(call));
 }
 
@@ -116,7 +118,7 @@ Handle RecordingDevice::createBuffer(const BufferDescriptor& descriptor) {
 void RecordingDevice::destroyBuffer(Handle buffer) {
     Object call;
     call.set(u"call", Value(u"destroyBuffer"));
-    call.set(u"buffer", Value(double(buffer)));
+    call.set(u"buffer", ref(buffer));
     log(std::move(call));
 }
 
@@ -133,14 +135,14 @@ Handle RecordingDevice::createShaderModule(const JsString& code) {
 Handle RecordingDevice::createRenderPipeline(const RenderPipelineDescriptor& descriptor) {
     const Handle id = next();
     Object vertex;
-    vertex.set(u"module", Value(double(descriptor.vertexModule)));
+    vertex.set(u"module", ref(descriptor.vertexModule));
     vertex.set(u"entryPoint", Value(descriptor.vertexEntryPoint));
     vertex.set(u"buffers", Value(Array{}));
     Object primitive;
     primitive.set(u"topology", Value(descriptor.topology));
     primitive.set(u"stripIndexFormat", Value::null());
-    primitive.set(u"frontFace", Value(u"ccw"));
-    primitive.set(u"cullMode", Value(u"none"));
+    primitive.set(u"frontFace", Value(descriptor.frontFace));
+    primitive.set(u"cullMode", Value(descriptor.cullMode));
     Object multisample;
     multisample.set(u"count", Value(1.0));
     multisample.set(u"mask", Value(4294967295.0));
@@ -161,7 +163,7 @@ Handle RecordingDevice::createRenderPipeline(const RenderPipelineDescriptor& des
         targets.emplace_back(std::move(out));
     }
     Object fragment;
-    fragment.set(u"module", Value(double(descriptor.fragmentModule)));
+    fragment.set(u"module", ref(descriptor.fragmentModule));
     fragment.set(u"entryPoint", Value(descriptor.fragmentEntryPoint));
     fragment.set(u"targets", Value(std::move(targets)));
     Object call;
@@ -170,7 +172,15 @@ Handle RecordingDevice::createRenderPipeline(const RenderPipelineDescriptor& des
     call.set(u"layout", Value(u"auto"));
     call.set(u"vertex", Value(std::move(vertex)));
     call.set(u"primitive", Value(std::move(primitive)));
-    call.set(u"depthStencil", Value::null());
+    if (descriptor.depthStencil) {
+        Object depth;
+        depth.set(u"format", Value(descriptor.depthStencil->format));
+        depth.set(u"depthWriteEnabled", Value(descriptor.depthStencil->depthWriteEnabled));
+        depth.set(u"depthCompare", optional_string(descriptor.depthStencil->depthCompare));
+        call.set(u"depthStencil", Value(std::move(depth)));
+    } else {
+        call.set(u"depthStencil", Value::null());
+    }
     call.set(u"multisample", Value(std::move(multisample)));
     call.set(u"fragment", Value(std::move(fragment)));
     log(std::move(call));
@@ -180,7 +190,7 @@ Handle RecordingDevice::createRenderPipeline(const RenderPipelineDescriptor& des
 Handle RecordingDevice::createComputePipeline(const ComputePipelineDescriptor& descriptor) {
     const Handle id = next();
     Object compute;
-    compute.set(u"module", Value(double(descriptor.module)));
+    compute.set(u"module", ref(descriptor.module));
     compute.set(u"entryPoint", Value(descriptor.entryPoint));
     Object call;
     call.set(u"call", Value(u"createComputePipeline"));
@@ -196,7 +206,7 @@ Handle RecordingDevice::getBindGroupLayout(Handle pipeline, double index) {
     Object call;
     call.set(u"call", Value(u"getBindGroupLayout"));
     call.set(u"id", Value(double(id)));
-    call.set(u"pipeline", Value(double(pipeline)));
+    call.set(u"pipeline", ref(pipeline));
     call.set(u"index", Value(index));
     log(std::move(call));
     return id;
@@ -218,10 +228,10 @@ Handle RecordingDevice::createBindGroup(Handle layout, const std::vector<BindGro
         Object item;
         item.set(u"binding", Value(entry.binding));
         switch (entry.kind) {
-            case BindGroupEntry::Kind::TextureView: item.set(u"view", Value(double(entry.resource))); break;
-            case BindGroupEntry::Kind::Sampler: item.set(u"sampler", Value(double(entry.resource))); break;
+            case BindGroupEntry::Kind::TextureView: item.set(u"view", ref(entry.resource)); break;
+            case BindGroupEntry::Kind::Sampler: item.set(u"sampler", ref(entry.resource)); break;
             case BindGroupEntry::Kind::Buffer:
-                item.set(u"buffer", Value(double(entry.resource)));
+                item.set(u"buffer", ref(entry.resource));
                 item.set(u"offset", Value(0.0));
                 item.set(u"size", Value::null());
                 break;
@@ -231,7 +241,7 @@ Handle RecordingDevice::createBindGroup(Handle layout, const std::vector<BindGro
     Object call;
     call.set(u"call", Value(u"createBindGroup"));
     call.set(u"id", failure ? Value::null() : Value(double(id)));
-    call.set(u"layout", Value(double(layout)));
+    call.set(u"layout", ref(layout));
     call.set(u"entries", Value(std::move(out)));
     if (failure) call.set(u"error", Value(*failure));
     log(std::move(call));
@@ -242,7 +252,7 @@ Handle RecordingDevice::createBindGroup(Handle layout, const std::vector<BindGro
 void RecordingDevice::writeBuffer(Handle buffer, double offset, const std::vector<uint8_t>& bytes) {
     Object call;
     call.set(u"call", Value(u"writeBuffer"));
-    call.set(u"buffer", Value(double(buffer)));
+    call.set(u"buffer", ref(buffer));
     call.set(u"offset", Value(offset));
     call.set(u"bytes", hex(bytes));
     log(std::move(call));
@@ -252,7 +262,7 @@ void RecordingDevice::writeTexture(const TexelCopyTextureInfo& destination, cons
                                    const TexelCopyBufferLayout& layout, const Extent3D& size) {
     Object call;
     call.set(u"call", Value(u"writeTexture"));
-    call.set(u"texture", Value(double(destination.texture)));
+    call.set(u"texture", ref(destination.texture));
     call.set(u"mipLevel", Value(destination.mipLevel));
     call.set(u"origin", Value(Array{Value(destination.origin[0]), Value(destination.origin[1]), Value(destination.origin[2])}));
     call.set(u"aspect", Value(destination.aspect));
@@ -273,12 +283,103 @@ Handle RecordingDevice::createCommandEncoder() {
     return id;
 }
 
+Handle RecordingDevice::beginRenderPass(Handle encoder, const RenderPassDescriptor& descriptor) {
+    const Handle id = next();
+    Array colors;
+    for (const RenderPassColorAttachment& attachment : descriptor.colorAttachments) {
+        Object out;
+        out.set(u"view", ref(attachment.view));
+        out.set(u"resolveTarget", Value::null());
+        const Color& c = attachment.clearValue;
+        out.set(u"clearValue", Value(Array{Value(c.r), Value(c.g), Value(c.b), Value(c.a)}));
+        out.set(u"loadOp", Value(attachment.loadOp));
+        out.set(u"storeOp", Value(attachment.storeOp));
+        colors.emplace_back(std::move(out));
+    }
+    Object call;
+    call.set(u"call", Value(u"beginRenderPass"));
+    call.set(u"id", Value(double(id)));
+    call.set(u"encoder", ref(encoder));
+    call.set(u"colorAttachments", Value(std::move(colors)));
+    if (descriptor.depthStencilAttachment) {
+        const RenderPassDepthStencilAttachment& d = *descriptor.depthStencilAttachment;
+        Object depth;
+        depth.set(u"view", ref(d.view));
+        depth.set(u"depthClearValue", optional_number(d.depthClearValue));
+        depth.set(u"depthLoadOp", optional_string(d.depthLoadOp));
+        depth.set(u"depthStoreOp", optional_string(d.depthStoreOp));
+        call.set(u"depthStencilAttachment", Value(std::move(depth)));
+    } else {
+        call.set(u"depthStencilAttachment", Value::null());
+    }
+    log(std::move(call));
+    return id;
+}
+
+Handle RecordingDevice::beginComputePass(Handle encoder) {
+    const Handle id = next();
+    Object call;
+    call.set(u"call", Value(u"beginComputePass"));
+    call.set(u"id", Value(double(id)));
+    call.set(u"encoder", ref(encoder));
+    log(std::move(call));
+    return id;
+}
+
+void RecordingDevice::setPipeline(Handle pass, Handle pipeline) {
+    Object call;
+    call.set(u"call", Value(u"setPipeline"));
+    call.set(u"pass", ref(pass));
+    call.set(u"pipeline", ref(pipeline));
+    log(std::move(call));
+}
+
+void RecordingDevice::setBindGroup(Handle pass, double index, Handle group) {
+    Object call;
+    call.set(u"call", Value(u"setBindGroup"));
+    call.set(u"pass", ref(pass));
+    call.set(u"index", Value(index));
+    call.set(u"group", ref(group));
+    log(std::move(call));
+}
+
+void RecordingDevice::setViewport(Handle pass, double x, double y, double width, double height, double minDepth, double maxDepth) {
+    Object call;
+    call.set(u"call", Value(u"setViewport"));
+    call.set(u"pass", ref(pass));
+    call.set(u"args", Value(Array{Value(x), Value(y), Value(width), Value(height), Value(minDepth), Value(maxDepth)}));
+    log(std::move(call));
+}
+
+void RecordingDevice::draw(Handle pass, double vertexCount, double instanceCount, double firstVertex, double firstInstance) {
+    Object call;
+    call.set(u"call", Value(u"draw"));
+    call.set(u"pass", ref(pass));
+    call.set(u"args", Value(Array{Value(vertexCount), Value(instanceCount), Value(firstVertex), Value(firstInstance)}));
+    log(std::move(call));
+}
+
+void RecordingDevice::dispatchWorkgroups(Handle pass, double x, double y, double z) {
+    Object call;
+    call.set(u"call", Value(u"dispatchWorkgroups"));
+    call.set(u"pass", ref(pass));
+    call.set(u"args", Value(Array{Value(x), Value(y), Value(z)}));
+    log(std::move(call));
+}
+
+void RecordingDevice::end(Handle pass) {
+    Object call;
+    call.set(u"call", Value(u"end"));
+    call.set(u"pass", ref(pass));
+    log(std::move(call));
+}
+
 Handle RecordingDevice::finish(Handle encoder) {
     const Handle id = next();
     Object call;
     call.set(u"call", Value(u"finish"));
     call.set(u"id", Value(double(id)));
-    call.set(u"encoder", Value(double(encoder)));
+    call.set(u"encoder", ref(encoder));
     log(std::move(call));
     return id;
 }

@@ -50,8 +50,42 @@ const hex = (data, offset = 0, size) => {
 }
 const blendComponent = c => ({ operation: def(c?.operation, 'add'), srcFactor: def(c?.srcFactor, 'one'), dstFactor: def(c?.dstFactor, 'zero') })
 
+const color = c => c === undefined ? [0, 0, 0, 0] : Array.isArray(c) ? c.map(num) : [num(c.r), num(c.g), num(c.b), num(c.a)]
+const passObject = kind => {
+  const p = make(kind)
+  p.setPipeline = pipeline => log.push({ call: 'setPipeline', pass: idOf(p), pipeline: idOf(pipeline) })
+  p.setBindGroup = (index, group) => log.push({ call: 'setBindGroup', pass: idOf(p), index: num(index), group: idOf(group) })
+  p.setViewport = (...args) => log.push({ call: 'setViewport', pass: idOf(p), args: args.map(num) })
+  p.draw = (vertexCount, instanceCount, firstVertex, firstInstance) => log.push({
+    call: 'draw', pass: idOf(p), args: [num(vertexCount), num(def(instanceCount, 1)), num(def(firstVertex, 0)), num(def(firstInstance, 0))]
+  })
+  p.dispatchWorkgroups = (x, y, z) => log.push({ call: 'dispatchWorkgroups', pass: idOf(p), args: [num(x), num(def(y, 1)), num(def(z, 1))] })
+  p.end = () => log.push({ call: 'end', pass: idOf(p) })
+  return p
+}
 const encoder = () => {
   const e = make('encoder')
+  e.beginRenderPass = d => {
+    const p = passObject('renderPass')
+    const depth = d.depthStencilAttachment
+    log.push({
+      call: 'beginRenderPass', id: idOf(p), encoder: idOf(e),
+      colorAttachments: d.colorAttachments.map(a => ({
+        view: idOf(a.view), resolveTarget: a.resolveTarget === undefined ? null : idOf(a.resolveTarget),
+        clearValue: color(a.clearValue), loadOp: a.loadOp, storeOp: a.storeOp
+      })),
+      depthStencilAttachment: depth === undefined ? null : {
+        view: idOf(depth.view), depthClearValue: depth.depthClearValue === undefined ? null : num(depth.depthClearValue),
+        depthLoadOp: def(depth.depthLoadOp, null), depthStoreOp: def(depth.depthStoreOp, null)
+      }
+    })
+    return p
+  }
+  e.beginComputePass = () => {
+    const p = passObject('computePass')
+    log.push({ call: 'beginComputePass', id: idOf(p), encoder: idOf(e) })
+    return p
+  }
   e.finish = () => { const b = make('commandBuffer'); log.push({ call: 'finish', id: idOf(b), encoder: idOf(e) }); return b }
   return e
 }
@@ -139,7 +173,10 @@ const device = {
         topology: def(primitive.topology, 'triangle-list'), stripIndexFormat: def(primitive.stripIndexFormat, null),
         frontFace: def(primitive.frontFace, 'ccw'), cullMode: def(primitive.cullMode, 'none')
       },
-      depthStencil: def(d.depthStencil, null),
+      depthStencil: d.depthStencil === undefined ? null : {
+        format: String(d.depthStencil.format), depthWriteEnabled: def(d.depthStencil.depthWriteEnabled, false),
+        depthCompare: def(d.depthStencil.depthCompare, null)
+      },
       multisample: { count: num(def(multisample.count, 1)), mask: num(def(multisample.mask, 0xFFFFFFFF)), alphaToCoverageEnabled: def(multisample.alphaToCoverageEnabled, false) },
       fragment: d.fragment === undefined ? null : {
         module: idOf(d.fragment.module), entryPoint: def(d.fragment.entryPoint, null),
@@ -233,10 +270,14 @@ for await (const line of lines) {
       case 'beginFrame': backend.beginFrame(); break
       case 'endFrame': backend.endFrame(); break
       case 'createBindGroup': backend.createBindGroup(op.pass, backend.programs.get(op.program), frameState(op.state)); break
+      case 'executePass': backend.executePass(op.pass, frameState(op.state)); break
       default: throw new Error(`unknown op ${op.op}`)
     }
   } catch (err) {
-    error = { name: String(err?.name ?? typeof err), message: String(err?.message ?? err) }
+    // A thrown plain object (`throw { code, ... }`) is compared as data.
+    error = err instanceof Error
+      ? { name: String(err.name), message: String(err.message) }
+      : { thrown: JSON.parse(JSON.stringify(err) ?? 'null') }
   }
   // Promise callbacks (onSubmittedWorkDone) run before the next op.
   await new Promise(resolve => setImmediate(resolve))

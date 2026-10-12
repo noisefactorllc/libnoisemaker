@@ -599,8 +599,18 @@ Handle WebGPUBackend::storageBuffer(const wgsl::Binding& binding, const FrameSta
     return buffer.handle;
 }
 
+// state.surfaces?.[name]. getFrameState sets a surface only when its texture
+// exists, so a surface naming a missing texture is absent. An Object.prototype
+// member (toString, __proto__) is inherited by the surfaces object: present,
+// with no view and no size.
 const TextureRecord* WebGPUBackend::surfaceTexture(const FrameState& state, const JsString& name) const {
-    for (const auto& [surface, id] : state.surfaces) if (surface == name) return texture(id);
+    for (const auto& [surface, id] : state.surfaces) {
+        if (surface != name) continue;
+        if (const TextureRecord* record = texture(id)) return record;
+        break;
+    }
+    static const TextureRecord inherited;
+    if (jsv::has_property(Value(Object{}), name)) return &inherited;
     return nullptr;
 }
 
@@ -895,6 +905,446 @@ Handle WebGPUBackend::createBindGroupFromEntries(Handle layout, const std::vecto
         }
         throw;
     }
+}
+
+namespace {
+// `throw { code, pass, ... }`: members left undefined are dropped, as JSON drops them.
+[[noreturn]] void throwCode(const char16_t* code, std::initializer_list<std::pair<const char16_t*, Value>> members) {
+    Object thrown;
+    thrown.set(u"code", Value(code));
+    for (const auto& [key, value] : members) thrown.set(key, value);
+    throw ThrownValue(Value(std::move(thrown)));
+}
+// `${value || fallback}` in a template literal.
+JsString orText(const Value& value, const char16_t* fallback) {
+    return jsv::truthy(value) ? jsv::to_string(value) : JsString(fallback);
+}
+}  // namespace
+
+Handle WebGPUBackend::encoder() const {
+    if (!commandEncoder_) throw JsError(u"TypeError", u"Cannot read properties of null (reading 'beginRenderPass')");
+    return commandEncoder_;
+}
+
+void WebGPUBackend::executePass(const Value& pass, const FrameState& state) {
+    const Value programId = jsv::get(pass, u"program");
+    const auto it = programId.is_string() ? programs_.find(programId.as_string()) : programs_.end();
+    if (it == programs_.end()) {
+        throwCode(u"ERR_PROGRAM_NOT_FOUND", {{u"pass", jsv::member(pass, u"id")}, {u"program", programId}});
+    }
+    if (it->second.isCompute) executeComputePass(pass, it->second, state);
+    else executeRenderPass(pass, it->second, state);
+}
+
+std::optional<WebGPUBackend::Viewport> WebGPUBackend::resolveViewport(const Value& pass, const TextureRecord* tex) const {
+    if (tex && jsv::truthy(tex->width) && jsv::truthy(tex->height)) return Viewport{Value(0.0), Value(0.0), tex->width, tex->height};
+    Value viewport = jsv::member(pass, u"viewportResolved");
+    if (!jsv::truthy(viewport)) viewport = jsv::member(pass, u"viewport");
+    if (jsv::truthy(viewport)) {
+        return Viewport{jsv::member(viewport, u"x"), jsv::member(viewport, u"y"), jsv::member(viewport, u"w"), jsv::member(viewport, u"h")};
+    }
+    return std::nullopt;  // no canvas context
+}
+
+Value WebGPUBackend::resolvePointCount(const Value& pass, const FrameState& state, const Value& outputId,
+                                       const TextureRecord* outputTex) const {
+    Value count = jsv::member(pass, u"count");
+    if (!jsv::truthy(count)) count = Value(1000.0);
+    const bool input = jsv::strict_equals(count, Value(u"input"));
+    if (jsv::strict_equals(count, Value(u"auto")) || jsv::strict_equals(count, Value(u"screen")) || input) {
+        const TextureRecord* refTex = nullptr;
+        const Value inputs = jsv::member(pass, u"inputs");
+        if (input && jsv::truthy(inputs)) {
+            Value stateInputId = jsv::member(inputs, u"xyzTex");
+            if (!jsv::truthy(stateInputId)) stateInputId = jsv::member(inputs, u"inputTex");
+            if (jsv::truthy(stateInputId)) {
+                if (const auto surfaceName = parseGlobalName(stateInputId)) refTex = surfaceTexture(state, *surfaceName);
+                else refTex = textureFor(stateInputId);
+            }
+        } else {
+            refTex = outputTex ? outputTex : textureFor(outputId);
+        }
+        if (refTex && jsv::truthy(refTex->width) && jsv::truthy(refTex->height)) {
+            count = Value(jsv::to_number(refTex->width) * jsv::to_number(refTex->height));
+        }
+    }
+    return count;
+}
+
+Value WebGPUBackend::resolveMeshVertexCount(const Value& pass, const FrameState& state, const TextureRecord*) const {
+    Value count = jsv::member(pass, u"count");
+    if (!jsv::truthy(count)) count = Value(3.0);
+    const Value countUniform = jsv::member(pass, u"countUniform");
+    if (jsv::truthy(countUniform)) {
+        const JsString name = jsv::to_property_key(countUniform);
+        Value uniformValue = jsv::member(jsv::member(pass, u"uniforms"), name);
+        if (uniformValue.is_undefined()) uniformValue = jsv::member(state.globalUniforms, name);
+        if (uniformValue.is_number() && uniformValue.as_number() > 0) return uniformValue;
+    }
+    // count === 'auto' || count === 'input' || count <= 0
+    const bool lessEqualZero = count.is_string() ? jsv::to_number(count) <= 0 : jsv::to_number(count) <= 0;
+    if (jsv::strict_equals(count, Value(u"auto")) || jsv::strict_equals(count, Value(u"input")) || lessEqualZero) {
+        const TextureRecord* refTex = nullptr;
+        const Value inputs = jsv::member(pass, u"inputs");
+        if (jsv::truthy(inputs)) {
+            Value meshInputId = jsv::member(inputs, u"meshPositions");
+            if (!jsv::truthy(meshInputId)) meshInputId = jsv::member(inputs, u"inputTex");
+            if (jsv::truthy(meshInputId)) {
+                refTex = textureFor(meshInputId);
+                if (!refTex) {
+                    if (!meshInputId.is_string()) throw JsError(u"TypeError", u"meshInputId.replace is not a function");
+                    const JsString un = unscoped(meshInputId.as_string());
+                    if (un != meshInputId.as_string()) refTex = texture(un);
+                }
+                if (!refTex) {
+                    if (const auto surfaceName = parseGlobalName(meshInputId)) refTex = surfaceTexture(state, *surfaceName);
+                }
+            }
+        }
+        if (refTex && jsv::truthy(refTex->width) && jsv::truthy(refTex->height)) {
+            count = Value(jsv::to_number(refTex->width) * jsv::to_number(refTex->height));
+        } else {
+            count = Value(3.0);
+        }
+    }
+    return count;
+}
+
+Handle WebGPUBackend::renderPipeline(ProgramInfo& program, const JsString& key, RenderPipelineDescriptor descriptor) {
+    for (const auto& [cached, pipeline] : program.pipelineCache) if (cached == key) return pipeline;
+    const Handle pipeline = device_.createRenderPipeline(descriptor);
+    program.pipelineCache.emplace_back(key, pipeline);
+    return pipeline;
+}
+
+Handle WebGPUBackend::resolveRenderPipeline(ProgramInfo& program, const Value& blend, const JsString& topology, const Value& format) {
+    // getPipelineKey({ blend, topology, format })
+    const JsString key = topology + u"|" + (jsv::truthy(blend) ? utf8_to_js(json::stringify(blend)) : JsString(u"noblend")) +
+                         u"|" + orText(format, u"rgba16float");
+    for (const auto& [cached, pipeline] : program.pipelineCache) if (cached == key) return pipeline;
+    RenderPipelineDescriptor descriptor;
+    descriptor.vertexModule = program.vertexModule ? program.vertexModule : defaultVertexModule();
+    descriptor.vertexEntryPoint = program.vertexEntryPoint.empty() ? runtimeShader(u"defaultVertexEntryPoint") : program.vertexEntryPoint;
+    descriptor.fragmentModule = program.fragmentModule ? program.fragmentModule : program.module;
+    descriptor.fragmentEntryPoint = program.fragmentEntryPoint.empty() ? runtimeShader(u"defaultFragmentEntryPoint") : program.fragmentEntryPoint;
+    const Value targetFormat = jsv::truthy(format) ? format : jsv::truthy(program.outputFormat) ? program.outputFormat : Value(u"rgba16float");
+    descriptor.targets.push_back(ColorTargetState{jsv::to_string(targetFormat), resolveBlendState(blend)});
+    descriptor.topology = topology;
+    return renderPipeline(program, key, std::move(descriptor));
+}
+
+Handle WebGPUBackend::resolve3DRenderPipeline(ProgramInfo& program, const Value& blend, const Value& format) {
+    const JsString key = u"3d|" + orText(format, u"rgba16float") + u"|" +
+                         (jsv::truthy(blend) ? utf8_to_js(json::stringify(blend)) : JsString(u"noblend"));
+    for (const auto& [cached, pipeline] : program.pipelineCache) if (cached == key) return pipeline;
+    RenderPipelineDescriptor descriptor;
+    descriptor.vertexModule = program.vertexModule ? program.vertexModule : defaultVertexModule();
+    descriptor.vertexEntryPoint = program.vertexEntryPoint.empty() ? runtimeShader(u"defaultVertexEntryPoint") : program.vertexEntryPoint;
+    descriptor.fragmentModule = program.fragmentModule ? program.fragmentModule : program.module;
+    descriptor.fragmentEntryPoint = program.fragmentEntryPoint.empty() ? runtimeShader(u"defaultFragmentEntryPoint") : program.fragmentEntryPoint;
+    const Value targetFormat = jsv::truthy(format) ? format : jsv::truthy(program.outputFormat) ? program.outputFormat : Value(u"rgba16float");
+    descriptor.targets.push_back(ColorTargetState{jsv::to_string(targetFormat), resolveBlendState(blend)});
+    descriptor.topology = u"triangle-list";
+    descriptor.cullMode = u"back";
+    descriptor.frontFace = u"cw";  // the WGSL flips Y, which reverses the winding
+    descriptor.depthStencil = DepthStencilState{u"depth24plus", true, JsString(u"less")};
+    return renderPipeline(program, key, std::move(descriptor));
+}
+
+Handle WebGPUBackend::resolveMRTRenderPipeline(ProgramInfo& program, const Value& blend, const JsString& topology,
+                                               const std::vector<Value>& formats) {
+    JsString joined;
+    for (size_t i = 0; i < formats.size(); ++i) {
+        if (i) joined += u"_";
+        if (!formats[i].is_null() && !formats[i].is_undefined()) joined += jsv::to_string(formats[i]);
+    }
+    const JsString key = u"mrt_" + topology + u"_" + joined + u"_" +
+                         (jsv::truthy(blend) ? utf8_to_js(json::stringify(blend)) : JsString(u"noblend"));
+    for (const auto& [cached, pipeline] : program.pipelineCache) if (cached == key) return pipeline;
+    RenderPipelineDescriptor descriptor;
+    for (const Value& format : formats) descriptor.targets.push_back(ColorTargetState{jsv::to_string(format), resolveBlendState(blend)});
+    descriptor.vertexModule = program.vertexModule ? program.vertexModule : defaultVertexModule();
+    descriptor.vertexEntryPoint = program.vertexEntryPoint.empty() ? runtimeShader(u"defaultVertexEntryPoint") : program.vertexEntryPoint;
+    descriptor.fragmentModule = program.fragmentModule ? program.fragmentModule : program.module;
+    descriptor.fragmentEntryPoint = program.fragmentEntryPoint.empty() ? runtimeShader(u"defaultFragmentEntryPoint") : program.fragmentEntryPoint;
+    descriptor.topology = topology;
+    return renderPipeline(program, key, std::move(descriptor));
+}
+
+Handle WebGPUBackend::getDepthTexture(const Value& width, const Value& height) {
+    if (!depthTexture_ || !jsv::strict_equals(depthTextureWidth_, width) || !jsv::strict_equals(depthTextureHeight_, height)) {
+        if (depthTexture_) device_.destroyTexture(depthTexture_);
+        TextureDescriptor descriptor;
+        descriptor.size = extent(width, height);
+        descriptor.format = u"depth24plus";
+        descriptor.usage = TextureUsage::RenderAttachment;
+        depthTexture_ = device_.createTexture(descriptor);
+        depthTextureWidth_ = width;
+        depthTextureHeight_ = height;
+    }
+    return depthTexture_;
+}
+
+void WebGPUBackend::drawPass(Handle passEncoder, const Value& pass, const FrameState& state, const Value& outputId,
+                             const TextureRecord* tex) {
+    const Value drawMode = jsv::member(pass, u"drawMode");
+    double vertexCount = 3;
+    if (jsv::strict_equals(drawMode, Value(u"points"))) {
+        vertexCount = jsv::to_number(resolvePointCount(pass, state, outputId, tex));
+    } else if (jsv::strict_equals(drawMode, Value(u"billboards"))) {
+        vertexCount = jsv::to_number(resolvePointCount(pass, state, outputId, tex)) * 6;
+    } else if (jsv::strict_equals(drawMode, Value(u"triangles"))) {
+        vertexCount = jsv::to_number(resolveMeshVertexCount(pass, state, tex));
+    }
+    device_.draw(passEncoder, vertexCount, 1, 0, 0);
+    device_.end(passEncoder);
+}
+
+void WebGPUBackend::executeRenderPass(const Value& pass, ProgramInfo& program, const FrameState& state) {
+    const Value outputs = jsv::member(pass, u"outputs");
+    const std::vector<JsString> outputKeys = jsv::keys(jsv::truthy(outputs) ? outputs : Value(Object{}));
+    if (jsv::to_number(jsv::member(pass, u"drawBuffers")) > 1 || outputKeys.size() > 1) {
+        executeMRTRenderPass(pass, program, state, outputKeys);
+        return;
+    }
+    Value outputId = jsv::get(outputs, u"color");
+    if (!jsv::truthy(outputId)) {
+        const Array values = jsv::values(outputs);
+        outputId = values.empty() ? Value() : values[0];
+    }
+    if (const auto surfaceName = parseGlobalName(outputId)) {
+        if (const Value* writeTex = lookup(state.writeSurfaces, *surfaceName); writeTex && jsv::truthy(*writeTex)) outputId = *writeTex;
+    }
+    const TextureRecord* outputTex = textureFor(outputId);
+    if (!outputTex) outputTex = surfaceTexture(state, jsv::to_property_key(outputId));
+    if (!outputTex) {
+        throwCode(u"ERR_TEXTURE_NOT_FOUND", {{u"pass", jsv::member(pass, u"id")}, {u"texture", outputId}});
+    }
+    const Handle targetView = outputTex->renderView ? *outputTex->renderView : outputTex->view;
+    const std::optional<Viewport> viewport = resolveViewport(pass, outputTex);
+    RenderPassColorAttachment color;
+    color.view = targetView;
+    color.loadOp = jsv::truthy(jsv::member(pass, u"clear")) ? u"clear" : u"load";
+    color.storeOp = u"store";
+    const Value resolvedFormat = jsv::truthy(outputTex->gpuFormat) ? outputTex->gpuFormat
+        : jsv::truthy(outputTex->format) ? outputTex->format : program.outputFormat;
+    const Value drawMode = jsv::member(pass, u"drawMode");
+    RenderPassDescriptor descriptor;
+    descriptor.colorAttachments.push_back(color);
+    Handle pipeline = 0;
+    if (jsv::strict_equals(drawMode, Value(u"triangles"))) {
+        const Handle depthTex = getDepthTexture(outputTex->width, outputTex->height);
+        RenderPassDepthStencilAttachment depth;
+        depth.view = device_.createView(depthTex, {});
+        depth.depthClearValue = 1.0;
+        depth.depthLoadOp = u"clear";
+        depth.depthStoreOp = u"store";
+        descriptor.depthStencilAttachment = depth;
+        pipeline = resolve3DRenderPipeline(program, jsv::member(pass, u"blend"), resolvedFormat);
+    } else {
+        const JsString topology = jsv::strict_equals(drawMode, Value(u"points")) ? u"point-list" : u"triangle-list";
+        pipeline = resolveRenderPipeline(program, jsv::member(pass, u"blend"), topology, resolvedFormat);
+    }
+    const Handle passEncoder = device_.beginRenderPass(encoder(), descriptor);
+    const Handle bindGroup = createBindGroup(pass, program, state, pipeline);
+    device_.setPipeline(passEncoder, pipeline);
+    device_.setBindGroup(passEncoder, 0, bindGroup);
+    if (viewport) {
+        const double x = jsv::to_number(viewport->x);
+        const double y = jsv::to_number(viewport->y);
+        const double w = jsv::to_number(viewport->w);
+        const double h = jsv::to_number(viewport->h);
+        device_.setViewport(passEncoder, x, y, w, h, 0, 1);
+    }
+    drawPass(passEncoder, pass, state, outputId, outputTex);
+}
+
+void WebGPUBackend::executeMRTRenderPass(const Value& pass, ProgramInfo& program, const FrameState& state,
+                                         const std::vector<JsString>& outputKeys) {
+    RenderPassDescriptor descriptor;
+    std::vector<Value> formats;
+    const TextureRecord* viewportTex = nullptr;
+    const Value outputs = jsv::get(pass, u"outputs");
+    const JsString loadOp = jsv::truthy(jsv::member(pass, u"clear")) ? u"clear" : u"load";
+    for (const JsString& outputKey : outputKeys) {
+        Value outputId = jsv::get(outputs, outputKey);
+        if (const auto surfaceName = parseGlobalName(outputId)) {
+            if (const Value* writeTex = lookup(state.writeSurfaces, *surfaceName); writeTex && jsv::truthy(*writeTex)) outputId = *writeTex;
+        }
+        const TextureRecord* tex = textureFor(outputId);
+        if (!tex) tex = surfaceTexture(state, jsv::to_property_key(outputId));
+        if (!tex) continue;  // the reference warns and records a missing render target
+        if (!viewportTex) viewportTex = tex;
+        formats.push_back(jsv::truthy(tex->gpuFormat) ? tex->gpuFormat
+                          : resolveFormat(jsv::truthy(tex->format) ? tex->format : Value(u"rgba16float")));
+        RenderPassColorAttachment color;
+        color.view = tex->renderView ? *tex->renderView : tex->view;
+        color.loadOp = loadOp;
+        color.storeOp = u"store";
+        descriptor.colorAttachments.push_back(color);
+    }
+    if (descriptor.colorAttachments.empty()) throwCode(u"ERR_NO_MRT_OUTPUTS", {{u"pass", jsv::member(pass, u"id")}});
+    const Value drawMode = jsv::member(pass, u"drawMode");
+    const JsString topology = jsv::strict_equals(drawMode, Value(u"points")) ? u"point-list" : u"triangle-list";
+    const Handle pipeline = resolveMRTRenderPipeline(program, jsv::member(pass, u"blend"), topology, formats);
+    const Handle passEncoder = device_.beginRenderPass(encoder(), descriptor);
+    if (viewportTex) {
+        const double w = jsv::to_number(viewportTex->width);
+        const double h = jsv::to_number(viewportTex->height);
+        device_.setViewport(passEncoder, 0, 0, w, h, 0, 1);
+    }
+    const Handle bindGroup = createBindGroup(pass, program, state, pipeline);
+    device_.setPipeline(passEncoder, pipeline);
+    device_.setBindGroup(passEncoder, 0, bindGroup);
+    drawPass(passEncoder, pass, state, Value::null(), viewportTex);
+}
+
+Handle WebGPUBackend::getComputePipeline(ProgramInfo& program, const Value& entryPoint) {
+    const JsString target = jsv::truthy(entryPoint) ? jsv::to_string(entryPoint)
+        : !program.entryPoint.empty() ? program.entryPoint : JsString(u"main");
+    for (const auto& [name, pipeline] : program.pipelines) if (name == target) return pipeline;
+    const Handle pipeline = device_.createComputePipeline(ComputePipelineDescriptor{program.module, target});
+    program.pipelines.emplace_back(target, pipeline);
+    return pipeline;
+}
+
+std::vector<Value> WebGPUBackend::resolveWorkgroups(const Value& pass, const FrameState& state) const {
+    const Value workgroups = jsv::member(pass, u"workgroups");
+    if (jsv::truthy(workgroups)) {
+        return {jsv::get_v(workgroups, Value(0.0)), jsv::get_v(workgroups, Value(1.0)), jsv::get_v(workgroups, Value(2.0))};
+    }
+    const Value size = jsv::member(pass, u"size");
+    if (jsv::truthy(size)) {
+        // const { x = size.width, y = size.height, z = size.depth || 1 } = size
+        Value x = jsv::get(size, u"x");
+        if (x.is_undefined()) x = jsv::get(size, u"width");
+        Value y = jsv::get(size, u"y");
+        if (y.is_undefined()) y = jsv::get(size, u"height");
+        Value z = jsv::get(size, u"z");
+        if (z.is_undefined()) {
+            z = jsv::get(size, u"depth");
+            if (!jsv::truthy(z)) z = Value(1.0);
+        }
+        if (jsv::truthy(x) && jsv::truthy(y)) return {x, y, z};
+    }
+    const Value outputs = jsv::member(pass, u"outputs");
+    Value outputId = jsv::member(outputs, u"color");
+    if (!jsv::truthy(outputId)) {
+        const Array values = jsv::values(jsv::truthy(outputs) ? outputs : Value(Object{}));
+        outputId = values.empty() ? Value() : values[0];
+    }
+    const TextureRecord* output = jsv::truthy(outputId) ? textureFor(outputId) : nullptr;
+    if (output) {
+        return {Value(std::ceil(jsv::to_number(output->width) / 8)), Value(std::ceil(jsv::to_number(output->height) / 8)), Value(1.0)};
+    }
+    if (jsv::truthy(state.screenWidth) && jsv::truthy(state.screenHeight)) {
+        return {Value(std::ceil(jsv::to_number(state.screenWidth) / 8)), Value(std::ceil(jsv::to_number(state.screenHeight) / 8)), Value(1.0)};
+    }
+    throwCode(u"ERR_COMPUTE_DISPATCH_UNRESOLVED", {{u"pass", jsv::member(pass, u"id")},
+                                                   {u"detail", Value(u"Compute dispatch dimensions could not be inferred")}});
+}
+
+void WebGPUBackend::executeComputePass(const Value& pass, ProgramInfo& program, const FrameState& state) {
+    const Handle pipeline = getComputePipeline(program, jsv::member(pass, u"entryPoint"));
+    const Handle bindGroup = createBindGroup(pass, program, state, pipeline);
+    const std::vector<Value> workgroups = resolveWorkgroups(pass, state);
+    if (!commandEncoder_) throw JsError(u"TypeError", u"Cannot read properties of null (reading 'beginComputePass')");
+    const Handle passEncoder = device_.beginComputePass(commandEncoder_);
+    device_.setPipeline(passEncoder, pipeline);
+    device_.setBindGroup(passEncoder, 0, bindGroup);
+    // dispatchWorkgroups(x, y = 1, z = 1)
+    auto dimension = [](const Value& v) { return v.is_undefined() ? 1.0 : jsv::to_number(v); };
+    const double x = jsv::to_number(workgroups[0]);
+    const double y = dimension(workgroups[1]);
+    const double z = dimension(workgroups[2]);
+    device_.dispatchWorkgroups(passEncoder, x, y, z);
+    device_.end(passEncoder);
+
+    const wgsl::Binding* outputBuffer = nullptr;
+    for (const wgsl::Binding& binding : program.bindings) {
+        if ((binding.name == u"output_buffer" || binding.name == u"outputBuffer") && binding.type == u"storage") {
+            outputBuffer = &binding;
+            break;
+        }
+    }
+    const Value outputs = jsv::member(pass, u"outputs");
+    if (outputBuffer && jsv::truthy(outputs)) {
+        Value outputId = jsv::member(outputs, u"color");
+        if (!jsv::truthy(outputId)) outputId = jsv::member(outputs, u"fragColor");
+        if (!jsv::truthy(outputId)) {
+            const Array values = jsv::values(outputs);
+            outputId = values.empty() ? Value() : values[0];
+        }
+        if (jsv::truthy(outputId)) copyBufferToTexture(state, outputId, outputBuffer->name);
+    }
+}
+
+Handle WebGPUBackend::getBufferToTextureRenderPipeline(const Value& format) {
+    const JsString key = u"bufferToTexture_" + jsv::to_string(format);
+    for (const auto& [cached, pipeline] : bufferToTexturePipelines_) if (cached == key) return pipeline;
+    const Handle module = device_.createShaderModule(runtimeShader(u"bufferToTexture"));
+    RenderPipelineDescriptor descriptor;
+    descriptor.vertexModule = module;
+    descriptor.vertexEntryPoint = u"vs_main";
+    descriptor.fragmentModule = module;
+    descriptor.fragmentEntryPoint = u"fs_main";
+    descriptor.targets.push_back(ColorTargetState{jsv::to_string(format), std::nullopt});
+    const Handle pipeline = device_.createRenderPipeline(descriptor);
+    bufferToTexturePipelines_.emplace_back(key, pipeline);
+    return pipeline;
+}
+
+void WebGPUBackend::copyBufferToTexture(const FrameState& state, const Value& outputId, const JsString& bufferName) {
+    const auto storage = storageBuffers_.find(bufferName);
+    if (storage == storageBuffers_.end()) return;  // the reference warns
+    const TextureRecord* outputTex = nullptr;
+    if (const auto surfaceName = parseGlobalName(outputId)) {
+        if (const Value* writeTex = lookup(state.writeSurfaces, *surfaceName); writeTex && jsv::truthy(*writeTex)) outputTex = textureFor(*writeTex);
+    }
+    if (!outputTex && jsv::strict_equals(outputId, Value(u"outputTex")) && jsv::truthy(state.renderSurface)) {
+        if (const Value* writeTex = lookup(state.writeSurfaces, jsv::to_property_key(state.renderSurface)); writeTex && jsv::truthy(*writeTex)) {
+            outputTex = textureFor(*writeTex);
+        }
+    }
+    if (!outputTex) outputTex = textureFor(outputId);
+    if (!outputTex) return;  // the reference warns and records a missing render target
+
+    const Value width = jsv::truthy(state.screenWidth) ? state.screenWidth : outputTex->width;
+    const Value height = jsv::truthy(state.screenHeight) ? state.screenHeight : outputTex->height;
+    // new Uint32Array([width, height, 0, 0])
+    auto uint32 = [](const Value& v) {
+        const double n = jsv::to_number(v);
+        if (!std::isfinite(n)) return uint32_t(0);
+        double m = std::fmod(std::trunc(n), 4294967296.0);
+        if (m < 0) m += 4294967296.0;
+        return uint32_t(m);
+    };
+    std::vector<uint8_t> params(16, 0);
+    const uint32_t w = uint32(width);
+    const uint32_t h = uint32(height);
+    for (int i = 0; i < 4; ++i) {
+        params[i] = uint8_t(w >> (8 * i));
+        params[4 + i] = uint8_t(h >> (8 * i));
+    }
+    const Handle paramsBuffer = device_.createBuffer(BufferDescriptor{16, BufferUsage::Uniform | BufferUsage::CopyDst});
+    device_.writeBuffer(paramsBuffer, 0, params);
+    const Handle pipeline = getBufferToTextureRenderPipeline(jsv::truthy(outputTex->gpuFormat) ? outputTex->gpuFormat : Value(u"rgba8unorm"));
+    const Handle layout = device_.getBindGroupLayout(pipeline, 0);
+    const Handle bindGroup = device_.createBindGroup(layout, {BindGroupEntry{0, BindGroupEntry::Kind::Buffer, storage->second.handle},
+                                                             BindGroupEntry{1, BindGroupEntry::Kind::Buffer, paramsBuffer}});
+    RenderPassDescriptor descriptor;
+    RenderPassColorAttachment color;
+    color.view = outputTex->renderView ? *outputTex->renderView : outputTex->view;
+    color.loadOp = u"clear";
+    color.storeOp = u"store";
+    color.clearValue = Color{0, 0, 0, 1};
+    descriptor.colorAttachments.push_back(color);
+    const Handle passEncoder = device_.beginRenderPass(encoder(), descriptor);
+    device_.setPipeline(passEncoder, pipeline);
+    device_.setBindGroup(passEncoder, 0, bindGroup);
+    device_.draw(passEncoder, 3, 1, 0, 0);
+    device_.end(passEncoder);
+    activeUniformBuffers_.push_back(Buffer{paramsBuffer, 16});
 }
 
 }  // namespace libnoisemaker::backend

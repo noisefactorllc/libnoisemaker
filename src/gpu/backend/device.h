@@ -98,6 +98,12 @@ struct ColorTargetState {
     uint32_t writeMask = 0xF;
 };
 
+struct DepthStencilState {
+    JsString format;
+    bool depthWriteEnabled = false;
+    std::optional<JsString> depthCompare;
+};
+
 struct RenderPipelineDescriptor {
     Handle vertexModule = 0;
     JsString vertexEntryPoint;
@@ -105,7 +111,29 @@ struct RenderPipelineDescriptor {
     JsString fragmentEntryPoint;
     std::vector<ColorTargetState> targets;
     JsString topology = u"triangle-list";
-    // depthStencil, multisample and vertex buffers arrive with the mesh passes.
+    JsString frontFace = u"ccw";
+    JsString cullMode = u"none";
+    std::optional<DepthStencilState> depthStencil;
+};
+
+struct Color {
+    double r = 0, g = 0, b = 0, a = 0;
+};
+struct RenderPassColorAttachment {
+    Handle view = 0;
+    Color clearValue;
+    JsString loadOp;
+    JsString storeOp;
+};
+struct RenderPassDepthStencilAttachment {
+    Handle view = 0;
+    std::optional<double> depthClearValue;
+    std::optional<JsString> depthLoadOp;
+    std::optional<JsString> depthStoreOp;
+};
+struct RenderPassDescriptor {
+    std::vector<RenderPassColorAttachment> colorAttachments;
+    std::optional<RenderPassDepthStencilAttachment> depthStencilAttachment;
 };
 
 struct ComputePipelineDescriptor {
@@ -158,6 +186,14 @@ public:
                               const TexelCopyBufferLayout& layout, const Extent3D& size) = 0;
 
     virtual Handle createCommandEncoder() = 0;
+    virtual Handle beginRenderPass(Handle encoder, const RenderPassDescriptor& descriptor) = 0;
+    virtual Handle beginComputePass(Handle encoder) = 0;
+    virtual void setPipeline(Handle pass, Handle pipeline) = 0;
+    virtual void setBindGroup(Handle pass, double index, Handle group) = 0;
+    virtual void setViewport(Handle pass, double x, double y, double width, double height, double minDepth, double maxDepth) = 0;
+    virtual void draw(Handle pass, double vertexCount, double instanceCount, double firstVertex, double firstInstance) = 0;
+    virtual void dispatchWorkgroups(Handle pass, double x, double y, double z) = 0;
+    virtual void end(Handle pass) = 0;
     virtual Handle finish(Handle encoder) = 0;
     virtual void submit(const std::vector<Handle>& commandBuffers) = 0;
     // queue.onSubmittedWorkDone().then(done)

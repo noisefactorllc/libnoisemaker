@@ -108,9 +108,16 @@ int backend(int, char**) {
                     const be::ProgramInfo* program = backend->program(field(op, u"program").as_string());
                     if (!program) throw nm::JsError(u"TypeError", u"Cannot read properties of undefined (reading 'bindings')");
                     backend->createBindGroup(field(op, u"pass"), *program, frame_state(field(op, u"state")));
+                } else if (kind == u"executePass") {
+                    backend->executePass(field(op, u"pass"), frame_state(field(op, u"state")));
                 } else {
                     throw nm::JsError(u"Error", u"unknown op " + kind);
                 }
+            } catch (const be::ThrownValue& e) {
+                // JSON.parse(JSON.stringify(value)), as the oracle records it.
+                nm::Object thrown;
+                thrown.set(u"thrown", nm::json::parse(nm::json::stringify(e.value())));
+                error = nm::Value(std::move(thrown));
             } catch (const nm::JsError& e) {
                 error = error_record(e.name(), e.message());
             } catch (const std::exception& e) {

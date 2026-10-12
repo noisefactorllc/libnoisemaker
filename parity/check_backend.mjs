@@ -101,6 +101,20 @@ for (const [index, file] of readdirSync(programsDir).filter(f => f.endsWith('.ds
     calls.push({ op: 'endFrame' })
   }
   sequence(`corpus/${file}`, calls, true)
+  // The same graph executed: every pass on the frame's encoder, over two frames.
+  const exec = calls.filter(call => call.op !== 'createBindGroup')
+  const executed = []
+  for (const call of exec) {
+    if (call.op === 'beginFrame') {
+      executed.push(call)
+      const frame = executed.filter(c => c.op === 'beginFrame').length - 1
+      const state = { globalUniforms: frameGlobals(width, height, frame), surfaces, writeSurfaces, renderSurface, screenWidth: width, screenHeight: height }
+      for (const pass of graph.passes) if (graph.programs?.[pass.program]) executed.push({ op: 'executePass', pass, state })
+    } else {
+      executed.push(call)
+    }
+  }
+  sequence(`corpus-exec/${file}`, executed, true)
 }
 
 // Synthetic sequences: the paths no catalog effect reaches at this pin
@@ -345,6 +359,49 @@ sequence('synthetic/names-and-sources', [
   bind({ storageTextures: { outTex: 'global_' } }, 'aliases', surfaceState({ writeSurfaces: { '': 'plainTex' } })),
   { op: 'endFrame' }
 ])
+const exec = (pass, state = surfaceState()) => ({ op: 'executePass', pass: { id: 'p', ...pass }, state })
+sequence('synthetic/execution', [
+  { op: 'init' }, ...baseTextures,
+  { op: 'createTexture', id: 'zeroSize', spec: { width: 0, height: 0, format: 'rgba16f' } },
+  { op: 'compileProgram', id: 'fragment', spec: { wgsl: shaders.fragment } },
+  { op: 'compileProgram', id: 'buffers', spec: { wgsl: shaders.buffers } },
+  { op: 'compileProgram', id: 'entries', spec: { wgsl: shaders.entries } },
+  exec({ program: 'fragment', outputs: { color: 'plainTex' } }),
+  { op: 'beginFrame' },
+  exec({ program: 'missing', outputs: { color: 'plainTex' } }),
+  exec({ program: 'fragment', outputs: { color: 'nowhere' } }),
+  exec({ program: 'fragment', outputs: { color: 'global_o0' }, clear: true, blend: ['ONE', 'ONE'], inputs: { inputTex: 'plainTex' } }),
+  exec({ program: 'fragment', outputs: { fragColor: 'mipTex' }, drawMode: 'points', count: 'screen' }),
+  exec({ program: 'fragment', outputs: { color: 'plainTex3' }, drawMode: 'points', count: 'input', inputs: { xyzTex: 'global_feedback' } }),
+  exec({ program: 'fragment', outputs: { color: 'plainTex3' }, drawMode: 'points', count: 'input' }),
+  exec({ program: 'fragment', outputs: { color: 'plainTex3' }, drawMode: 'billboards', count: 'auto' }),
+  exec({ program: 'fragment', outputs: { color: 'plainTex3' }, drawMode: 'billboards', count: 12 }),
+  exec({ program: 'fragment', outputs: { color: 'zeroSize' }, viewport: { x: 1, y: 2, w: 3, h: 4 } }),
+  exec({ program: 'fragment', outputs: { color: 'zeroSize' }, viewportResolved: { x: 5, y: 6, w: 7, h: 8 }, viewport: { x: 1 } }),
+  exec({ program: 'fragment', outputs: { color: 'zeroSize' } }),
+  exec({ program: 'fragment', outputs: { color: 'plainTex' }, drawMode: 'triangles', countUniform: 'vertexCount', uniforms: { vertexCount: 36 } }),
+  exec({ program: 'fragment', outputs: { color: 'plainTex' }, drawMode: 'triangles', count: 'auto', inputs: { meshPositions: 'global_mesh0_positions_chain_1' } }),
+  exec({ program: 'fragment', outputs: { color: 'plainTex' }, drawMode: 'triangles', count: 0, inputs: { inputTex: 'global_feedback' } }),
+  exec({ program: 'fragment', outputs: { color: 'mipTex' }, drawMode: 'triangles', blend: true }),
+  exec({ program: 'fragment', outputs: { a: 'plainTex', b: 'global_o0', c: 'missingTex' }, drawMode: 'points', count: 'auto' }),
+  exec({ program: 'fragment', outputs: { a: 'missingA', b: 'missingB' } }),
+  exec({ program: 'fragment', outputs: { color: 'toString' }, inputs: { inputTex: 'global_constructor' }, drawMode: 'points', count: 'input' }, surfaceState({ surfaces: {} })),
+  exec({ program: 'fragment', outputs: { a: 'valueOf', b: 'plainTex' } }, surfaceState({ surfaces: {} })),
+  exec({ program: 'fragment', outputs: { color: 'toString' }, inputs: { inputTex: 'global_hasOwnProperty' } }, surfaceState({ surfaces: { toString: 'missingTex', hasOwnProperty: 'gone' } })),
+  exec({ program: 'fragment', outputs: { color: 'plainTex' }, drawBuffers: 2, blend: ['SRC_ALPHA', 'ONE'] }),
+  exec({ program: 'buffers', outputs: { color: 'plainTex' } }),
+  exec({ program: 'buffers', outputs: { fragColor: 'global_o0' }, workgroups: [4, 2] }),
+  exec({ program: 'buffers', outputs: { color: 'outputTex' }, size: { width: 16, height: 8 } }),
+  exec({ program: 'buffers', outputs: { color: 'outputTex' }, size: { x: 3, height: 5, depth: 2 } }, surfaceState({ renderSurface: undefined })),
+  exec({ program: 'entries', entryPoint: 'upsample_main', inputs: { srcTex: 'plainTex' }, storageTextures: { dstB: 'plainTex3' }, workgroups: 7 }),
+  exec({ program: 'entries', entryPoint: 'downsample_main', inputs: { srcTex: 'plainTex' }, storageTextures: { dstA: 'plainTex2' } }, { globalUniforms: {}, surfaces: {}, writeSurfaces: {} }),
+  { op: 'endFrame' },
+  { op: 'beginFrame' },
+  exec({ program: 'fragment', outputs: { color: 'plainTex' }, drawMode: 'triangles' }),
+  exec({ program: 'fragment', outputs: { color: 'mipTex' }, drawMode: 'triangles' }),
+  exec({ program: 'buffers', outputs: { color: 'plainTex' } }, surfaceState({ screenWidth: 640, screenHeight: 480 })),
+  { op: 'endFrame' }
+])
 sequence('synthetic/textures', [
   { op: 'init' },
   { op: 'uploadDataTexture', id: 'small', data: { $float32: Array.from({ length: 40 }, (_, i) => i) }, width: 5, height: 2 },
@@ -394,5 +451,5 @@ for (const op of ops) {
 }
 for (const file of uncompiled) err(`  corpus/${file}: the reference does not compile it`)
 if (uncompiled.length) total += uncompiled.length
-out(`Backend: ${matched}/${total} ops match, ${calls} device calls (${sequences} sequences: ${corpusGraphs} corpus graphs, ${sequences - corpusGraphs} synthetic)`)
+out(`Backend: ${matched}/${total} ops match, ${calls} device calls (${sequences} sequences: ${corpusGraphs} corpus graphs bound and executed, ${sequences - 2 * corpusGraphs} synthetic)`)
 process.exitCode = matched === total ? 0 : 1

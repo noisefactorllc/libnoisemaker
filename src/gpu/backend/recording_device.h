@@ -31,6 +31,14 @@ public:
     void writeTexture(const TexelCopyTextureInfo& destination, const std::vector<uint8_t>& bytes,
                       const TexelCopyBufferLayout& layout, const Extent3D& size) override;
     Handle createCommandEncoder() override;
+    Handle beginRenderPass(Handle encoder, const RenderPassDescriptor& descriptor) override;
+    Handle beginComputePass(Handle encoder) override;
+    void setPipeline(Handle pass, Handle pipeline) override;
+    void setBindGroup(Handle pass, double index, Handle group) override;
+    void setViewport(Handle pass, double x, double y, double width, double height, double minDepth, double maxDepth) override;
+    void draw(Handle pass, double vertexCount, double instanceCount, double firstVertex, double firstInstance) override;
+    void dispatchWorkgroups(Handle pass, double x, double y, double z) override;
+    void end(Handle pass) override;
     Handle finish(Handle encoder) override;
     void submit(const std::vector<Handle>& commandBuffers) override;
     // The work is done when it is submitted: done runs at once.
