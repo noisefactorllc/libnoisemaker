@@ -139,7 +139,7 @@ add_library(noisemaker_host STATIC
   src/host/audio_state.cpp
   src/host/midi_state.cpp
   src/host/obj_parser.cpp)
-target_include_directories(noisemaker_host PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_include_directories(noisemaker_host PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(noisemaker_host PUBLIC noisemaker_core_impl)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   target_compile_options(noisemaker_host PRIVATE -ffp-contract=off)
@@ -153,6 +153,29 @@ if(NM_BUILD_GPU)
   target_link_libraries(noisemaker PUBLIC noisemaker_core_impl PRIVATE noisemaker_gpu)
   add_library(noisemaker::noisemaker ALIAS noisemaker)
 endif()
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+set_target_properties(noisemaker_core PROPERTIES EXPORT_NAME core)
+target_include_directories(noisemaker_core INTERFACE $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+# The installed headers need C++17; the library itself builds as C++20.
+target_compile_features(noisemaker_core INTERFACE cxx_std_17)
+install(TARGETS noisemaker_core EXPORT noisemakerTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES include/noisemaker/core.h include/noisemaker/core.hpp include/noisemaker/value.hpp
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/noisemaker)
+install(FILES LICENSE src/core/js/acorn-LICENSE.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/noisemaker)
+install(EXPORT noisemakerTargets NAMESPACE noisemaker:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/noisemaker)
+configure_package_config_file(cmake/noisemakerConfig.cmake.in
+  "${CMAKE_CURRENT_BINARY_DIR}/noisemakerConfig.cmake"
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/noisemaker)
+write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/noisemakerConfigVersion.cmake"
+  COMPATIBILITY SameMinorVersion)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/noisemakerConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/noisemakerConfigVersion.cmake"
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/noisemaker)
 
 if(NM_BUILD_TESTS)
   enable_testing()

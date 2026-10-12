@@ -54,6 +54,26 @@ python3 tools/build_dawn.py --generator Ninja --prefix .cache/dawn-install/local
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNM_DAWN_PREBUILT_DIR=$PWD/.cache/dawn-install/local
 ```
 
+## Using it from CMake
+
+`-DNM_BUILD_SHARED=ON` builds `noisemaker_core` as a shared library that exports only the C API
+(`include/noisemaker/core.h`) and the C++ API (`core.hpp`, `value.hpp`). Install it and find it as a
+package:
+
+```sh
+cmake -S . -B build-shared -G Ninja -DCMAKE_BUILD_TYPE=Release -DNM_BUILD_GPU=OFF -DNM_BUILD_SHARED=ON
+cmake --build build-shared
+cmake --install build-shared --prefix /path/to/prefix
+```
+
+```cmake
+find_package(noisemaker CONFIG REQUIRED COMPONENTS core)
+target_link_libraries(app PRIVATE noisemaker::core)
+```
+
+The installed headers need C++17. The C++ API passes standard-library types across the library
+boundary, so a C++ consumer must use the same compiler and standard library as the build.
+
 ## Testing
 
 `scripts/test` builds the GPU-free tree, runs its unit tests and the tool tests, then runs every

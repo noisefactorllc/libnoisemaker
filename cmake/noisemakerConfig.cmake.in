@@ -1,0 +1,16 @@
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/noisemakerTargets.cmake")
+
+set(_noisemaker_supported_components core)
+# check_required_components rejects a missing component only when it is required.
+foreach(_noisemaker_component IN LISTS noisemaker_FIND_COMPONENTS)
+  if(_noisemaker_component IN_LIST _noisemaker_supported_components
+     AND TARGET noisemaker::${_noisemaker_component})
+    set(noisemaker_${_noisemaker_component}_FOUND TRUE)
+  else()
+    set(noisemaker_${_noisemaker_component}_FOUND FALSE)
+  endif()
+endforeach()
+
+check_required_components(noisemaker)

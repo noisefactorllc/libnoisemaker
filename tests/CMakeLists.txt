@@ -37,8 +37,15 @@ set_tests_properties(test_effect_validator PROPERTIES WORKING_DIRECTORY "${PROJE
 
 foreach(name test_midi_state test_obj_parser)
   add_executable(${name} host/${name}.cpp)
-  target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries(${name} PRIVATE noisemaker_host)
   add_test(NAME ${name} COMMAND ${name})
 endforeach()
 
+# Install this build and use it from a separate project, as qt and the kit will.
+add_test(NAME consumer COMMAND "${CMAKE_COMMAND}"
+  "-DBUILD_DIR=${PROJECT_BINARY_DIR}" "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/consumer"
+  "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/consumer" "-DCONFIG=$<CONFIG>" "-DGENERATOR=${CMAKE_GENERATOR}"
+  "-DPLATFORM=${CMAKE_GENERATOR_PLATFORM}" "-DC_COMPILER=${CMAKE_C_COMPILER}"
+  "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}" "-DOSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}"
+  -P "${CMAKE_CURRENT_SOURCE_DIR}/consumer/run.cmake")
