@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
+#include <utility>
 
 namespace libnoisemaker::backend {
 
@@ -486,8 +487,10 @@ void Pipeline::recreateTextures(const Value& uniforms) {
     if (!textures()) return;
 
     // The pooling plan, after applyMrtFormatBudget() so demoted formats count.
-    const std::vector<std::pair<JsString, JsString>> previousAliases = std::move(textureAliases_);
-    textureAliases_ = texturePooling_ ? buildTexturePoolingPlan() : std::vector<std::pair<JsString, JsString>>{};
+    // A plan that throws leaves the previous one in place.
+    std::vector<std::pair<JsString, JsString>> nextAliases =
+        texturePooling_ ? buildTexturePoolingPlan() : std::vector<std::pair<JsString, JsString>>{};
+    const std::vector<std::pair<JsString, JsString>> previousAliases = std::exchange(textureAliases_, std::move(nextAliases));
     releaseRegroupedTextures(previousAliases, textureAliases_);
 
     // Each spec is read where the loop reaches it: the specs are the graph's

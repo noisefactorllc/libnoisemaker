@@ -15,12 +15,16 @@
 // array indices, so the orders agree), and renderSurface.
 //
 // Outside the port: sinks and presentation (the pipeline here registers no
-// CanvasSink), the asyncInit overlays of filter/fibers, filter/scratches and
+// CanvasSink); the asyncInit overlays of filter/fibers, filter/scratches and
 // filter/strayHair (host inputs, ported with the host's canvas; the reference
-// run in Node fails before it draws, so neither side makes a device call), a
-// graph whose passes are not an array or whose textures are not an object, a
-// program id other than a string, a surface id that is undefined (a texture
-// spec for a mesh surface no pass references), and a uniform named __proto__.
+// run in Node fails before it draws, so neither side makes a device call);
+// effects registered at run time beyond the catalog's (the reference's
+// registry takes any, and the hooks here come from the catalog's jsHooks); a
+// width or height other than a number; a graph whose passes are not an array
+// or whose textures are not an object; texture ids that are array indices
+// (they would reorder as object keys); a program id other than a string; a
+// surface id that is undefined (a texture spec for a mesh surface no pass
+// references); and a uniform named __proto__.
 
 #include "gpu/backend/backend.h"
 

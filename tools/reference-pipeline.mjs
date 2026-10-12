@@ -46,7 +46,10 @@ const state = () => {
   if (!pipeline) return null
   const textures = []
   for (const [id, tex] of backend.textures) {
-    textures.push([id, { handle: mock.idOf(tex.handle), width: tex.width, height: tex.height, depth: tex.depth, format: tex.format }])
+    textures.push([id, {
+      handle: mock.idOf(tex.handle), width: tex.width, height: tex.height, depth: tex.depth, format: tex.format,
+      persistent: tex.persistent === true, is3D: tex.is3D === true
+    }])
   }
   const passes = Array.isArray(pipeline.graph?.passes) ? pipeline.graph.passes : []
   return plain({

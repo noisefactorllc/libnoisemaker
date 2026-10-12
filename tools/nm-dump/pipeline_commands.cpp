@@ -80,6 +80,8 @@ nm::Value state(const be::Pipeline& pipeline, const be::WebGPUBackend& backend) 
         record.set(u"height", tex->height);
         record.set(u"depth", tex->depth);
         record.set(u"format", tex->format);
+        record.set(u"persistent", nm::Value(tex->persistent));
+        record.set(u"is3D", nm::Value(tex->is3D));
         textures.emplace_back(nm::Array{nm::Value(id), nm::Value(std::move(record))});
     }
     out.set(u"textures", nm::Value(std::move(textures)));

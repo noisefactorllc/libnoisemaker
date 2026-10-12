@@ -51,8 +51,15 @@ const programsDir = join(ROOT, 'parity/programs')
 const sizes = [[256, 256], [320, 180], [97, 61], [1024, 768]]
 const graphs = []
 const uncompiled = []
+// The graph's Maps travel as objects, whose array-index keys would reorder:
+// the port assumes texture ids are never array indices, and this checks it.
+const indexKeyed = []
+const isIndex = key => /^(0|[1-9][0-9]*)$/.test(key) && Number(key) < 2 ** 32 - 1
 for (const file of readdirSync(programsDir).filter(f => f.endsWith('.dsl')).sort()) {
-  try { graphs.push({ file, graph: plain(mod.compileGraph(readFileSync(join(programsDir, file), 'utf8'))) }) } catch { uncompiled.push(file) }
+  let compiled
+  try { compiled = mod.compileGraph(readFileSync(join(programsDir, file), 'utf8')) } catch { uncompiled.push(file); continue }
+  if ([...(compiled.textures?.keys() ?? []), ...(compiled.allocations?.keys() ?? [])].some(isIndex)) indexKeyed.push(file)
+  graphs.push({ file, graph: plain(compiled) })
 }
 graphs.forEach(({ file, graph }, index) => {
   const [w0, h0] = sizes[index % sizes.length]
@@ -204,6 +211,14 @@ sequence('synthetic/pooling', [
   { op: 'recompile', graph: graph(pooledPasses, pooledTextures) },
   { op: 'recompile', graph: pooled }
 ])
+// A throw while a recompiled graph is in place keeps the previous plan.
+sequence('synthetic/pooling-throw', [
+  { op: 'create', graph: pooled, options: { texturePooling: true } },
+  { op: 'init', width: 40, height: 20 },
+  { op: 'recompile', graph: { ...pooled, passes: [...pooled.passes, null] } },
+  { op: 'updateParameterTextures', uniforms: {} },
+  { op: 'recompile', graph: regrouped }
+])
 sequence('synthetic/pooling-off', [
   { op: 'create', graph: pooled, options: { texturePooling: 'yes' } },
   { op: 'init', width: 40, height: 20 }
@@ -350,6 +365,7 @@ for (const op of ops) {
   }
 }
 for (const file of uncompiled) err(`  corpus/${file}: the reference does not compile it`)
-total += uncompiled.length
+for (const file of indexKeyed) err(`  corpus/${file}: a texture or allocation id is an array index`)
+total += uncompiled.length + indexKeyed.length
 out(`Pipeline: ${matched}/${total} ops match, ${calls} device calls (${sequences} sequences: ${graphs.length} corpus graphs, without and with texture pooling, ${sequences - 2 * graphs.length} synthetic)`)
 process.exitCode = matched === total ? 0 : 1
