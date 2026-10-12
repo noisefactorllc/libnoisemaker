@@ -75,7 +75,8 @@ graphs.forEach(({ file, graph }, index) => {
     { op: 'render', time: 0.25 },
     { op: 'render', time: 0.1 },
     { op: 'resize', width: w1, height: h1 },
-    { op: 'render', time: 0.5 }
+    { op: 'render', time: 0.5 },
+    { op: 'getFrameState' }
   ], true)
 })
 graphs.forEach(({ file, graph }, index) => {
@@ -394,8 +395,11 @@ const frame = graph([
 }, { programs })
 sequence('synthetic/frame', [
   { op: 'create', graph: frame },
+  { op: 'getFrameState' },
   { op: 'init', width: 40, height: 30 },
+  { op: 'getFrameState' },
   { op: 'render', time: 0 },
+  { op: 'getFrameState' },
   { op: 'render', time: 0.2 },
   { op: 'setTileRegion', offset: [10, 20], fullResolution: [400, 300], renderScale: 2.5 },
   { op: 'render', time: 0.4 },
@@ -404,6 +408,7 @@ sequence('synthetic/frame', [
   { op: 'clearTileRegion' },
   { op: 'render', time: 0.3 },
   { op: 'syncTime', time: 0.6 },
+  { op: 'getFrameState' },
   { op: 'render', time: 0.6 },
   { op: 'clearSurface', name: 'o1' },
   { op: 'clearSurface', name: 'mesh0' },

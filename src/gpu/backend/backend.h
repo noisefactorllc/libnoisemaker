@@ -84,8 +84,11 @@ struct ProgramInfo {
 };
 
 // The pipeline's frame state (getFrameState). A surface names the texture id
-// of its current read texture, a write surface that of its write texture.
+// of its current read texture, a write surface that of its write texture; the
+// graph appears as the one member the backend reads, renderSurface.
 struct FrameState {
+    double frameIndex = 0;
+    double time = 0;
     Value globalUniforms;
     std::vector<std::pair<JsString, JsString>> surfaces;
     std::vector<std::pair<JsString, Value>> writeSurfaces;

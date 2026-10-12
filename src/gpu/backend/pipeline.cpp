@@ -143,8 +143,8 @@ const Object* Pipeline::textures() const {
 Object* Pipeline::textures() { return const_cast<Object*>(std::as_const(*this).textures()); }
 
 Surface* Pipeline::surface(const JsString& name) {
-    for (auto& [key, value] : surfaces_) if (key == name) return &value;
-    return nullptr;
+    const auto it = surfaceIndex_.find(name);
+    return it == surfaceIndex_.end() ? nullptr : &surfaces_[it->second].second;
 }
 
 void Pipeline::init(double width, double height) {
@@ -473,6 +473,7 @@ void Pipeline::createSurfaces() {
         Surface created;
         created.read = u"global_" + name + u"_read";
         created.write = u"global_" + name + u"_write";
+        surfaceIndex_.emplace(name, surfaces_.size());
         surfaces_.emplace_back(name, std::move(created));
     }
 
@@ -494,6 +495,7 @@ void Pipeline::createSurfaces() {
             spec.set(u"usage", textureUsage());
             backend_.createTexture(*id, Value(std::move(spec)));
         }
+        surfaceIndex_.emplace(name, surfaces_.size());
         surfaces_.emplace_back(name, std::move(mesh));
     }
 }
@@ -876,21 +878,6 @@ double Pipeline::resolveDimension(const Value& spec, double screenSize, const Va
 
 namespace {
 
-// Map.get and Map.set on the frame's surface bindings.
-const std::optional<JsString>* binding(const Pipeline::FrameBindings& map, const JsString& name) {
-    for (const auto& [key, value] : map) if (key == name) return &value;
-    return nullptr;
-}
-void setBinding(Pipeline::FrameBindings& map, const JsString& name, std::optional<JsString> value) {
-    for (auto& [key, current] : map) {
-        if (key == name) {
-            current = std::move(value);
-            return;
-        }
-    }
-    map.emplace_back(name, std::move(value));
-}
-
 // g[key][0] = a; g[key][1] = b on an existing array or object.
 void setPair(Object& g, const JsString& key, double a, double b) {
     Value& target = g[key];
@@ -928,8 +915,53 @@ bool isStateSurface(const JsString& name) {
     return isScopedParticleTexture(name);
 }
 
-// Value equality for the viewport spec a pass caches its resolution under.
-bool sameJson(const Value& a, const Value& b) { return json::stringify(a) == json::stringify(b); }
+// Structural equality. The reference keys a pass's viewport cache by the
+// spec object's identity; a spec changes only when the graph does, which
+// brings new passes, so equal values identify the same spec here.
+bool sameValue(const Value& a, const Value& b) {
+    if (a.kind() != b.kind()) return false;
+    switch (a.kind()) {
+    case Value::Kind::Undefined:
+    case Value::Kind::Null: return true;
+    case Value::Kind::Bool: return a.as_bool() == b.as_bool();
+    case Value::Kind::Number: return jsv::same_value_zero(a, b);
+    case Value::Kind::String:
+    case Value::Kind::Function: return a.as_string() == b.as_string();
+    case Value::Kind::Float32Array: return a.as_float32_array() == b.as_float32_array();
+    case Value::Kind::Array: {
+        const Array& x = a.as_array();
+        const Array& y = b.as_array();
+        if (x.size() != y.size()) return false;
+        for (size_t i = 0; i < x.size(); ++i) if (!sameValue(x[i], y[i])) return false;
+        return true;
+    }
+    case Value::Kind::Object: {
+        const std::vector<JsString> keys = a.as_object().keys();
+        if (keys != b.as_object().keys()) return false;
+        for (const JsString& key : keys) if (!sameValue(*a.as_object().find(key), *b.as_object().find(key))) return false;
+        return true;
+    }
+    }
+    return false;
+}
+
+// Writes { x, y, w, h } into target, in place when it already holds a box.
+void setBox(Value& target, double x, double y, double w, double h) {
+    if (target.is_object() && target.as_object().keys() == std::vector<JsString>{u"x", u"y", u"w", u"h"}) {
+        Object& box = target.as_object();
+        box[u"x"] = Value(x);
+        box[u"y"] = Value(y);
+        box[u"w"] = Value(w);
+        box[u"h"] = Value(h);
+        return;
+    }
+    Object box;
+    box.set(u"x", Value(x));
+    box.set(u"y", Value(y));
+    box.set(u"w", Value(w));
+    box.set(u"h", Value(h));
+    target = Value(std::move(box));
+}
 
 }  // namespace
 
@@ -947,6 +979,7 @@ void Pipeline::clearTileRegion() {
 }
 
 void Pipeline::updateGlobalUniforms(double time, double deltaTime) {
+    ++globalUniformsVersion_;
     Object& g = globalUniforms_.as_object();
     const double aspectValue = width_ / height_;
     g.set(u"time", Value(time));
@@ -1097,7 +1130,7 @@ void Pipeline::resolvePassViewport(Value& pass, Value& cacheHolder) {
     };
 
     const Value* source = holder.find(u"_viewportSpecSource");
-    if (!source || !sameJson(*source, spec)) {
+    if (!source || !sameValue(*source, spec)) {
         holder.define_hidden(u"_viewportSpecSource", spec);
         const bool numericBox = jsv::get(spec, u"x").is_number() && jsv::get(spec, u"y").is_number() &&
                                 jsv::get(spec, u"w").is_number() && jsv::get(spec, u"h").is_number();
@@ -1115,18 +1148,21 @@ void Pipeline::resolvePassViewport(Value& pass, Value& cacheHolder) {
         return;
     }
 
+    // The reference writes each member into its one box as it resolves it.
+    // A throw here comes only from a null width or height spec, which throws
+    // on every resolution, before the box is ever assigned, so writing the
+    // four members after resolving them leaves the same state.
     const Value passUniforms = jsv::get(pass, u"uniforms");
     const Value uniforms = jsv::truthy(passUniforms) ? passUniforms : Value(Object{});
-    Object box;
-    box.set(u"x", Value(resolveDimension(orElse(jsv::get(spec, u"x"), Value(0.0)), width_, uniforms)));
-    box.set(u"y", Value(resolveDimension(orElse(jsv::get(spec, u"y"), Value(0.0)), height_, uniforms)));
+    const double x = resolveDimension(orElse(jsv::get(spec, u"x"), Value(0.0)), width_, uniforms);
+    const double y = resolveDimension(orElse(jsv::get(spec, u"y"), Value(0.0)), height_, uniforms);
     const Value widthSpec = orElse(jsv::get(spec, u"w"), jsv::get(spec, u"width"));
     const Value heightSpec = orElse(jsv::get(spec, u"h"), jsv::get(spec, u"height"));
-    box.set(u"w", Value(widthSpec.is_undefined() ? width_ : resolveDimension(widthSpec, width_, uniforms)));
-    box.set(u"h", Value(heightSpec.is_undefined() ? height_ : resolveDimension(heightSpec, height_, uniforms)));
-    const Value resolved(std::move(box));
-    holder.define_hidden(u"_viewportBox", resolved);
-    setResolved(resolved);
+    const double w = widthSpec.is_undefined() ? width_ : resolveDimension(widthSpec, width_, uniforms);
+    const double h = heightSpec.is_undefined() ? height_ : resolveDimension(heightSpec, height_, uniforms);
+    setBox(holder[u"_viewportBox"], x, y, w, h);
+    setBox(holder[u"viewportResolved"], x, y, w, h);
+    if (&pass != &cacheHolder) setBox(pass.as_object()[u"viewportResolved"], x, y, w, h);
 }
 
 // A repeated pass's frame-local ping-pong bindings, mirrored into the
@@ -1141,8 +1177,8 @@ void Pipeline::adoptIterationBindings(const Value& pass) {
         if (!name) continue;
         Surface* target = surface(*name);
         if (!target) continue;
-        if (const auto* read = binding(frameReadTextures_, *name); read && *read) target->read = *read;
-        if (const auto* write = binding(frameWriteTextures_, *name); write && *write) target->write = *write;
+        if (const auto* read = frameReadTextures_.get(*name); read && *read) target->read = *read;
+        if (const auto* write = frameWriteTextures_.get(*name); write && *write) target->write = *write;
     }
 }
 
@@ -1159,10 +1195,10 @@ void Pipeline::updateFrameSurfaceBindings(const Value& pass, const FrameState& s
         Value writeId;
         for (const auto& [key, id] : state.writeSurfaces) if (key == *name) writeId = id;
         if (!jsv::truthy(writeId)) continue;
-        const auto* current = binding(frameReadTextures_, *name);
+        const auto* current = frameReadTextures_.get(*name);
         const std::optional<JsString> currentReadId = current ? *current : std::nullopt;
-        setBinding(frameReadTextures_, *name, writeId.as_string());
-        if (currentReadId && !currentReadId->empty()) setBinding(frameWriteTextures_, *name, currentReadId);
+        frameReadTextures_.set(*name, writeId.as_string());
+        if (currentReadId && !currentReadId->empty()) frameWriteTextures_.set(*name, currentReadId);
     }
 }
 
@@ -1177,8 +1213,8 @@ void Pipeline::swapBuffers() {
         const bool persistent = spec && !nullish(*spec) && jsv::strict_equals(jsv::member(*spec, u"persistent"), Value(true));
         const bool feedback = feedbackSurfaces_ && contains(*feedbackSurfaces_, name);
         if (isStateSurface(name) || feedback || persistent) {
-            const auto* finalRead = binding(frameReadTextures_, name);
-            const auto* finalWrite = binding(frameWriteTextures_, name);
+            const auto* finalRead = frameReadTextures_.get(name);
+            const auto* finalWrite = frameWriteTextures_.get(name);
             if (finalRead && *finalRead && !(*finalRead)->empty() && finalWrite && *finalWrite && !(*finalWrite)->empty()) {
                 target.read = *finalRead;
                 target.write = *finalWrite;
@@ -1189,17 +1225,42 @@ void Pipeline::swapBuffers() {
     }
 }
 
-FrameState Pipeline::getFrameState() const {
-    FrameState state;
-    state.globalUniforms = globalUniforms_;
+const std::optional<JsString>* Pipeline::FrameBindings::get(const JsString& name) const {
+    const auto it = index_.find(name);
+    return it == index_.end() ? nullptr : &entries_[it->second].second;
+}
+
+void Pipeline::FrameBindings::set(const JsString& name, std::optional<JsString> id) {
+    const auto [it, inserted] = index_.emplace(name, entries_.size());
+    if (inserted) entries_.emplace_back(name, std::move(id));
+    else entries_[it->second].second = std::move(id);
+}
+
+void Pipeline::FrameBindings::clear() {
+    entries_.clear();
+    index_.clear();
+}
+
+// The global uniforms are copied when they have changed since the last call
+// (they change once per frame, before the passes).
+const FrameState& Pipeline::getFrameState() {
+    FrameState& state = frameState_;
+    if (frameStateVersion_ != globalUniformsVersion_) {
+        state.globalUniforms = globalUniforms_;
+        frameStateVersion_ = globalUniformsVersion_;
+    }
+    state.surfaces.clear();
+    state.writeSurfaces.clear();
     for (const auto& [name, target] : surfaces_) {
-        const auto* read = binding(frameReadTextures_, name);
+        const auto* read = frameReadTextures_.get(name);
         const std::optional<JsString> readId = read && *read ? *read : target.read;
         if (readId && backend_.texture(*readId)) state.surfaces.emplace_back(name, *readId);
-        const auto* write = binding(frameWriteTextures_, name);
+        const auto* write = frameWriteTextures_.get(name);
         const std::optional<JsString> writeId = write && *write ? *write : target.write;
         state.writeSurfaces.emplace_back(name, writeId ? Value(*writeId) : Value());
     }
+    state.frameIndex = frameIndex_;
+    state.time = lastTime_;
     const Value* renderSurface = graphMember(u"renderSurface");
     state.renderSurface = renderSurface ? *renderSurface : Value();
     state.screenWidth = Value(width_);
@@ -1229,8 +1290,8 @@ void Pipeline::render(double time) {
     frameReadTextures_.clear();
     frameWriteTextures_.clear();
     for (const auto& [name, target] : surfaces_) {
-        setBinding(frameReadTextures_, name, target.read);
-        setBinding(frameWriteTextures_, name, target.write);
+        frameReadTextures_.set(name, target.read);
+        frameWriteTextures_.set(name, target.write);
     }
 
     backend_.beginFrame();
@@ -1243,7 +1304,9 @@ void Pipeline::render(double time) {
             if (hasViewport) resolvePassViewport(originalPass, originalPass);
             Value* pass = resolvePassUniforms(originalPass, time);
             if (hasViewport) resolvePassViewport(*pass, originalPass);
-            // onUpdate uniforms bind only where the pass resolves no value.
+            // onUpdate uniforms bind only where the pass resolves no value. A
+            // pass rendered through the oscillator proxy gets none: the proxy
+            // carries no effectKey, in the reference as here.
             Value withRuntime;
             if (hasRuntimeUniforms_) {
                 const Value effectKey = jsv::get(*pass, u"effectKey");
@@ -1269,7 +1332,7 @@ void Pipeline::render(double time) {
 
             const double repeatCount = resolveRepeatCount(*pass);
             for (double iteration = 0; iteration < repeatCount; ++iteration) {
-                const FrameState state = getFrameState();
+                const FrameState& state = getFrameState();
                 backend_.executePass(*pass, state);
                 ++passCount;
                 updateFrameSurfaceBindings(*pass, state);

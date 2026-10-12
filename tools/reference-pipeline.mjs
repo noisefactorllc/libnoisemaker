@@ -12,7 +12,9 @@
 // updateParameterTextures {uniforms}; resolveDimension {spec, screenSize,
 // uniforms}, whose result is the number as text ("-0" for negative zero);
 // render {time}; syncTime {time}; setTileRegion {offset, fullResolution,
-// renderScale}; clearTileRegion; clearSurface {name}. A graph's textures and
+// renderScale}; clearTileRegion; clearSurface {name}; getFrameState, whose
+// result is the frame state with texture records as their device ids. Numbers
+// JSON cannot hold travel as {"$number": text}. A graph's textures and
 // allocations, objects in JSON, are Maps again here.
 //
 //   NM_REFERENCE_ROOT=<reference-checkout> node tools/reference-pipeline.mjs < ops.jsonl
@@ -39,7 +41,18 @@ const decodeGraph = graph => {
   }
   return out
 }
-const plain = value => JSON.parse(JSON.stringify(value, (_key, member) => member instanceof Map ? Object.fromEntries(member) : member) ?? 'null')
+// JSON has no -0, NaN or Infinity: they travel as {"$number": text}.
+const plain = value => JSON.parse(JSON.stringify(value, (_key, member) => {
+  if (member instanceof Map) return Object.fromEntries(member)
+  if (typeof member === 'number' && (!Number.isFinite(member) || Object.is(member, -0))) {
+    return { $number: Object.is(member, -0) ? '-0' : String(member) }
+  }
+  return member
+}) ?? 'null')
+// An object whose undefined members are kept, as {"$undefined": true}.
+const taggedUndefined = object => object && typeof object === 'object'
+  ? Object.fromEntries(Object.entries(object).map(([key, member]) => [key, member === undefined ? { $undefined: true } : member]))
+  : object
 
 let mock = createMockDevice()
 let backend = null
@@ -74,7 +87,9 @@ const state = () => {
     lastPassCount: pipeline.lastPassCount,
     frameReadTextures: pipeline.frameReadTextures ? [...pipeline.frameReadTextures] : null,
     frameWriteTextures: pipeline.frameWriteTextures ? [...pipeline.frameWriteTextures] : null,
-    passViewports: passes.map(pass => pass?.viewportResolved ?? null)
+    passViewports: passes.map(pass => pass?.viewportResolved ?? null),
+    proxyUniforms: taggedUndefined(pipeline._oscillatorPassProxy.uniforms),
+    resolvedUniforms: taggedUndefined(pipeline._resolvedUniforms)
   })
 }
 
@@ -108,6 +123,18 @@ for await (const line of lines) {
       case 'setTileRegion': pipeline.setTileRegion({ offset: op.offset, fullResolution: op.fullResolution, renderScale: op.renderScale }); break
       case 'clearTileRegion': pipeline.clearTileRegion(); break
       case 'clearSurface': pipeline.clearSurface(op.name); break
+      case 'getFrameState': {
+        const state = pipeline.getFrameState()
+        const surfaces = {}
+        for (const [name, tex] of Object.entries(state.surfaces)) if (tex !== undefined) surfaces[name] = mock.idOf(tex.handle)
+        const writeSurfaces = {}
+        for (const [name, id] of Object.entries(state.writeSurfaces)) writeSurfaces[name] = id ?? null
+        result = plain({
+          frameIndex: state.frameIndex, time: state.time, globalUniforms: state.globalUniforms, surfaces, writeSurfaces,
+          screenWidth: state.screenWidth, screenHeight: state.screenHeight, renderSurface: state.graph?.renderSurface ?? null
+        })
+        break
+      }
       case 'resolveDimension': {
         const value = pipeline.resolveDimension(op.spec, op.screenSize, op.uniforms)
         result = Object.is(value, -0) ? '-0' : String(value)

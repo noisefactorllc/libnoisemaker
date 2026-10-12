@@ -35,8 +35,10 @@
 #include "gpu/backend/backend.h"
 
 #include <array>
+#include <cstdint>
 
 #include <optional>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -99,7 +101,8 @@ public:
                        std::optional<double> renderScale);
     void clearTileRegion();
     void clearSurface(const JsString& name);
-    FrameState getFrameState() const;
+    // The frame state, refreshed in place as the reference reuses its object.
+    const FrameState& getFrameState();
 
     const Value& graph() const { return graph_; }
     double width() const { return width_; }
@@ -118,9 +121,23 @@ public:
     double lastPassCount() const { return lastPassCount_; }
     // this.frameReadTextures and this.frameWriteTextures: surface name to the
     // texture id passes read and write this frame.
-    using FrameBindings = std::vector<std::pair<JsString, std::optional<JsString>>>;
+    // A Map from surface name to texture id: insertion order, keyed lookup.
+    class FrameBindings {
+    public:
+        const std::optional<JsString>* get(const JsString& name) const;
+        void set(const JsString& name, std::optional<JsString> id);
+        void clear();
+        const std::vector<std::pair<JsString, std::optional<JsString>>>& entries() const { return entries_; }
+
+    private:
+        std::vector<std::pair<JsString, std::optional<JsString>>> entries_;
+        std::unordered_map<JsString, size_t> index_;
+    };
     const FrameBindings& frameReadTextures() const { return frameReadTextures_; }
     const FrameBindings& frameWriteTextures() const { return frameWriteTextures_; }
+    // The proxy's uniforms and the object the next resolution fills.
+    const Value& proxyUniforms() const { return *oscillatorPassProxy_.as_object().find(u"uniforms"); }
+    const Value& resolvedUniforms() const { return resolvedUniforms_; }
 
 private:
     const Value* graphMember(const char16_t* key) const;
@@ -160,6 +177,7 @@ private:
     std::vector<Value> diagnostics_;
     std::unordered_set<JsString> warnedDimensionFallbacks_;
     std::vector<std::pair<JsString, Surface>> surfaces_;
+    std::unordered_map<JsString, size_t> surfaceIndex_;
     std::vector<std::optional<JsString>> mipTargets_;
     double width_ = 0;
     double height_ = 0;
@@ -188,6 +206,10 @@ private:
     std::optional<double> renderScale_;
     // The uniforms onUpdate hooks returned this frame, by effect key.
     std::vector<std::pair<JsString, Value>> runtimeUniforms_;
+    // this._frameState, and the version of the global uniforms it holds.
+    FrameState frameState_;
+    uint64_t globalUniformsVersion_ = 1;
+    uint64_t frameStateVersion_ = 0;
     bool hasRuntimeUniforms_ = false;
     // this._oscillatorPassProxy and this._resolvedUniforms: the reused pass a
     // pass with automation renders as, and the object its uniforms resolve

@@ -49,6 +49,39 @@ nm::Value surfaceRecord(const be::Surface& surface) {
     return nm::Value(std::move(record));
 }
 
+// JSON has no -0, NaN or Infinity: they travel as {"$number": text}, as
+// tools/reference-pipeline.mjs writes them.
+void tagSpecialNumbers(nm::Value& value) {
+    if (value.is_number()) {
+        const double n = value.as_number();
+        if (std::isfinite(n) && !(n == 0 && std::signbit(n))) return;
+        nm::Object tag;
+        tag.set(u"$number", nm::Value(n == 0 ? nm::JsString(u"-0") : nm::js_number_to_string(n)));
+        value = nm::Value(std::move(tag));
+    } else if (value.is_array()) {
+        for (nm::Value& element : value.as_array()) tagSpecialNumbers(element);
+    } else if (value.is_object()) {
+        for (const nm::JsString& key : value.as_object().keys()) tagSpecialNumbers(value.as_object()[key]);
+    }
+}
+
+// An object whose undefined members are kept, as {"$undefined": true}.
+nm::Value taggedUndefined(const nm::Value& object) {
+    if (!object.is_object()) return object;
+    nm::Object out;
+    for (const nm::JsString& key : object.as_object().keys()) {
+        const nm::Value& member = *object.as_object().find(key);
+        if (member.is_undefined()) {
+            nm::Object tag;
+            tag.set(u"$undefined", nm::Value(true));
+            out.set(key, nm::Value(std::move(tag)));
+        } else {
+            out.set(key, member);
+        }
+    }
+    return nm::Value(std::move(out));
+}
+
 nm::Array strings(const std::vector<nm::JsString>& items) {
     nm::Array out;
     for (const nm::JsString& item : items) out.emplace_back(item);
@@ -106,7 +139,7 @@ nm::Value state(const be::Pipeline& pipeline, const be::WebGPUBackend& backend) 
     out.set(u"lastPassCount", nm::Value(pipeline.lastPassCount()));
     const auto bindings = [](const be::Pipeline::FrameBindings& map) {
         nm::Array out;
-        for (const auto& [name, id] : map) out.emplace_back(nm::Array{nm::Value(name), id ? nm::Value(*id) : nm::Value::null()});
+        for (const auto& [name, id] : map.entries()) out.emplace_back(nm::Array{nm::Value(name), id ? nm::Value(*id) : nm::Value::null()});
         return nm::Value(std::move(out));
     };
     out.set(u"frameReadTextures", bindings(pipeline.frameReadTextures()));
@@ -119,7 +152,11 @@ nm::Value state(const be::Pipeline& pipeline, const be::WebGPUBackend& backend) 
         }
     }
     out.set(u"passViewports", nm::Value(std::move(viewports)));
-    return nm::Value(std::move(out));
+    out.set(u"proxyUniforms", taggedUndefined(pipeline.proxyUniforms()));
+    out.set(u"resolvedUniforms", taggedUndefined(pipeline.resolvedUniforms()));
+    nm::Value encoded(std::move(out));
+    tagSpecialNumbers(encoded);
+    return encoded;
 }
 
 nm::Value error_record(const nm::JsString& name, const nm::JsString& message) {
@@ -183,6 +220,26 @@ int pipeline(int, char**) {
                                                                                                 : std::optional<double>(number(renderScale, u"renderScale")));
                 } else if (kind == u"clearTileRegion") {
                     pipeline->clearTileRegion();
+                } else if (kind == u"getFrameState") {
+                    const be::FrameState& state = pipeline->getFrameState();
+                    nm::Object result;
+                    result.set(u"frameIndex", nm::Value(state.frameIndex));
+                    result.set(u"time", nm::Value(state.time));
+                    result.set(u"globalUniforms", state.globalUniforms);
+                    nm::Object surfaces;
+                    for (const auto& [name, id] : state.surfaces) {
+                        surfaces.set(name, nm::Value(static_cast<double>(backend->texture(id)->handle)));
+                    }
+                    result.set(u"surfaces", nm::Value(std::move(surfaces)));
+                    nm::Object writeSurfaces;
+                    for (const auto& [name, id] : state.writeSurfaces) writeSurfaces.set(name, id.is_undefined() ? nm::Value::null() : id);
+                    result.set(u"writeSurfaces", nm::Value(std::move(writeSurfaces)));
+                    result.set(u"screenWidth", state.screenWidth);
+                    result.set(u"screenHeight", state.screenHeight);
+                    result.set(u"renderSurface", state.renderSurface.is_undefined() ? nm::Value::null() : state.renderSurface);
+                    nm::Value encoded(std::move(result));
+                    tagSpecialNumbers(encoded);
+                    record.set(u"result", encoded);
                 } else if (kind == u"clearSurface") {
                     pipeline->clearSurface(field(op, u"name").as_string());
                 } else if (kind == u"resolveDimension") {
