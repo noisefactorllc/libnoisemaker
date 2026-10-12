@@ -128,6 +128,19 @@ for (const key of live) {
 }
 for (const key of catalogEffects) if (!live.has(key)) errors.push(`effects/${key}: in the catalog, not declared by the reference`)
 if (live.size === 0) errors.push('definitions: the reference declares no effects')
+// The runtime's own shaders, extracted again from the reference checkout.
+const runtimeOut = mkdtempSync(join(tmpdir(), 'nm-catalog-runtime-'))
+process.on('exit', () => rmSync(runtimeOut, { recursive: true, force: true }))
+execFileSync(process.execPath, [join(root, 'tools/catalog/extract-runtime-shaders.mjs'),
+  '--src', join(reference, 'shaders/src'), '--out', runtimeOut], { stdio: ['ignore', 'ignore', 'inherit'] })
+const runtimeExpected = JSON.parse(readFileSync(join(runtimeOut, 'runtime/shaders.json'), 'utf8'))
+const runtimePath = join(out, 'runtime/shaders.json')
+const runtimeActual = existsSync(runtimePath) ? JSON.parse(readFileSync(runtimePath, 'utf8')) : null
+const runtimeNames = Object.keys(runtimeExpected)
+const runtimeMatched = runtimeNames.filter(name => runtimeActual?.[name] === runtimeExpected[name]).length
+if (runtimeMatched !== runtimeNames.length || Object.keys(runtimeActual ?? {}).length !== runtimeNames.length) {
+  errors.push(`runtime/shaders.json: ${runtimeMatched}/${runtimeNames.length} entries equal the reference's`)
+}
 for (const error of errors) console.error(error)
-console.log(`CATALOG: wgsl ${shaders.wgsl}, glsl ${shaders.glsl}, definitions ${definitions}/${live.size}, hooks ${hooksMatched}/${Object.keys(expectedHooks).length}`)
+console.log(`CATALOG: wgsl ${shaders.wgsl}, glsl ${shaders.glsl}, definitions ${definitions}/${live.size}, hooks ${hooksMatched}/${Object.keys(expectedHooks).length}, runtime ${runtimeMatched}/${runtimeNames.length}`)
 if (errors.length) process.exitCode = 1

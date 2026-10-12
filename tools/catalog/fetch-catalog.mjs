@@ -62,11 +62,14 @@ if (update) {
   if (extra.length) throw new Error(`lock has unexpected files: ${extra.join(', ')}`)
 }
 
-// Published effect bundles omit some shader source files. Cache the missing
-// bytes from the exact source commit so the catalog builder only reads cache.
+// Published effect bundles omit some shader source files, and the runtime's
+// own shaders live in its modules. Cache both from the exact source commit so
+// the catalog builder only reads cache. The stamp names the cache layout, so a
+// cache filled by an earlier layout is filled again.
 const sourceStamp = join(sourceCache, '.ready')
+const stamp = `${lock.commit} effects-shaders+runtime-js`
 let sourceReady = false
-try { sourceReady = (await readFile(sourceStamp, 'utf8')).trim() === lock.commit } catch {}
+try { sourceReady = (await readFile(sourceStamp, 'utf8')).trim() === stamp } catch {}
 if (!sourceReady) {
   if (offline) throw new Error(`pinned shader source is absent from cache: ${sourceCache}`)
   const reference = resolve(process.env.NM_REFERENCE_ROOT || join(root, '.cache/reference'))
@@ -104,6 +107,20 @@ if (!sourceReady) {
     }
   }
   await copyShaders()
-  await writeFile(sourceStamp, lock.commit + '\n')
+  // The runtime's modules (shaders/src), for tools/catalog/extract-runtime-shaders.mjs.
+  const runtimeRoot = join(reference, 'shaders/src')
+  async function copyRuntime (relative = '') {
+    for (const entry of await readdir(join(runtimeRoot, relative), { withFileTypes: true })) {
+      const path = join(relative, entry.name)
+      if (entry.isDirectory()) await copyRuntime(path)
+      else if (entry.isFile() && entry.name.endsWith('.js')) {
+        const destination = join(sourceCache, 'shaders/src', path)
+        await mkdir(dirname(destination), { recursive: true })
+        await writeFile(destination, await readFile(join(runtimeRoot, path)))
+      }
+    }
+  }
+  await copyRuntime()
+  await writeFile(sourceStamp, stamp + '\n')
 }
 console.log(`CATALOG FETCH: ${paths.length} files, ${lock.version}, ${lock.commit}`)

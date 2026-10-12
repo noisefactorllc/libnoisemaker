@@ -34,11 +34,14 @@ add_custom_command(
           --cache "${_nm_catalog_cache}" ${_nm_catalog_offline}
   COMMAND "${NM_NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/catalog/build-catalog.mjs"
           --cache "${_nm_catalog_cache}" --out "${CMAKE_CURRENT_BINARY_DIR}/catalog"
+  COMMAND "${NM_NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/catalog/extract-runtime-shaders.mjs"
+          --cache "${_nm_catalog_cache}" --out "${CMAKE_CURRENT_BINARY_DIR}/catalog"
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/catalog/embed.py"
           "${CMAKE_CURRENT_BINARY_DIR}/catalog" "${_nm_catalog_cpp}" "${_nm_catalog_header}"
   DEPENDS "${PROJECT_SOURCE_DIR}/parity/reference.json"
           "${PROJECT_SOURCE_DIR}/tools/catalog/fetch-catalog.mjs"
           "${PROJECT_SOURCE_DIR}/tools/catalog/build-catalog.mjs"
+          "${PROJECT_SOURCE_DIR}/tools/catalog/extract-runtime-shaders.mjs"
           "${PROJECT_SOURCE_DIR}/tools/catalog/embed.py"
   VERBATIM)
 add_custom_target(noisemaker_catalog_generated DEPENDS "${_nm_catalog_cpp}" "${_nm_catalog_header}")
