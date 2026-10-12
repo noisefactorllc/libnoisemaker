@@ -6,11 +6,18 @@ pin="$(node -e 'process.stdout.write(require(process.argv[1]).commit)' "$repo_ro
 if [[ -n "${NM_REFERENCE_ROOT:-}" ]]; then
   checkout="$NM_REFERENCE_ROOT"
 else
+  # This repository's own cache follows the lock in parity/reference.json.
   checkout="$repo_root/.cache/reference"
   if [[ ! -d "$checkout/.git" ]]; then
     git clone --filter=blob:none --no-checkout \
       https://github.com/noisefactorllc/noisemaker "$checkout" >&2
-    git -C "$checkout" checkout --detach "$pin" >&2
+  fi
+  # A --no-checkout clone can sit at the pin with an empty tree, so the
+  # manifest's presence counts too.
+  if [[ "$(git -C "$checkout" rev-parse HEAD 2>/dev/null || true)" != "$pin" ||
+        ! -f "$checkout/shaders/effects/manifest.json" ]]; then
+    git -C "$checkout" fetch --quiet --filter=blob:none origin "$pin" >&2
+    git -C "$checkout" checkout --quiet --force --detach "$pin" >&2
   fi
 fi
 actual="$(git -C "$checkout" rev-parse HEAD)"

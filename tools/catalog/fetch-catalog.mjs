@@ -70,12 +70,25 @@ try { sourceReady = (await readFile(sourceStamp, 'utf8')).trim() === lock.commit
 if (!sourceReady) {
   if (offline) throw new Error(`pinned shader source is absent from cache: ${sourceCache}`)
   const reference = resolve(process.env.NM_REFERENCE_ROOT || join(root, '.cache/reference'))
-  if (!existsSync(join(reference, '.git'))) {
+  const cloned = !existsSync(join(reference, '.git'))
+  if (cloned) {
     await mkdir(dirname(reference), { recursive: true })
     execFileSync('git', ['clone', '--filter=blob:none', '--no-checkout', lock.repository, reference], { stdio: 'inherit' })
-    execFileSync('git', ['-C', reference, 'checkout', '--detach', lock.commit], { stdio: 'inherit' })
   }
-  const actual = execFileSync('git', ['-C', reference, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+  const head = () => {
+    try { return execFileSync('git', ['-C', reference, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() } catch { return '' }
+  }
+  // A clone made here is checked out at the pin. This repository's own cache
+  // also follows the lock; an existing checkout named by NM_REFERENCE_ROOT
+  // belongs to the caller and must already be at the pin. A --no-checkout
+  // clone can sit at the pin with an empty tree, so the manifest's presence
+  // counts too.
+  const populated = existsSync(join(reference, 'shaders/effects/manifest.json'))
+  if (cloned || ((head() !== lock.commit || !populated) && !process.env.NM_REFERENCE_ROOT)) {
+    execFileSync('git', ['-C', reference, 'fetch', '--quiet', '--filter=blob:none', 'origin', lock.commit], { stdio: 'inherit' })
+    execFileSync('git', ['-C', reference, 'checkout', '--quiet', '--force', '--detach', lock.commit], { stdio: 'inherit' })
+  }
+  const actual = head()
   if (actual !== lock.commit) throw new Error(`reference checkout is ${actual}; expected ${lock.commit}`)
   const sourceRoot = join(reference, 'shaders/effects')
   await rm(sourceCache, { recursive: true, force: true })
