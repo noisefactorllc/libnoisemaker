@@ -132,7 +132,22 @@ if (live.size === 0) errors.push('definitions: the reference declares no effects
 const runtimeOut = mkdtempSync(join(tmpdir(), 'nm-catalog-runtime-'))
 process.on('exit', () => rmSync(runtimeOut, { recursive: true, force: true }))
 execFileSync(process.execPath, [join(root, 'tools/catalog/extract-runtime-shaders.mjs'),
-  '--src', join(reference, 'shaders/src'), '--out', runtimeOut], { stdio: ['ignore', 'ignore', 'inherit'] })
+  '--src', join(reference, 'shaders/src'), '--out', runtimeOut, '--sites', join(runtimeOut, 'sites.json')],
+{ stdio: ['ignore', 'ignore', 'inherit'] })
+// Every createShaderModule call in the runtime's source text either compiles a
+// program's own source (compileProgram's `code: source` and `code:
+// vertexSource`) or is one the extractor captured.
+const capturedSites = new Set(Object.values(JSON.parse(readFileSync(join(runtimeOut, 'sites.json'), 'utf8'))))
+const sourceSites = []
+for (const path of files(join(reference, 'shaders/src')).filter(path => path.endsWith('.js'))) {
+  readFileSync(path, 'utf8').split('\n').forEach((line, index) => {
+    if (!line.includes('createShaderModule(')) return
+    if (/createShaderModule\(\{\s*code:\s*(source|vertexSource)\s*\}\)/.test(line)) return
+    sourceSites.push(`${relative(join(reference, 'shaders/src'), path).replaceAll('\\', '/')}:${index + 1}`)
+  })
+}
+for (const site of sourceSites) if (!capturedSites.has(site)) errors.push(`runtime: shader module at ${site} is not extracted`)
+for (const site of capturedSites) if (!sourceSites.includes(site)) errors.push(`runtime: extracted site ${site} is not a createShaderModule call`)
 const runtimeExpected = JSON.parse(readFileSync(join(runtimeOut, 'runtime/shaders.json'), 'utf8'))
 const runtimePath = join(out, 'runtime/shaders.json')
 const runtimeActual = existsSync(runtimePath) ? JSON.parse(readFileSync(runtimePath, 'utf8')) : null
@@ -142,5 +157,5 @@ if (runtimeMatched !== runtimeNames.length || Object.keys(runtimeActual ?? {}).l
   errors.push(`runtime/shaders.json: ${runtimeMatched}/${runtimeNames.length} entries equal the reference's`)
 }
 for (const error of errors) console.error(error)
-console.log(`CATALOG: wgsl ${shaders.wgsl}, glsl ${shaders.glsl}, definitions ${definitions}/${live.size}, hooks ${hooksMatched}/${Object.keys(expectedHooks).length}, runtime ${runtimeMatched}/${runtimeNames.length}`)
+console.log(`CATALOG: wgsl ${shaders.wgsl}, glsl ${shaders.glsl}, definitions ${definitions}/${live.size}, hooks ${hooksMatched}/${Object.keys(expectedHooks).length}, runtime ${runtimeMatched}/${runtimeNames.length} (${capturedSites.size}/${sourceSites.length} shader sites)`)
 if (errors.length) process.exitCode = 1

@@ -64,10 +64,12 @@ if (update) {
 
 // Published effect bundles omit some shader source files, and the runtime's
 // own shaders live in its modules. Cache both from the exact source commit so
-// the catalog builder only reads cache. The stamp names the cache layout, so a
-// cache filled by an earlier layout is filled again.
+// the catalog builder only reads cache. The bytes are the commit's blobs, not
+// the working tree's, which local edits or checkout line-ending conversion can
+// change. The stamp names the cache layout, so a cache filled by an earlier
+// layout is filled again.
 const sourceStamp = join(sourceCache, '.ready')
-const stamp = `${lock.commit} effects-shaders+runtime-js`
+const stamp = `${lock.commit} committed effects-shaders+runtime-js`
 let sourceReady = false
 try { sourceReady = (await readFile(sourceStamp, 'utf8')).trim() === stamp } catch {}
 if (!sourceReady) {
@@ -93,34 +95,27 @@ if (!sourceReady) {
   }
   const actual = head()
   if (actual !== lock.commit) throw new Error(`reference checkout is ${actual}; expected ${lock.commit}`)
-  const sourceRoot = join(reference, 'shaders/effects')
+  // Paths and blobs at the commit: `git ls-tree` lists them, and one
+  // `git cat-file --batch` reads them ("<sha> blob <size>\n<bytes>\n" each).
+  const listed = execFileSync('git', ['-C', reference, 'ls-tree', '-r', '-z', '--name-only', lock.commit, '--',
+    'shaders/effects', 'shaders/src'], { encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(Boolean)
+  const wanted = listed.filter(path => path.startsWith('shaders/effects/') ? /\.(wgsl|glsl)$/.test(path) : path.endsWith('.js'))
+  const batch = execFileSync('git', ['-C', reference, 'cat-file', '--batch'], {
+    input: wanted.map(path => `${lock.commit}:${path}`).join('\n') + '\n', maxBuffer: 1 << 30
+  })
   await rm(sourceCache, { recursive: true, force: true })
-  async function copyShaders (relative = '') {
-    for (const entry of await readdir(join(sourceRoot, relative), { withFileTypes: true })) {
-      const path = join(relative, entry.name)
-      if (entry.isDirectory()) await copyShaders(path)
-      else if (entry.isFile() && /\.(wgsl|glsl)$/.test(entry.name)) {
-        const destination = join(sourceCache, 'shaders/effects', path)
-        await mkdir(dirname(destination), { recursive: true })
-        await writeFile(destination, await readFile(join(sourceRoot, path)))
-      }
-    }
+  let offset = 0
+  for (const path of wanted) {
+    const headerEnd = batch.indexOf(0x0a, offset)
+    const header = batch.subarray(offset, headerEnd).toString('utf8').split(' ')
+    if (header[1] !== 'blob') throw new Error(`${path}: git cat-file returned ${header.join(' ')}`)
+    const size = Number(header[2])
+    const destination = join(sourceCache, path)
+    await mkdir(dirname(destination), { recursive: true })
+    await writeFile(destination, batch.subarray(headerEnd + 1, headerEnd + 1 + size))
+    offset = headerEnd + 1 + size + 1
   }
-  await copyShaders()
-  // The runtime's modules (shaders/src), for tools/catalog/extract-runtime-shaders.mjs.
-  const runtimeRoot = join(reference, 'shaders/src')
-  async function copyRuntime (relative = '') {
-    for (const entry of await readdir(join(runtimeRoot, relative), { withFileTypes: true })) {
-      const path = join(relative, entry.name)
-      if (entry.isDirectory()) await copyRuntime(path)
-      else if (entry.isFile() && entry.name.endsWith('.js')) {
-        const destination = join(sourceCache, 'shaders/src', path)
-        await mkdir(dirname(destination), { recursive: true })
-        await writeFile(destination, await readFile(join(runtimeRoot, path)))
-      }
-    }
-  }
-  await copyRuntime()
+  if (offset !== batch.length) throw new Error('git cat-file returned more output than requested')
   await writeFile(sourceStamp, stamp + '\n')
 }
 console.log(`CATALOG FETCH: ${paths.length} files, ${lock.version}, ${lock.commit}`)
