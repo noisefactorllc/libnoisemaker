@@ -560,6 +560,7 @@ const externalUniforms = {
   aDevice: audio(1, { id: 'dev-1', name: 'Mic', channel: 1 }), aName: audio(2, { name: 'Mic', channel: 2 }), aEmptyName: audio(0, { name: '', channel: 1 }),
   aIdNoName: audio(0, { id: 'dev-1', channel: 1 }), aAst: { ...audio(0), _ast: { type: 'Audio', channel: 3 } }, aChannelBad: audio(0, { channel: 40 }),
   aInvalid: audio(1, { _invalid: true, min: 0.2 }), aRaw: audio(4, { name: 'Mic', channel: 1 }),
+  aRawId: audio(4, { id: 'dev-1', name: 'Mic', channel: 1 }),
   fmMidi: osc(0, { speed: midi(2) }), fmMidiDynamic: osc(1, { speed: midi(2, { min: osc(0) }) }), fmAudio: osc(2, { speed: audio(0) })
 }
 const externalProgram = structProgram([...Object.keys(externalUniforms).map(name => [name, 'f32'])])
@@ -612,10 +613,11 @@ sequence('synthetic/external', [
   { op: 'audioInventory', devices: [{ id: 'dev-1', name: 'Mic' }, { id: 'dev-2', name: 'Mic' }] },
   { op: 'audioRawUnavailable' },
   { op: 'render', time: 0.45, wallTime: midiTime + 2500 },
+  { op: 'audioDeviceRawUnavailable', id: 'dev-1' },
+  { op: 'render', time: 0.47, wallTime: midiTime + 2700 },
   { op: 'audioDisconnectDevice', id: 'dev-1' },
   { op: 'render', time: 0.5, wallTime: midiTime + 3000 },
   { op: 'getAudioInputRequirements' },
-  { op: 'audioDeviceRawUnavailable', id: 'dev-1' },
   { op: 'audioDisconnectDefault' },
   { op: 'render', time: 0.52, wallTime: midiTime + 3200 },
   { op: 'midiReset' },

@@ -1415,6 +1415,7 @@ void Pipeline::setUniform(const JsString& name, Value value) {
     // The global no longer aliases the audio state's array.
     if (name == u"audioWaveform") waveformAliased_ = false;
     if (name == u"audioSpectrum") spectrumAliased_ = false;
+    if (!waveformAliased_ && !spectrumAliased_) audioAlias_.reset();
 
     // The classic palette index expands into the uniforms its shaders read;
     // the index itself is kept too.
