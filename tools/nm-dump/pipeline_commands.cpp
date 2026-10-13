@@ -84,7 +84,8 @@ void tagSpecialNumbers(nm::Value& value) {
     }
 }
 
-// {"$number": text} stands for a number JSON cannot hold.
+// {"$number": text} stands for a number JSON cannot hold, and
+// {"$float32": [numbers]} for a Float32Array.
 nm::Value decodeNumbers(const nm::Value& value) {
     if (value.is_array()) {
         nm::Array out;
@@ -93,6 +94,13 @@ nm::Value decodeNumbers(const nm::Value& value) {
     }
     if (!value.is_object()) return value;
     const std::vector<nm::JsString> keys = value.as_object().keys();
+    if (keys.size() == 1 && keys[0] == u"$float32") {
+        std::vector<float> floats;
+        for (const nm::Value& element : value.as_object().find(u"$float32")->as_array()) {
+            floats.push_back(static_cast<float>(decodeNumbers(element).as_number()));
+        }
+        return nm::Value::float32_array(std::move(floats));
+    }
     if (keys.size() == 1 && keys[0] == u"$number") {
         const nm::JsString text = value.as_object().find(u"$number")->as_string();
         return nm::Value(text == u"-0" ? -0.0 : nm::js::stringToNumber(text));
@@ -249,8 +257,8 @@ int pipeline(int, char**) {
     std::unique_ptr<be::RecordingDevice> device;
     std::unique_ptr<be::WebGPUBackend> backend;
     std::unique_ptr<be::Pipeline> pipeline;
-    std::unique_ptr<nm::MidiState> midi;
-    std::unique_ptr<nm::AudioState> audio;
+    std::shared_ptr<nm::MidiState> midi;
+    std::shared_ptr<nm::AudioState> audio;
     std::string line;
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;
@@ -295,8 +303,8 @@ int pipeline(int, char**) {
                     }
                     pipeline->render(time);
                 } else if (kind == u"attachMidi") {
-                    midi = std::make_unique<nm::MidiState>(!nm::jsv::strict_equals(field(op, u"registry"), nm::Value(false)));
-                    pipeline->setMidiState(midi.get());
+                    midi = std::make_shared<nm::MidiState>(!nm::jsv::strict_equals(field(op, u"registry"), nm::Value(false)));
+                    pipeline->setMidiState(midi);
                 } else if (kind == u"detachMidi") {
                     pipeline->setMidiState(nullptr);
                 } else if (kind == u"midiMessage") {
@@ -320,8 +328,8 @@ int pipeline(int, char**) {
                     for (const nm::Value& port : list.as_array()) ports.push_back(midiPort(port));
                     midi->setPortInventory(ports);
                 } else if (kind == u"attachAudio") {
-                    audio = std::make_unique<nm::AudioState>(!nm::jsv::strict_equals(field(op, u"registry"), nm::Value(false)));
-                    pipeline->setAudioState(audio.get());
+                    audio = std::make_shared<nm::AudioState>(!nm::jsv::strict_equals(field(op, u"registry"), nm::Value(false)));
+                    pipeline->setAudioState(audio);
                 } else if (kind == u"detachAudio") {
                     pipeline->setAudioState(nullptr);
                 } else if (kind == u"audioBands") {
@@ -361,6 +369,12 @@ int pipeline(int, char**) {
                     const nm::Value list = field(op, u"devices");
                     for (const nm::Value& entry : list.as_array()) devices.push_back(audioDevice(entry));
                     audio->setDeviceInventory(devices);
+                } else if (kind == u"midiReset") {
+                    midi->reset();
+                } else if (kind == u"audioDisconnectDefault") {
+                    audio->disconnectDefaultInput();
+                } else if (kind == u"audioDeviceRawUnavailable") {
+                    audio->setDeviceRawUnavailable(field(op, u"id").as_string());
                 } else if (kind == u"audioDisconnectDevice") {
                     audio->disconnectDevice(field(op, u"id").as_string());
                 } else if (kind == u"getAudioInputRequirements") {

@@ -45,12 +45,14 @@ const at = (time, fn) => {
   try { return fn() } finally { Date.now = realNow }
 }
 
-// {"$number": text} stands for a number JSON cannot hold.
+// {"$number": text} stands for a number JSON cannot hold, and
+// {"$float32": [numbers]} for a Float32Array.
 const decodeValue = value => {
   if (Array.isArray(value)) return value.map(decodeValue)
   if (value && typeof value === 'object') {
     const keys = Object.keys(value)
     if (keys.length === 1 && keys[0] === '$number') return value.$number === '-0' ? -0 : Number(value.$number)
+    if (keys.length === 1 && keys[0] === '$float32') return new Float32Array(value.$float32)
     return Object.fromEntries(keys.map(key => [key, decodeValue(value[key])]))
   }
   return value
@@ -179,6 +181,9 @@ for await (const line of lines) {
       case 'audioDefaultBands': audioState.getDefaultChannelState(op.channel)?.setBands(op.low, op.mid, op.high); break
       case 'audioInventory': audioState.setDeviceInventory(op.devices); break
       case 'audioDisconnectDevice': audioState.disconnectDevice(op.id); break
+      case 'midiReset': midiState.reset(); break
+      case 'audioDisconnectDefault': audioState.disconnectDefaultInput(); break
+      case 'audioDeviceRawUnavailable': audioState.setDeviceRawUnavailable(op.id); break
       case 'getAudioInputRequirements': result = plain(pipeline.getAudioInputRequirements()); break
       case 'syncTime': pipeline.syncTime(op.time); break
       case 'setTileRegion': pipeline.setTileRegion({ offset: op.offset, fullResolution: op.fullResolution, renderScale: op.renderScale }); break

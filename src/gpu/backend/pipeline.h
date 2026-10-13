@@ -44,6 +44,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 #include <optional>
 #include <unordered_map>
@@ -127,12 +128,14 @@ public:
     static bool dimensionReferencesParam(const Value& spec, const JsString& paramName);
 
     // setMidiState and setAudioState: the host's states automation and the
-    // frame read, or none. The caller keeps them alive. Each frame copies the
-    // audio waveform and spectrum into the global uniforms; the reference's
-    // globals alias the state's arrays, so between frames they show its
-    // newest values, which no pass reads before the next frame copies them.
-    void setMidiState(const MidiState* midi) { external_.midi = midi; }
-    void setAudioState(const AudioState* audio) { external_.audio = audio; }
+    // frame read, or none. The reference's global audioWaveform and
+    // audioSpectrum alias the arrays of the audio state a frame last read,
+    // even after it is detached, until setUniform replaces them; the pipeline
+    // keeps that state alive and copies its arrays at each frame's start,
+    // which is when passes read them (between frames the reference's globals
+    // show newer values).
+    void setMidiState(std::shared_ptr<const MidiState> midi);
+    void setAudioState(std::shared_ptr<const AudioState> audio);
     // Date.now() for MIDI falloff: epoch milliseconds, read once per
     // automation value per pass, as the reference reads it.
     void setWallClock(std::function<double()> clock) { wallClock_ = std::move(clock); }
@@ -256,6 +259,13 @@ private:
     // keep the keys earlier passes resolved, as undefined.
     Value oscillatorPassProxy_;
     ExternalState external_;
+    std::shared_ptr<const MidiState> midiState_;
+    std::shared_ptr<const AudioState> audioState_;
+    // The audio state the global waveform and spectrum alias, and whether
+    // each still does (setUniform replaces it).
+    std::shared_ptr<const AudioState> audioAlias_;
+    bool waveformAliased_ = false;
+    bool spectrumAliased_ = false;
     std::function<double()> wallClock_;
     Value resolvedUniforms_ = Value(Object{});
 };

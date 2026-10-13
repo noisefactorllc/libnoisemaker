@@ -615,9 +615,24 @@ sequence('synthetic/external', [
   { op: 'audioDisconnectDevice', id: 'dev-1' },
   { op: 'render', time: 0.5, wallTime: midiTime + 3000 },
   { op: 'getAudioInputRequirements' },
+  { op: 'audioDeviceRawUnavailable', id: 'dev-1' },
+  { op: 'audioDisconnectDefault' },
+  { op: 'render', time: 0.52, wallTime: midiTime + 3200 },
+  { op: 'midiReset' },
+  { op: 'render', time: 0.53, wallTime: midiTime + 3300 },
   { op: 'detachMidi' },
   { op: 'detachAudio' },
-  { op: 'render', time: 0.55, wallTime: midiTime + 3500 }
+  { op: 'render', time: 0.55, wallTime: midiTime + 3500 },
+  // A detached audio state's arrays still reach the globals, until
+  // setUniform replaces one; a new state takes over at its first frame.
+  { op: 'audioSpectrum', bytes: Array.from({ length: 128 }, (_, i) => (i * 5 + 1) % 256) },
+  { op: 'audioWaveform', bytes: Array.from({ length: 128 }, (_, i) => (i * 3 + 9) % 256) },
+  { op: 'render', time: 0.6, wallTime: midiTime + 3600 },
+  { op: 'setUniform', name: 'audioSpectrum', value: [0.5, 0.25] },
+  { op: 'audioSpectrum', bytes: Array.from({ length: 128 }, (_, i) => (i * 7) % 256) },
+  { op: 'render', time: 0.65, wallTime: midiTime + 3700 },
+  { op: 'attachAudio' },
+  { op: 'render', time: 0.7, wallTime: midiTime + 3800 }
 ], true)
 sequence('synthetic/external-unregistered', [
   { op: 'create', graph: external },
@@ -635,11 +650,14 @@ const requirements = graph([
   { uniforms: { d: audio(4), e: osc(0, { min: audio(2, { name: 'Line', channel: 3 }), max: audio(9) }), f: [audio(1)], g: { nested: audio(3, { channel: 5 }) } } },
   { uniforms: { h: audio(0, { name: '', channel: 1 }), i: { ...audio(2), _invalid: true }, j: audio(2.5) } },
   { uniforms: { k: audio(0, { name: 'Line', channel: 4 }), l: audio(4, { name: 'Line', channel: 4 }) } },
+  { uniforms: { m: audio(0, { min: audio(1, { name: 'Line', channel: 6 }), max: audio(4) }), t: 0 } },
   { effectKey: 'synth.noise', uniforms: null }
 ])
 const audioEffect = graph([{ effectKey: 'synth.scope', uniforms: { a: 1 } }])
 sequence('synthetic/audio-requirements', [
   { op: 'create', graph: requirements },
+  { op: 'getAudioInputRequirements' },
+  { op: 'setUniform', name: 't', value: { $float32: [1, 2, 3] } },
   { op: 'getAudioInputRequirements' },
   { op: 'create', graph: graph([{ uniforms: { a: osc(0) } }]) },
   { op: 'getAudioInputRequirements' },

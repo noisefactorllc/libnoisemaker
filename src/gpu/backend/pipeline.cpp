@@ -1026,9 +1026,16 @@ void Pipeline::updateGlobalUniforms(double time, double deltaTime) {
     g.set(u"renderScale", Value(renderScale_ && *renderScale_ != 0 && !std::isnan(*renderScale_) ? *renderScale_ : 1.0));
 
     // Audio: the 128 waveform and spectrum values.
-    if (external_.audio) {
-        g.set(u"audioWaveform", Value::float32_array(std::vector<float>(external_.audio->waveform.begin(), external_.audio->waveform.end())));
-        g.set(u"audioSpectrum", Value::float32_array(std::vector<float>(external_.audio->spectrum.begin(), external_.audio->spectrum.end())));
+    if (audioState_) {
+        audioAlias_ = audioState_;
+        waveformAliased_ = true;
+        spectrumAliased_ = true;
+    }
+    if (audioAlias_ && waveformAliased_) {
+        g.set(u"audioWaveform", Value::float32_array(std::vector<float>(audioAlias_->waveform.begin(), audioAlias_->waveform.end())));
+    }
+    if (audioAlias_ && spectrumAliased_) {
+        g.set(u"audioSpectrum", Value::float32_array(std::vector<float>(audioAlias_->spectrum.begin(), audioAlias_->spectrum.end())));
     }
     // MIDI: the note grid (128x16 RGBA float) and the clock; without a state
     // the grid, when a pass reads it, is empty.
@@ -1405,6 +1412,9 @@ void Pipeline::setUniform(const JsString& name, Value value) {
     const Value oldValue = jsv::member(globalUniforms_, name);
     jsv::set_plain(globalUniforms_.as_object(), name, value);
     ++globalUniformsVersion_;
+    // The global no longer aliases the audio state's array.
+    if (name == u"audioWaveform") waveformAliased_ = false;
+    if (name == u"audioSpectrum") spectrumAliased_ = false;
 
     // The classic palette index expands into the uniforms its shaders read;
     // the index itself is kept too.
@@ -1511,6 +1521,16 @@ void Pipeline::setPassUniform(size_t pass, const JsString& name, Value value) {
     const Value uniforms = jsv::get((*list)[pass], u"uniforms");
     if (!uniforms.is_object()) throw JsError(u"Error", u"pass uniforms other than an object are outside the port");
     jsv::set_plain((*list)[pass].as_object()[u"uniforms"].as_object(), name, std::move(value));
+}
+
+void Pipeline::setMidiState(std::shared_ptr<const MidiState> midi) {
+    midiState_ = std::move(midi);
+    external_.midi = midiState_.get();
+}
+
+void Pipeline::setAudioState(std::shared_ptr<const AudioState> audio) {
+    audioState_ = std::move(audio);
+    external_.audio = audioState_.get();
 }
 
 // The audio captures the graph needs.
