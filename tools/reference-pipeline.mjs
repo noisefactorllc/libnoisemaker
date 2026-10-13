@@ -12,7 +12,10 @@
 // updateParameterTextures {uniforms}; resolveDimension {spec, screenSize,
 // uniforms}, whose result is the number as text ("-0" for negative zero);
 // render {time}; syncTime {time}; setTileRegion {offset, fullResolution,
-// renderScale}; clearTileRegion; clearSurface {name}; getFrameState, whose
+// renderScale}; clearTileRegion; clearSurface {name}; setUniform {name,
+// value}; setPassUniform {pass, name, value}, the write the UI parameter
+// paths make before broadcastChainScopedParam {pass (an index),
+// uniformName, scopedName}; getFrameState, whose
 // result is the frame state with texture records as their device ids. Numbers
 // JSON cannot hold travel as {"$number": text}. A graph's textures and
 // allocations, objects in JSON, are Maps again here.
@@ -33,6 +36,16 @@ await bootstrapReference()
 const { WebGPUBackend } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/backends/webgpu.js')).href)
 const { Pipeline } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/pipeline.js')).href)
 
+// {"$number": text} stands for a number JSON cannot hold.
+const decodeValue = value => {
+  if (Array.isArray(value)) return value.map(decodeValue)
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value)
+    if (keys.length === 1 && keys[0] === '$number') return value.$number === '-0' ? -0 : Number(value.$number)
+    return Object.fromEntries(keys.map(key => [key, decodeValue(value[key])]))
+  }
+  return value
+}
 const decodeGraph = graph => {
   if (!graph || typeof graph !== 'object' || Array.isArray(graph)) return graph
   const out = { ...graph }
@@ -123,6 +136,9 @@ for await (const line of lines) {
       case 'setTileRegion': pipeline.setTileRegion({ offset: op.offset, fullResolution: op.fullResolution, renderScale: op.renderScale }); break
       case 'clearTileRegion': pipeline.clearTileRegion(); break
       case 'clearSurface': pipeline.clearSurface(op.name); break
+      case 'setUniform': pipeline.setUniform(op.name, decodeValue(op.value)); break
+      case 'setPassUniform': pipeline.graph.passes[op.pass].uniforms[op.name] = decodeValue(op.value); break
+      case 'broadcastChainScopedParam': pipeline.broadcastChainScopedParam(pipeline.graph.passes[op.pass], op.uniformName, op.scopedName); break
       case 'getFrameState': {
         const state = pipeline.getFrameState()
         const surfaces = {}

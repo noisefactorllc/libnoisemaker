@@ -3,6 +3,7 @@
 #include "gpu/backend/automation.h"
 
 #include "core/catalog/catalog.h"
+#include "core/edit/program_state/palette.h"
 #include "core/edit/jsv.h"
 #include "core/value/js_math.h"
 #include "core/value/js_number.h"
@@ -1354,6 +1355,156 @@ void Pipeline::render(double time) {
     swapBuffers();
     lastPassCount_ = passCount;
     frameIndex_ += 1;
+}
+
+// Parameters.
+
+namespace {
+// /_node_\d+$/ or /_chain_\d+$/
+bool isScopedName(const JsString& name) {
+    size_t end = name.size();
+    while (end > 0 && name[end - 1] >= u'0' && name[end - 1] <= u'9') --end;
+    if (end == name.size()) return false;
+    const JsString head = name.substr(0, end);
+    return endsWith(head, u"_node_") || endsWith(head, u"_chain_");
+}
+}  // namespace
+
+void Pipeline::setUniform(const JsString& name, Value value) {
+    // The particle state cap of the device.
+    if ((name == u"stateSize" || startsWith(name, u"stateSize_node_")) && value.is_number()) {
+        const Value cap = jsv::member(backend_.capabilities(), u"maxStateSize");
+        const double maxStateSize = jsv::truthy(cap) ? jsv::to_number(cap) : 2048;
+        if (value.as_number() > maxStateSize) value = Value(maxStateSize);
+    }
+    // A volume atlas must fit the device's texture size.
+    if (isVolumeSizeUniform(name) && value.is_number()) value = clampVolumeSize(value);
+
+    const Value oldValue = jsv::member(globalUniforms_, name);
+    jsv::set_plain(globalUniforms_.as_object(), name, value);
+    ++globalUniformsVersion_;
+
+    // The classic palette index expands into the uniforms its shaders read;
+    // the index itself is kept too.
+    if (name == u"palette" && value.is_number()) {
+        const Value expanded = expand_palette_value(value);
+        if (jsv::truthy(expanded)) {
+            for (const auto& [uniform, expandedValue] : jsv::entries(expanded)) setUniform(uniform, expandedValue);
+        }
+    }
+
+    // A scoped name targets one chain or particle pipeline.
+    const bool isScoped = isScopedName(name);
+    if (Array* list = passes()) {
+        for (Value& pass : *list) {
+            const Value uniforms = jsv::get(pass, u"uniforms");
+            // Automation values the DSL set keep priority.
+            if (jsv::truthy(uniforms) && jsv::in_operator(Value(name), uniforms)) {
+                if (!isAutomationValue(jsv::get(uniforms, name))) jsv::set_plain(pass.as_object()[u"uniforms"].as_object(), name, value);
+            }
+            // Shader uniforms fed from this parameter under another name.
+            const Value aliases = jsv::get(pass, u"uniformAliases");
+            if (jsv::truthy(aliases) && jsv::truthy(jsv::get(pass, u"uniforms"))) {
+                for (const auto& [shaderName, globalName] : jsv::entries_strict(aliases)) {
+                    if (!jsv::strict_equals(globalName, Value(name))) continue;
+                    if (isAutomationValue(jsv::get(jsv::get(pass, u"uniforms"), shaderName))) continue;
+                    jsv::set_plain(pass.as_object()[u"uniforms"].as_object(), shaderName, value);
+                }
+            }
+            const Value current = jsv::get(pass, u"uniforms");
+            if (!isScoped && jsv::truthy(current)) {
+                for (const JsString& key : jsv::keys(current)) {
+                    if (!startsWith(key, (name + u"_node_").c_str()) && !startsWith(key, (name + u"_chain_").c_str())) continue;
+                    if (isAutomationValue(jsv::get(jsv::get(pass, u"uniforms"), key))) continue;
+                    jsv::set_plain(pass.as_object()[u"uniforms"].as_object(), key, value);
+                    jsv::set_plain(globalUniforms_.as_object(), key, value);
+                    ++globalUniformsVersion_;
+                }
+            }
+        }
+    }
+    // _regenAsyncForUniform: the asyncInit overlays are host inputs (see the header).
+
+    // Textures whose size reads this parameter, or a scoped variant of it.
+    const Object* specs = textures();
+    if (!jsv::strict_equals(oldValue, value) && specs) {
+        bool affectsTextures = false;
+        for (const JsString& texId : specs->keys()) {
+            const Value& spec = *specs->find(texId);
+            const Value width = jsv::get(spec, u"width");
+            const Value height = jsv::get(spec, u"height");
+            const Value depth = jsv::get(spec, u"depth");
+            if (dimensionReferencesParam(width, name) || dimensionReferencesParam(height, name) ||
+                (jsv::truthy(depth) && dimensionReferencesParam(depth, name)) ||
+                dimensionReferencesScopedParam(width, name) || dimensionReferencesScopedParam(height, name) ||
+                (jsv::truthy(depth) && dimensionReferencesScopedParam(depth, name))) {
+                affectsTextures = true;
+                break;
+            }
+        }
+        if (affectsTextures) {
+            // Scoped sizes live in the pass uniforms, which also take precedence.
+            Object merged;
+            jsv::spread_into(merged, globalUniforms_);
+            jsv::spread_into(merged, collectDefaultUniforms());
+            updateParameterTextures(Value(std::move(merged)));
+        }
+    }
+}
+
+void Pipeline::broadcastChainScopedParam(size_t sourcePass, const JsString& uniformName, const JsString& scopedName) {
+    Array* list = passes();
+    if (!list || sourcePass >= list->size()) return;
+    Value& source = (*list)[sourcePass];
+    if (!jsv::truthy(jsv::get(source, u"uniforms"))) return;
+    Value value = jsv::get(jsv::get(source, u"uniforms"), uniformName);
+    if (uniformName == u"volumeSize" && value.is_number()) {
+        const Value clamped = clampVolumeSize(value);
+        if (!jsv::strict_equals(clamped, value)) {
+            value = clamped;
+            // The source keeps what the chain gets.
+            Object& sourceUniforms = source.as_object()[u"uniforms"].as_object();
+            jsv::set_plain(sourceUniforms, uniformName, clamped);
+            if (jsv::in_operator(Value(scopedName), source.as_object()[u"uniforms"])) jsv::set_plain(sourceUniforms, scopedName, clamped);
+        }
+    }
+    for (size_t i = 0; i < list->size(); ++i) {
+        if (i == sourcePass) continue;
+        Value& other = (*list)[i];
+        const Value uniforms = jsv::get(other, u"uniforms");
+        if (!jsv::truthy(uniforms) || !jsv::in_operator(Value(scopedName), uniforms)) continue;
+        jsv::set_plain(other.as_object()[u"uniforms"].as_object(), scopedName, value);
+        if (uniformName == u"volumeSize" && jsv::truthy(jsv::get(other, u"inheritsVolumeSize")) &&
+            jsv::in_operator(Value(uniformName), other.as_object()[u"uniforms"])) {
+            jsv::set_plain(other.as_object()[u"uniforms"].as_object(), uniformName, value);
+        }
+    }
+}
+
+void Pipeline::setPassUniform(size_t pass, const JsString& name, Value value) {
+    Array* list = passes();
+    if (!list || pass >= list->size()) throw JsError(u"TypeError", u"Cannot read properties of undefined (reading 'uniforms')");
+    const Value uniforms = jsv::get((*list)[pass], u"uniforms");
+    if (!uniforms.is_object()) throw JsError(u"Error", u"pass uniforms other than an object are outside the port");
+    jsv::set_plain((*list)[pass].as_object()[u"uniforms"].as_object(), name, std::move(value));
+}
+
+// { param } or { screenDivide } naming the parameter.
+bool Pipeline::dimensionReferencesParam(const Value& spec, const JsString& paramName) {
+    if (!spec.is_object() && !spec.is_array() && !spec.is_float32_array()) return false;
+    return jsv::strict_equals(jsv::get(spec, u"param"), Value(paramName)) ||
+           jsv::strict_equals(jsv::get(spec, u"screenDivide"), Value(paramName));
+}
+
+// A param or screenDivide naming a _node_ or _chain_ variant of the parameter.
+bool Pipeline::dimensionReferencesScopedParam(const Value& spec, const JsString& paramName) {
+    if (!spec.is_object() && !spec.is_array() && !spec.is_float32_array()) return false;
+    const Value param = jsv::get(spec, u"param");
+    const Value screenDivide = jsv::get(spec, u"screenDivide");
+    const Value ref = param.is_string() ? param : screenDivide.is_string() ? screenDivide : Value();
+    if (!ref.is_string() || ref.as_string().empty()) return false;
+    return startsWith(ref.as_string(), (paramName + u"_node_").c_str()) ||
+           startsWith(ref.as_string(), (paramName + u"_chain_").c_str());
 }
 
 }  // namespace libnoisemaker::backend

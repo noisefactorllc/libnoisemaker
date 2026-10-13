@@ -100,6 +100,28 @@ graphs.forEach(({ file, graph }, index) => {
     { op: 'render', time: 0.75 }
   ], true)
 })
+// Parameters: every corpus graph with up to three of its uniforms changed
+// through setUniform (the pass values, scoped variants and aliases), the
+// sizing parameters, then a frame.
+const changed = value => typeof value === 'number' ? value * 1.5 + 1
+  : typeof value === 'boolean' ? !value
+    : Array.isArray(value) ? value.map(v => typeof v === 'number' ? v * 0.5 + 0.25 : v) : value
+graphs.forEach(({ file, graph }, index) => {
+  const names = [...new Set(graph.passes.flatMap(pass => Object.entries(pass.uniforms ?? {})
+    .filter(([, value]) => !(value && typeof value === 'object' && !Array.isArray(value)))
+    .map(([name]) => name)))].sort()
+  const picked = names.length ? [0, 1, 2].map(k => names[(index + k * 7) % names.length]) : []
+  const values = Object.fromEntries(graph.passes.flatMap(pass => Object.entries(pass.uniforms ?? {})))
+  sequence(`corpus-params/${file}`, [
+    { op: 'create', graph, options: {} },
+    { op: 'init', width: 64, height: 48 },
+    ...[...new Set(picked)].map(name => ({ op: 'setUniform', name, value: changed(values[name]) })),
+    { op: 'setUniform', name: 'volumeSize', value: 32 },
+    { op: 'setUniform', name: 'stateSize', value: 128 },
+    { op: 'setUniform', name: 'zoom', value: 2 },
+    { op: 'render', time: 0.3 }
+  ], true)
+})
 // Programs from the frontend corpus with osc(), midi() or audio() values,
 // rendered at several times.
 const automated = []
@@ -440,6 +462,66 @@ sequence('synthetic/frame-errors', [
   { op: 'render', time: 0.1 }
 ])
 
+// setUniform and broadcastChainScopedParam: automation values keep
+// priority, aliases, scoped fan-out and scoped names, the palette, the
+// stateSize cap, the volume clamp, size-driving parameters (plain, scoped,
+// depth), NaN, inherited names, and errors.
+const params = graph([
+  { outputs: { color: 'global_o1' }, uniforms: { amount: 0.5, auto: osc(0), volumeSize: 64, volumeSize_chain_0: 64, zoom_chain_0: 1, stateSize_node_2: 64 }, uniformAliases: { mixAmt: 'mix', autoAlias: 'mix' } },
+  { outputs: { color: 'global_o2' }, uniforms: { mixAmt: 0, autoAlias: osc(1), volumeSize_chain_0: 64, palette: 1 }, inheritsVolumeSize: true },
+  { outputs: { color: 'global_o3' }, uniforms: { volumeSize: 64, volumeSize_chain_1: 64, stateSize: 64 }, inheritsVolumeSize: true },
+  { outputs: { color: 'node_4_size' }, uniforms: { amount: 0.25, size: osc(0), level_chain_0: 1, level_chain_0_node_7: 2 }, uniformAliases: 5 },
+  { outputs: { color: 'global_o4' }, uniforms: { volumeSize: 64, volumeSize_chain_0: 64 }, inheritsVolumeSize: true },
+  { outputs: { color: 'global_o5' }, uniforms: { volumeSize: 64, volumeSize_chain_0: 64 } }
+], {
+  node_4_size: { width: { param: 'size', default: 16 }, height: { screenDivide: 'zoom_chain_0', default: 1 } },
+  node_5_vol: { width: 8, height: 8, depth: { param: 'volumeSize_chain_1', default: 8 }, is3D: true, format: 'rgba16f' },
+  node_6_scoped: { width: { param: 'stateSize_node_2', default: 4 }, height: 4 }
+})
+sequence('synthetic/params', [
+  { op: 'create', graph: params },
+  { op: 'init', width: 32, height: 24 },
+  { op: 'setUniform', name: 'amount', value: 0.75 },
+  { op: 'setUniform', name: 'auto', value: 0.3 },
+  { op: 'setUniform', name: 'mix', value: [1, 2] },
+  { op: 'setUniform', name: 'volumeSize', value: 512 },
+  { op: 'setUniform', name: 'volumeSize_chain_1', value: 16 },
+  { op: 'setUniform', name: 'zoom', value: 4 },
+  { op: 'setUniform', name: 'size', value: 24 },
+  { op: 'setUniform', name: 'size', value: 24 },
+  { op: 'setUniform', name: 'stateSize', value: 5000 },
+  { op: 'setUniform', name: 'stateSize_node_2', value: 9000 },
+  { op: 'setUniform', name: 'palette', value: 12 },
+  { op: 'setUniform', name: 'palette', value: 0 },
+  { op: 'setUniform', name: 'palette', value: 56 },
+  { op: 'setUniform', name: 'palette', value: 'x' },
+  { op: 'setUniform', name: 'amount', value: { $number: 'NaN' } },
+  { op: 'setUniform', name: 'amount', value: { $number: '-0' } },
+  { op: 'setUniform', name: 'constructor', value: 3 },
+  { op: 'setUniform', name: 'toString', value: 'y' },
+  { op: 'setUniform', name: 'level_chain_0', value: 5 },
+  { op: 'setPassUniform', pass: 0, name: 'volumeSize', value: 512 },
+  { op: 'setPassUniform', pass: 0, name: 'volumeSize_chain_0', value: 512 },
+  { op: 'broadcastChainScopedParam', pass: 0, uniformName: 'volumeSize', scopedName: 'volumeSize_chain_0' },
+  { op: 'setPassUniform', pass: 0, name: 'volumeSize', value: 32 },
+  { op: 'broadcastChainScopedParam', pass: 0, uniformName: 'volumeSize', scopedName: 'volumeSize_chain_0' },
+  { op: 'setUniform', name: 'volumeSize_chain_0', value: 300 },
+  { op: 'broadcastChainScopedParam', pass: 2, uniformName: 'volumeSize', scopedName: 'volumeSize_chain_1' },
+  { op: 'broadcastChainScopedParam', pass: 3, uniformName: 'amount', scopedName: 'amount_chain_9' },
+  { op: 'render', time: 0.4 }
+], true)
+sequence('synthetic/params-errors', [
+  { op: 'create', graph: params },
+  { op: 'init', width: 32, height: 24 },
+  { op: 'setUniform', name: 'palette', value: 2.5 },
+  { op: 'setUniform', name: 'amount', value: 1 },
+  { op: 'create', graph: graph([{ outputs: { color: 'global_o1' }, uniforms: 'abc' }]) },
+  { op: 'init', width: 8, height: 8 },
+  { op: 'setUniform', name: 'amount', value: 1 },
+  { op: 'create', graph: graph([{ outputs: { color: 'global_o1' }, uniforms: { a: 1 }, uniformAliases: null }]) },
+  { op: 'setUniform', name: 'a', value: 2 }
+])
+
 // Errors and degenerate graphs.
 sequence('synthetic/missing-program', [
   { op: 'create', graph: { passes: [{ id: 'x', program: 'nope' }], programs: {}, textures: {} } },
@@ -562,5 +644,5 @@ for (const op of ops) {
 for (const file of uncompiled) err(`  corpus/${file}: the reference does not compile it`)
 for (const file of indexKeyed) err(`  corpus/${file}: a texture or allocation id is an array index`)
 total += uncompiled.length + indexKeyed.length
-out(`Pipeline: ${matched}/${total} ops match, ${calls} device calls (${sequences} sequences: ${graphs.length} corpus graphs set up, pooled and rendered, ${automated.length} graphs with automation, ${sequences - 3 * graphs.length - automated.length} synthetic)`)
+out(`Pipeline: ${matched}/${total} ops match, ${calls} device calls (${sequences} sequences: ${graphs.length} corpus graphs set up, pooled, rendered and reparameterized, ${automated.length} graphs with automation, ${sequences - 4 * graphs.length - automated.length} synthetic)`)
 process.exitCode = matched === total ? 0 : 1

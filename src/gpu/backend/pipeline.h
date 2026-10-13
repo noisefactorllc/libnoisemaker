@@ -10,9 +10,11 @@
 // volume-size clamp and the MRT format budget), the lifecycle-effect
 // bookkeeping with synth/media's onUpdate, and the frame (render with its
 // global uniforms, automation values, conditions, repeats, viewports, the
-// within-frame ping-pong of surfaces, mip regeneration and the swap). Not
-// ported yet: setUniform and the other parameter paths, the MIDI and audio
-// states, dispose, renderCubemap, preflight and getAudioInputRequirements.
+// within-frame ping-pong of surfaces, mip regeneration and the swap), and
+// the parameter paths (setUniform with palette expansion, scoped variants,
+// aliases and texture resizing, and broadcastChainScopedParam). Not ported
+// yet: the MIDI and audio states, dispose, renderCubemap, preflight and
+// getAudioInputRequirements.
 //
 // The graph is the compiler's graph as JSON: passes, programs, textures and
 // allocations, with the two Maps as objects (their keys are texture ids, never
@@ -30,7 +32,10 @@
 // surface id that is undefined (a texture spec for a mesh surface no pass
 // references); a uniform named __proto__; a global uniform resolution,
 // tileOffset or fullResolution that is truthy and not an array or object (the
-// reference writes its elements); and MIDI and audio states (automation.h).
+// reference writes its elements); pass uniforms other than objects where a
+// parameter is written into them; the asyncInit regeneration setUniform
+// triggers (the overlays are host inputs, above); and MIDI and audio states
+// (automation.h).
 
 #include "gpu/backend/backend.h"
 
@@ -101,6 +106,20 @@ public:
                        std::optional<double> renderScale);
     void clearTileRegion();
     void clearSurface(const JsString& name);
+
+    // setUniform(name, value): the global value, and every pass that reads
+    // it, its aliases and, for an unscoped name, its chain- and node-scoped
+    // variants; textures whose size depends on it are resized. An object
+    // value counts as new on each call (the reference compares identity).
+    void setUniform(const JsString& name, Value value);
+    // broadcastChainScopedParam(sourcePass, uniformName, scopedName), with
+    // the source pass by its index in graph.passes.
+    void broadcastChainScopedParam(size_t sourcePass, const JsString& uniformName, const JsString& scopedName);
+    // pass.uniforms[name] = value on graph.passes[pass], as the UI parameter
+    // paths write a pass's value before they broadcast it.
+    void setPassUniform(size_t pass, const JsString& name, Value value);
+    static bool dimensionReferencesParam(const Value& spec, const JsString& paramName);
+    static bool dimensionReferencesScopedParam(const Value& spec, const JsString& paramName);
     // The frame state, refreshed in place as the reference reuses its object.
     const FrameState& getFrameState();
 

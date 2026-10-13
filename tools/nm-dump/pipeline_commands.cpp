@@ -65,6 +65,24 @@ void tagSpecialNumbers(nm::Value& value) {
     }
 }
 
+// {"$number": text} stands for a number JSON cannot hold.
+nm::Value decodeNumbers(const nm::Value& value) {
+    if (value.is_array()) {
+        nm::Array out;
+        for (const nm::Value& element : value.as_array()) out.push_back(decodeNumbers(element));
+        return nm::Value(std::move(out));
+    }
+    if (!value.is_object()) return value;
+    const std::vector<nm::JsString> keys = value.as_object().keys();
+    if (keys.size() == 1 && keys[0] == u"$number") {
+        const nm::JsString text = value.as_object().find(u"$number")->as_string();
+        return nm::Value(text == u"-0" ? -0.0 : nm::js::stringToNumber(text));
+    }
+    nm::Object out;
+    for (const nm::JsString& key : keys) out.set(key, decodeNumbers(*value.as_object().find(key)));
+    return nm::Value(std::move(out));
+}
+
 // An object whose undefined members are kept, as {"$undefined": true}.
 nm::Value taggedUndefined(const nm::Value& object) {
     if (!object.is_object()) return object;
@@ -244,6 +262,18 @@ int pipeline(int, char**) {
                     nm::Value encoded(std::move(result));
                     tagSpecialNumbers(encoded);
                     record.set(u"result", encoded);
+                } else if (kind == u"setUniform") {
+                    const nm::JsString name = field(op, u"name").as_string();
+                    pipeline->setUniform(name, decodeNumbers(field(op, u"value")));
+                } else if (kind == u"setPassUniform") {
+                    const auto pass = static_cast<size_t>(number(field(op, u"pass"), u"pass"));
+                    const nm::JsString name = field(op, u"name").as_string();
+                    pipeline->setPassUniform(pass, name, decodeNumbers(field(op, u"value")));
+                } else if (kind == u"broadcastChainScopedParam") {
+                    const auto pass = static_cast<size_t>(number(field(op, u"pass"), u"pass"));
+                    const nm::JsString uniformName = field(op, u"uniformName").as_string();
+                    const nm::JsString scopedName = field(op, u"scopedName").as_string();
+                    pipeline->broadcastChainScopedParam(pass, uniformName, scopedName);
                 } else if (kind == u"clearSurface") {
                     pipeline->clearSurface(field(op, u"name").as_string());
                 } else if (kind == u"resolveDimension") {
