@@ -21,8 +21,9 @@
 //
 // Meshes follow the minter's plan: when a pass reads a mesh texture or the
 // fixture has an OBJ (--obj, "obj"), each externalMesh effect's first
-// built-in mesh (read from $NM_REFERENCE_ROOT/shaders/<path>, where the demo
-// page fetches it) loads into its mesh, then the OBJ into mesh0, or an empty
+// built-in mesh (read from $NM_REFERENCE_ROOT/<path>, the files the demo page
+// fetches through the reference's shaders/share link) loads into its mesh,
+// then the OBJ into mesh0, or an empty
 // mesh0 when there is neither; each is packed into 256 x 256 textures and
 // uploaded with the backend's uploadMeshData, as the page's renderer does.
 //
@@ -291,11 +292,13 @@ void load_meshes(const nm::Value& graph, const Fixture& fixture, be::WebGPUBacke
         if (path && path->is_string()) builtins.emplace_back(meshId->as_string(), nm::js_to_utf8(path->as_string()));
     }
     for (const auto& [meshId, path] : builtins) {
-        // The demo page fetches `${shaderBasePath}/${path}`, its base path
-        // being the reference's shaders directory.
+        // The demo page fetches `${shaderBasePath}/${path}` from the
+        // reference's shaders directory, whose share is a link to ../share:
+        // the files read here, without depending on the link (a checkout
+        // without symbolic links has a text file there).
         const std::string root = environment("NM_REFERENCE_ROOT");
         if (root.empty()) throw std::runtime_error("a built-in mesh (" + path + ") needs NM_REFERENCE_ROOT");
-        upload_mesh(backend, meshId, nm::loadOBJ(root + "/shaders/" + path));
+        upload_mesh(backend, meshId, nm::loadOBJ(root + "/" + path));
     }
     if (objText) {
         upload_mesh(backend, u"mesh0", nm::parseOBJ(nm::utf8_to_js(*objText)));
