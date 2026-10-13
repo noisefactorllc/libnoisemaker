@@ -177,6 +177,19 @@ int main() {
     // Larger than 4096 x 4096 in all, though each side is allowed.
     NM_CHECK(throws(png_with_deflate({}, 4097, 4096), "4096 x 4096"));
     NM_CHECK(throws(png_with_deflate({}, 16385, 1), "16384"));
+    // An unsupported color type is refused at IHDR, before its data.
+    std::vector<uint8_t> palette = png_with_deflate({}, 1, 1);
+    palette[8 + 8 + 9] = 3;
+    {
+        uint32_t crc = 0xFFFFFFFFu;
+        for (size_t i = 12; i < 12 + 4 + 13; ++i) {
+            crc ^= palette[i];
+            for (int k = 0; k < 8; ++k) crc = (crc & 1) ? 0xEDB88320u ^ (crc >> 1) : crc >> 1;
+        }
+        crc = ~crc;
+        for (int k = 0; k < 4; ++k) palette[12 + 4 + 13 + size_t(k)] = uint8_t(crc >> (24 - 8 * k));
+    }
+    NM_CHECK(throws(palette, "color type 3"));
     const std::vector<uint8_t> wide(16384 * 4, 7);
     NM_CHECK(nm_render::decode_png(nm_render::encode_png_rgba8(16384, 1, wide)).rgba == wide);
     NM_CHECK(nm_render::decode_png(nm_render::encode_png_rgba8(1, 16384, wide)).rgba == wide);

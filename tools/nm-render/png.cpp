@@ -356,6 +356,9 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
             }
             if (compression != 0 || filterMethod != 0) bad("unknown compression or filter method");
             if (depth != 8 || interlace != 0) bad("only non-interlaced 8-bit images are supported");
+            if (colorType != 0 && colorType != 2 && colorType != 4 && colorType != 6) {
+                bad("unsupported color type " + std::to_string(colorType));
+            }
         } else if (!header) {
             bad("IHDR must come first");
         } else if (std::memcmp(type, "IDAT", 4) == 0) {
@@ -367,9 +370,10 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
     }
     if (!header || !ended) bad("missing IHDR or IEND");
     // Beside the file, decoding holds its IDAT data (no larger than the
-    // file), the inflated rows (at most 67,112,960 bytes, reserved once and
-    // unfiltered in place; the IDAT data is freed before the next copy) and
-    // the RGBA copy (at most 67,108,864 bytes).
+    // file), the inflated rows (at most 4 * 4096 * 4096 + 16384 =
+    // 67,125,248 bytes, a filter byte per row of a 1024 x 16384 image;
+    // reserved once and unfiltered in place, and the IDAT data is freed
+    // before the next copy) and the RGBA copy (at most 67,108,864 bytes).
     size_t channels = 0;
     switch (colorType) {
         case 0: channels = 1; break;
