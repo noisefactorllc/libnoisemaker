@@ -55,8 +55,9 @@
 // nm-render writes its decoded pixels.
 //
 // A --dsl program's asyncInit overlays (filter/fibers, filter/scratches,
-// filter/strayHair) are drawn natively (host/async_overlays.h) from their
-// steps' values, unless a host texture is given for <nodeId>_overlayTex.
+// filter/strayHair) are drawn natively (host/async_overlays.h) with the
+// parameters the page's last draw has; a host texture given for
+// <nodeId>_overlayTex is used instead, with no trace.
 //
 // Not yet: Portable effects, text produced natively, and texture dumps.
 
@@ -379,6 +380,9 @@ std::vector<nm::JsString> apply_demo_step_values(be::Pipeline& pipeline, be::Web
                                                  const std::string& dslText) {
     nm::ProgramState<> state(registry());
     state.from_dsl(nm::utf8_to_js(dslText));
+    // The global uniforms when the page's resize draws the asyncInit
+    // overlays (initAsyncEffects), before any step values are applied.
+    const nm::Value initialGlobals = pipeline.globalUniforms();
     // A fresh page's enum tree: the standard enums and the choices of the
     // program's effects, which the page loads before it compiles. A minting
     // session's page may also hold the choices of programs it loaded before.
@@ -437,15 +441,14 @@ std::vector<nm::JsString> apply_demo_step_values(be::Pipeline& pipeline, be::Web
         }
     }
     if (!media.empty()) apply();
-    // The asyncInit overlays: each node's overlay drawn at the pipeline's
-    // size from its step's values, an automated value at its default
-    // (_startAsyncInit), and the finished canvas uploaded as
-    // <nodeId>_overlayTex with flipY true. The page's first draw, at load,
-    // reads the global uniforms; checkAsyncRegen draws again from the step's
-    // values when a scalar seed or density differs from that draw's, so the
-    // last draw has the step's values. (An automated seed or density, which
-    // checkAsyncRegen skips, may keep the first draw's value instead; no
-    // fixture automates one.)
+    // The asyncInit overlays. The page's resize draws each node's overlay
+    // (initAsyncEffects, _startAsyncInit) from the global uniforms, with
+    // automated values at their defaults, and records the scalar values it
+    // drew from. Applying the step values then calls checkAsyncRegen, which
+    // draws again from the step's values when one of its scalar parameters
+    // other than alpha differs from that record (automated values are
+    // skipped). The last draw's canvas is uploaded as <nodeId>_overlayTex
+    // with flipY true, at the pipeline's size.
     const nm::Value stepValues(state.get_all_step_values());
     std::vector<nm::JsString> seenNodes;
     if (passes && passes->is_array()) {
@@ -458,23 +461,60 @@ std::vector<nm::JsString> apply_demo_step_values(be::Pipeline& pipeline, be::Web
             const std::optional<nm::AsyncOverlay> overlay = nm::asyncOverlayForEffect(key.as_string());
             if (!overlay) continue;
             seenNodes.push_back(node.as_string());
-            const nm::Value values = nm::jsv::member(stepValues, u"step_" + nm::jsv::to_string(nm::jsv::member(pass, u"stepIndex")));
-            const nm::Value def = registry().getEffectValue(key.as_string());
-            const nm::Value globals = nm::jsv::member(def, u"globals");
-            const auto param = [&](const nm::JsString& name) {
-                const nm::Value value = nm::jsv::member(values, name);
+            const nm::JsString texId = node.as_string() + u"_overlayTex";
+            // A host texture for the overlay is uploaded in its place below.
+            if (std::any_of(fixture.hostTextures.begin(), fixture.hostTextures.end(),
+                            [&](const auto& host) { return nm::utf8_to_js(host.first) == texId; })) {
+                media.push_back(texId);
+                continue;
+            }
+            const nm::Value globals = nm::jsv::member(registry().getEffectValue(key.as_string()), u"globals");
+            const std::vector<nm::JsString> names = globals.is_object() ? globals.as_object().keys() : std::vector<nm::JsString>();
+            // Neither undefined, null nor typeof "object".
+            const auto scalar = [](const nm::Value& value) {
+                return value.is_number() || value.is_string() || value.is_bool() || value.is_function();
+            };
+            // _startAsyncInit's drawParams[name], an automated value at its default.
+            const auto drawn = [&](const nm::Value& params, const nm::JsString& name) {
+                const nm::Value value = nm::jsv::member(params, name);
                 return be::isAutomationValue(value) ? nm::jsv::member(nm::jsv::member(globals, name), u"default") : value;
             };
-            const nm::Value seed = param(u"seed");
-            const nm::Value density = param(u"density");
+            // The scalar values the first draw records (drawParams[name] ?? drawParams[spec.uniform]).
+            std::vector<std::pair<nm::JsString, nm::Value>> record;
+            for (const nm::JsString& name : names) {
+                nm::Value value = drawn(initialGlobals, name);
+                if (value.is_undefined() || value.is_null()) {
+                    const nm::Value uniform = nm::jsv::member(nm::jsv::member(globals, name), u"uniform");
+                    if (uniform.is_string()) value = drawn(initialGlobals, uniform.as_string());
+                }
+                if (scalar(value)) record.emplace_back(name, value);
+            }
+            // checkAsyncRegen with the step's values.
+            const nm::Value values = nm::jsv::member(stepValues, u"step_" + nm::jsv::to_string(nm::jsv::member(pass, u"stepIndex")));
+            bool changed = false;
+            if (values.is_object()) {
+                for (const nm::JsString& name : values.as_object().keys()) {
+                    if (name == u"alpha" || (!name.empty() && name[0] == u'_')) continue;
+                    const nm::Value value = nm::jsv::member(values, name);
+                    if (!scalar(value) || std::find(names.begin(), names.end(), name) == names.end()) continue;
+                    const auto cached = std::find_if(record.begin(), record.end(), [&](const auto& entry) { return entry.first == name; });
+                    if (cached == record.end() || !nm::jsv::strict_equals(cached->second, value)) changed = true;
+                }
+            }
+            const nm::Value& params = changed ? values : initialGlobals;
+            const nm::Value seed = drawn(params, u"seed");
+            const nm::Value density = drawn(params, u"density");
             nm::StrokeCanvas canvas(int(pipeline.width()), int(pipeline.height()));
             const double seedNumber = nm::jsv::truthy(seed) ? nm::jsv::to_number(seed) : 1.0;
             const std::optional<double> densityNumber =
                 density.is_undefined() ? std::nullopt : std::optional<double>(nm::jsv::to_number(density));
+            // A trace the reference rejects (TraceResult::Failed) leaves the
+            // layers drawn before it, which the reference uploaded last. An
+            // allocation failure here, which the reference does not share,
+            // fails the fixture.
             if (nm::drawAsyncOverlay(*overlay, canvas, seedNumber, densityNumber) == nm::TraceResult::Failed) {
                 std::cerr << "nm-render: asyncInit error for " << nm::js_to_utf8(node.as_string()) << ": the trace failed\n";
             }
-            const nm::JsString texId = node.as_string() + u"_overlayTex";
             backend.updateTextureFromPixels(texId, canvas.width(), canvas.height(), canvas.unpremultipliedRgba8(), true);
             media.push_back(texId);
         }
