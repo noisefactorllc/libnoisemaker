@@ -21,8 +21,8 @@
 //
 // Meshes follow the minter's plan: when a pass reads a mesh texture or the
 // fixture has an OBJ (--obj, "obj"), each externalMesh effect's first
-// built-in mesh (read from $NM_REFERENCE_ROOT/<path>, as the demo page
-// fetches it) loads into its mesh, then the OBJ into mesh0, or an empty
+// built-in mesh (read from $NM_REFERENCE_ROOT/shaders/<path>, where the demo
+// page fetches it) loads into its mesh, then the OBJ into mesh0, or an empty
 // mesh0 when there is neither; each is packed into 256 x 256 textures and
 // uploaded with the backend's uploadMeshData, as the page's renderer does.
 //
@@ -87,7 +87,22 @@ bool read_file(const std::string& path, std::string& text) {
     std::ifstream input(path, std::ios::binary);
     if (!input) return false;
     text.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
-    return true;
+    return !input.bad();
+}
+
+// An environment variable, or empty; MSVC's /W4 refuses std::getenv.
+std::string environment(const char* name) {
+#ifdef _MSC_VER
+    char* value = nullptr;
+    size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) return {};
+    std::string out(value);
+    std::free(value);
+    return out;
+#else
+    const char* value = std::getenv(name);
+    return value ? std::string(value) : std::string();
+#endif
 }
 
 // A whole argument as a finite number, or nothing.
@@ -273,9 +288,11 @@ void load_meshes(const nm::Value& graph, const Fixture& fixture, be::WebGPUBacke
         if (path && path->is_string()) builtins.emplace_back(meshId->as_string(), nm::js_to_utf8(path->as_string()));
     }
     for (const auto& [meshId, path] : builtins) {
-        const char* root = std::getenv("NM_REFERENCE_ROOT");
-        if (!root || !*root) throw std::runtime_error("a built-in mesh (" + path + ") needs NM_REFERENCE_ROOT");
-        upload_mesh(backend, meshId, nm::loadOBJ(std::string(root) + "/" + path));
+        // The demo page fetches `${shaderBasePath}/${path}`, its base path
+        // being the reference's shaders directory.
+        const std::string root = environment("NM_REFERENCE_ROOT");
+        if (root.empty()) throw std::runtime_error("a built-in mesh (" + path + ") needs NM_REFERENCE_ROOT");
+        upload_mesh(backend, meshId, nm::loadOBJ(root + "/shaders/" + path));
     }
     if (objText) {
         upload_mesh(backend, u"mesh0", nm::parseOBJ(nm::utf8_to_js(*objText)));
