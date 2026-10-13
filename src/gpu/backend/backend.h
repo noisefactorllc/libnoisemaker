@@ -205,6 +205,9 @@ private:
     const TextureRecord* surfaceTexture(const FrameState& state, const JsString& name) const;
 
     Device& device_;
+    // Records' deleters release through this while the backend lives; a
+    // record that outlives the backend leaves its objects to the device.
+    std::shared_ptr<Device*> releaser_;
     Value capabilities_;
     std::unordered_map<JsString, std::shared_ptr<TextureRecord>> textures_;
     std::vector<JsString> textureOrder_;

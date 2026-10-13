@@ -690,7 +690,7 @@ void DawnDevice::unmap(Handle buffer) {
     wgpuBufferUnmap(as<WGPUBuffer>(buffer, Kind::Buffer, "unmap"));
 }
 
-void DawnDevice::release(Handle object) {
+void DawnDevice::release(Handle object) noexcept {
     if (object == 0 || object > objects_.size() || objects_[object - 1].kind == Kind::Released) return;
     // A released layout leaves the cache, and a released pipeline's layouts
     // with it, before the slots are reused.
@@ -708,7 +708,11 @@ void DawnDevice::release(Handle object) {
     }
     if (objects_[object - 1].kind == Kind::Released) return;
     release(objects_[object - 1]);
-    free_.push_back(object);
+    try {
+        free_.push_back(object);
+    } catch (...) {
+        // Out of memory: the slot stays a tombstone.
+    }
 }
 
 void DawnDevice::processEvents() {

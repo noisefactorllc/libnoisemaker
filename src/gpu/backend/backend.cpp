@@ -132,7 +132,8 @@ Value capabilitiesValue(double maxTextureSize, double maxColorBytesPerSample) {
 }  // namespace
 
 // The base class's capabilities until init() reads the device's limits.
-WebGPUBackend::WebGPUBackend(Device& device) : device_(device), capabilities_(capabilitiesValue(4096, 64)) {}
+WebGPUBackend::WebGPUBackend(Device& device)
+    : device_(device), releaser_(std::make_shared<Device*>(&device)), capabilities_(capabilitiesValue(4096, 64)) {}
 
 // The reference returns '' for "global_", which every caller treats as no
 // name; so does nullopt here.
@@ -295,13 +296,22 @@ void WebGPUBackend::destroyTexture(const JsString& id) {
 // last owner (an id here, a pipeline structure or a local) drops it, as the
 // reference's garbage collector may then take them.
 std::shared_ptr<TextureRecord> WebGPUBackend::ownRecord(TextureRecord record) {
-    Device* device = &device_;
-    return std::shared_ptr<TextureRecord>(new TextureRecord(std::move(record)), [device](TextureRecord* owned) {
-        for (const Handle group : owned->mipBindGroups) device->release(group);
-        for (const Handle view : owned->mipViews) device->release(view);
-        if (owned->renderView) device->release(*owned->renderView);
-        device->release(owned->view);
-        device->release(owned->handle);
+    std::weak_ptr<Device*> releaser = releaser_;
+    return std::shared_ptr<TextureRecord>(new TextureRecord(std::move(record)), [releaser](TextureRecord* owned) {
+        if (const std::shared_ptr<Device*> device = releaser.lock()) {
+            // Each object once, with no allocation: renderView is
+            // mipViews[0] when the texture has mips.
+            const auto isMipView = [&](Handle view) {
+                return std::find(owned->mipViews.begin(), owned->mipViews.end(), view) != owned->mipViews.end();
+            };
+            for (const Handle group : owned->mipBindGroups) (*device)->release(group);
+            for (const Handle view : owned->mipViews) (*device)->release(view);
+            if (owned->renderView && !isMipView(*owned->renderView) && *owned->renderView != owned->view) {
+                (*device)->release(*owned->renderView);
+            }
+            if (!isMipView(owned->view)) (*device)->release(owned->view);
+            (*device)->release(owned->handle);
+        }
         delete owned;
     });
 }

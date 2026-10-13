@@ -83,7 +83,7 @@ public:
     void onSubmittedWorkDone(std::function<void()> done) override;
     std::vector<uint8_t> mapRead(backend::Handle buffer) override;
     void unmap(backend::Handle buffer) override;
-    void release(backend::Handle object) override;
+    void release(backend::Handle object) noexcept override;
 
     // Runs the callbacks of finished work.
     void processEvents();

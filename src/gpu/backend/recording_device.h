@@ -58,7 +58,13 @@ public:
     // Not logged: the reference has no such call. A released handle passed
     // to any later call that takes a handle throws, so the gate fails on a
     // premature release.
-    void release(Handle object) override { released_.insert(object); }
+    void release(Handle object) noexcept override {
+        try {
+            released_.insert(object);
+        } catch (...) {
+            // Out of memory: the gate only loses this release's check.
+        }
+    }
 
     // The calls since the last take, in order.
     Array takeLog();

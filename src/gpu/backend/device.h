@@ -207,8 +207,9 @@ public:
     virtual std::vector<uint8_t> mapRead(Handle buffer) = 0;
     virtual void unmap(Handle buffer) = 0;
     // The reference drops its last reference to the object, so the garbage
-    // collector may take it; the handle is not used again.
-    virtual void release(Handle object) = 0;
+    // collector may take it; the handle is not used again. It never throws:
+    // records release from destructors.
+    virtual void release(Handle object) noexcept = 0;
 };
 
 }  // namespace libnoisemaker::backend
