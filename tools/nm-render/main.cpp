@@ -16,8 +16,9 @@
 // `batch MANIFEST` renders a JSON array of fixtures in one process and
 // device, a fresh pipeline each: {"graph" | "dsl", "out", "size" or
 // "width" and "height", "time", "frames", "hostTextures": {id: png}}, the
-// names of rust-gpu's nm-render manifest, and "obj"; a fixture with any other
-// member fails, as nm-render does not support it yet.
+// names of rust-gpu's nm-render manifest, "obj", and the timed members
+// below; a fixture with any other member fails, as nm-render does not
+// support it yet.
 //
 // Meshes follow the minter's plan: when a pass reads a mesh texture or the
 // fixture has an OBJ (--obj, "obj"), each externalMesh effect's first
@@ -211,7 +212,8 @@ Fixture parse_render(int argc, char** argv, bool& allowFallback) {
                 const size_t comma = list.find(',', start);
                 const std::string item = list.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
                 const std::optional<double> n = number(item.c_str());
-                if (!n || *n != std::floor(*n) || *n < 1 || *n > 1e6) throw Usage("--sample-frames takes whole frame counts");
+                // Frame counts of 0 or less are ignored, as sampleSchedule's add ignores them.
+                if (!n || *n != std::floor(*n) || *n < -1e6 || *n > 1e6) throw Usage("--sample-frames takes whole frame counts");
                 fixture.sampleFrames.push_back(int(*n));
                 if (comma == std::string::npos) break;
                 start = comma + 1;
@@ -230,7 +232,7 @@ Fixture parse_render(int argc, char** argv, bool& allowFallback) {
             else if (arg == "--time") fixture.time = *n;
             else if (arg == "--frames" && *n == std::floor(*n) && *n >= 0 && *n <= 1e6) fixture.frames = int(*n);
             else if (arg == "--run-seconds" && *n >= 0 && *n <= 3600) fixture.runSeconds = *n;
-            else if (arg == "--sample-every" && *n > 0 && *n <= 3600) fixture.sampleEvery = *n;
+            else if (arg == "--sample-every" && *n >= 0 && *n <= 3600) fixture.sampleEvery = *n;
             else if (arg == "--run-frames" && *n == std::floor(*n) && *n >= 0 && *n <= 1e6) fixture.runFrames = int(*n);
             else if (arg == "--sample-every-frames" && *n == std::floor(*n) && *n >= 0 && *n <= 1e6) fixture.sampleEveryFrames = int(*n);
             else throw Usage("unknown option or value: " + arg);
@@ -290,7 +292,7 @@ Fixture parse_entry(const nm::Value& value) {
         fixture.runSeconds = *n;
     }
     if (const auto n = number_member(entry, u"sampleEvery")) {
-        if (*n <= 0 || *n > 3600) throw Usage("sampleEvery must be above 0 and at most 3600");
+        if (*n < 0 || *n > 3600) throw Usage("sampleEvery must be from 0 to 3600");
         fixture.sampleEvery = *n;
     }
     whole(u"runFrames", fixture.runFrames);
@@ -298,7 +300,7 @@ Fixture parse_entry(const nm::Value& value) {
     if (const nm::Value* frames = entry.find(u"sampleFrames")) {
         if (!frames->is_array()) throw Usage("sampleFrames must be an array");
         for (const nm::Value& f : frames->as_array()) {
-            if (!f.is_number() || f.as_number() != std::floor(f.as_number()) || f.as_number() < 1 || f.as_number() > 1e6) {
+            if (!f.is_number() || f.as_number() != std::floor(f.as_number()) || f.as_number() < -1e6 || f.as_number() > 1e6) {
                 throw Usage("sampleFrames holds whole frame counts");
             }
             fixture.sampleFrames.push_back(int(f.as_number()));
