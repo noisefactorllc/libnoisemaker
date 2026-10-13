@@ -152,9 +152,29 @@ void merge_enums(Object& target, const Value& source) {
 }
 }  // namespace
 
-Value renderer_enum_tree(const EffectRegistry& registry) {
+Value renderer_enum_tree(const EffectRegistry& registry, const std::vector<JsString>* effects) {
     Object combined = registry.enums().std().raw().as_object();
-    merge_enums(combined, registry.enums().project().raw());
+    const Value project = registry.enums().project().raw();
+    if (!effects) {
+        merge_enums(combined, project);
+        return Value(std::move(combined));
+    }
+    // The registered choices of the named effects only.
+    Object chosen;
+    if (project.is_object()) {
+        for (const auto& ns : project.as_object().keys()) {
+            const Value funcs = *project.as_object().find(ns);
+            if (!funcs.is_object()) continue;
+            Object kept;
+            for (const auto& func : funcs.as_object().keys()) {
+                if (std::find(effects->begin(), effects->end(), ns + u"." + func) != effects->end()) {
+                    kept.set(func, *funcs.as_object().find(func));
+                }
+            }
+            if (!kept.keys().empty()) chosen.set(ns, Value(std::move(kept)));
+        }
+    }
+    merge_enums(combined, Value(std::move(chosen)));
     return Value(std::move(combined));
 }
 

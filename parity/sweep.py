@@ -19,9 +19,10 @@ parity/curated/sources.json); a case id is the file stem. One run:
              page produced (<id>.<textureId>.png: media/text images, asyncInit
              overlays).
   2. RENDER  candidates with nm-render in one batch process. By default the
-             candidate runs the DSL through libnoisemaker's compiler. It has no
-             demo host yet: no ProgramState, no control initialization and no
-             natively produced host inputs, and nm-render refuses a fixture
+             candidate runs the DSL through libnoisemaker's compiler and applies
+             ProgramState's step values as the page does, without the UI's
+             control initialization or natively produced host inputs; and
+             nm-render refuses a fixture
              whose manifest entry needs one it lacks (a mesh, a Portable
              effect, a timed schedule), which grades as missing.
              --captured-host-inputs grades with the minter's saved host-input PNGs

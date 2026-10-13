@@ -74,14 +74,14 @@ double parse_js_float_value(const Value& value);
 double parse_js_int_value(const Value& value, int radix = 10);
 Value convert_parameter_for_uniform(const Value& value, const Value& spec, const Value& enums);
 class EffectRegistry;
-// The page renderer's _enums once every catalog effect has loaded:
-// mergeIntoEnums of the registry's project choices into its standard tree (a
-// leaf, an object with a type, replaces what it lands on; other objects
-// merge). The page loads effects on demand, so its tree holds the choices of
-// the effects it has loaded so far, the program's among them: a value that
-// names an enum of an effect the page had not loaded resolves here but stays
-// a string there.
-Value renderer_enum_tree(const EffectRegistry& registry);
+// The page renderer's _enums: mergeIntoEnums of effect choices (registered
+// as <namespace>.<func>.<param>.<choice>) into the standard tree (a leaf, an
+// object with a type, replaces what it lands on; other objects merge). The
+// page loads effects on demand, so its tree holds the choices of the effects
+// it has loaded so far. With effects ("<namespace>.<func>" keys), the tree
+// holds those effects' choices, as a fresh page that loaded one program
+// does; without, every catalog effect's.
+Value renderer_enum_tree(const EffectRegistry& registry, const std::vector<JsString>* effects = nullptr);
 bool write_uniform_aliases(Value& pass, const JsString& param_name,
                            const Value& uniform_name, const Value& value);
 

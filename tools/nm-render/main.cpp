@@ -38,8 +38,9 @@
 //
 // A --dsl program gets the demo page's step values after it compiles: the
 // reference ProgramState's values for it, applied with the renderer's
-// applyStepParameterValues. The page's control initialization, which can
-// coerce some of them first, is not ported yet.
+// applyStepParameterValues, with a fresh page's enum tree. The page's
+// control initialization, which can coerce some of them first, is not
+// ported yet.
 //
 // Not yet: MIDI sidecars, Portable effects, natively produced host inputs
 // and texture dumps.
@@ -346,15 +347,28 @@ nm::Value load_graph(const Fixture& fixture, std::string& dslText) {
 // (rebuildPipelineFromDsl): the UI loads it into ProgramState (fromDsl) and
 // the renderer applies the state's step values to the pipeline
 // (applyStepParameterValues). The UI's control initialization between the
-// two, which can coerce some values, is not ported; the enum tree holds every
-// catalog effect's choices (renderer_enum_tree).
+// two, which can coerce some values, is not ported; the enum tree is a fresh
+// page's, with the program's effects' choices (renderer_enum_tree).
 void apply_demo_step_values(be::Pipeline& pipeline, const std::string& dslText) {
     nm::ProgramState<> state(registry());
     state.from_dsl(nm::utf8_to_js(dslText));
-    static const nm::Value enums = nm::renderer_enum_tree(registry());
+    // A fresh page's enum tree: the standard enums and the choices of the
+    // program's effects, which the page loads before it compiles. A minting
+    // session's page may also hold the choices of programs it loaded before.
+    std::vector<nm::JsString> effects;
+    const nm::Value* passes = pipeline.graph().is_object() ? pipeline.graph().as_object().find(u"passes") : nullptr;
+    if (passes && passes->is_array()) {
+        for (const nm::Value& pass : passes->as_array()) {
+            const nm::Value key = pass.is_object() ? nm::jsv::member(pass, u"effectKey") : nm::Value();
+            if (key.is_string() && std::find(effects.begin(), effects.end(), key.as_string()) == effects.end()) {
+                effects.push_back(key.as_string());
+            }
+        }
+    }
+    const nm::Value enums = nm::renderer_enum_tree(registry(), &effects);
     pipeline.applyStepParameterValues(
         nm::Value(state.get_all_step_values()), [](const nm::JsString& key) { return registry().getEffectValue(key); },
-        [](const nm::Value& value, const nm::Value& spec) { return nm::convert_parameter_for_uniform(value, spec, enums); });
+        [&enums](const nm::Value& value, const nm::Value& spec) { return nm::convert_parameter_for_uniform(value, spec, enums); });
 }
 
 // /^global_mesh\d+_(positions|normals|uvs)/, the minter's mesh input test.
