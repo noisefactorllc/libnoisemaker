@@ -63,6 +63,51 @@ for (const file of readdirSync(programsDir).filter(f => f.endsWith('.dsl')).sort
   if ([...(compiled.textures?.keys() ?? []), ...(compiled.allocations?.keys() ?? [])].some(isIndex)) indexKeyed.push(file)
   graphs.push({ file, graph: plain(compiled) })
 }
+// The page's parameter path: each corpus program's step values as the demo
+// UI holds them (the reference ProgramState's getAllStepValues after
+// fromDsl), applied with the renderer's applyStepParameterValues, then a
+// frame. Numbers JSON cannot hold travel as {"$number": text}.
+const { ProgramState } = await import(pathToFileURL(join(process.env.NM_REFERENCE_ROOT, 'demo/shaders/lib/program-state.js')).href)
+const encodeNumbers = value => JSON.parse(JSON.stringify(value, (_key, member) =>
+  typeof member === 'number' && (!Number.isFinite(member) || Object.is(member, -0)) ? { $number: String(member === 0 ? '-0' : member) } : member))
+let stepValueGraphs = 0
+graphs.forEach(({ file, graph }) => {
+  const programState = new ProgramState({ renderer: null })
+  try {
+    programState.fromDsl(readFileSync(join(programsDir, file), 'utf8'))
+  } catch {
+    return
+  }
+  stepValueGraphs++
+  sequence(`corpus-params/${file}`, [
+    { op: 'create', graph, options: {} },
+    { op: 'init', width: 128, height: 96 },
+    { op: 'applyStepParameterValues', values: encodeNumbers(programState.getAllStepValues()) },
+    { op: 'render', time: 0.3 }
+  ], true)
+})
+
+// Paths the corpus values do not reach: an automation value leaves the
+// pass's own value, a parameter whose uniform the pass lacks reaches it only
+// through uniformAliases, _skip and unknown parameters are passed over, and
+// a step with no values or a pass with no stepIndex is left alone.
+{
+  const noise = JSON.parse(JSON.stringify(graphs.find(g => g.file === 'noise.dsl').graph))
+  const pass = noise.passes[0]
+  delete pass.uniforms.speed
+  pass.uniformAliases = { speedAlias: 'speed', seedAlias: 'seed', octavesAlias: 'octaves' }
+  noise.passes.push({ ...JSON.parse(JSON.stringify(noise.passes[0])), id: 'unstepped', stepIndex: undefined })
+  sequence('synthetic/step-values', [
+    { op: 'create', graph: noise, options: {} },
+    { op: 'init', width: 16, height: 16 },
+    { op: 'setPassUniform', pass: 0, name: 'octaves', value: 3 },
+    { op: 'applyStepParameterValues', values: { step_0: { octaves: { type: 'Oscillator', oscType: 0, min: 1, max: 4 }, seed: 9, speed: 5, _skip: true, notAParam: 7 } } },
+    { op: 'applyStepParameterValues', values: { step_0: { seed: { _varRef: 'x' }, scaleX: { _ast: { type: 'Midi' } } } } },
+    { op: 'applyStepParameterValues', values: { step_1: { seed: 4 }, step_0: null } },
+    { op: 'render', time: 0.2 }
+  ], true)
+}
+
 // Frames: every corpus graph rendered, including a wrap of the normalized
 // time, a resize and a render after it.
 graphs.forEach(({ file, graph }, index) => {
@@ -792,5 +837,5 @@ for (const op of ops) {
 for (const file of uncompiled) err(`  corpus/${file}: the reference does not compile it`)
 for (const file of indexKeyed) err(`  corpus/${file}: a texture or allocation id is an array index`)
 total += uncompiled.length + indexKeyed.length
-out(`Pipeline: ${matched}/${total} ops match, ${calls} device calls (${sequences} sequences: ${graphs.length} corpus graphs set up, pooled, rendered and reparameterized, ${automated.length} graphs with automation, ${sequences - 4 * graphs.length - automated.length} synthetic)`)
+out(`Pipeline: ${matched}/${total} ops match, ${calls} device calls (${sequences} sequences: ${graphs.length} corpus graphs set up, pooled, rendered and reparameterized, ${stepValueGraphs} given their step values, ${automated.length} graphs with automation, ${sequences - 4 * graphs.length - stepValueGraphs - automated.length} synthetic)`)
 process.exitCode = matched === total ? 0 : 1

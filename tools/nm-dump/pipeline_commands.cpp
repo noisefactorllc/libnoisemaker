@@ -1,6 +1,8 @@
 #include "pipeline_commands.h"
 
 #include "core/edit/jsv.h"
+#include "core/edit/program_state/host.h"
+#include "core/lang/effect_registry.h"
 #include "core/value/js_number.h"
 #include "core/value/json.h"
 #include "gpu/backend/pipeline.h"
@@ -11,6 +13,7 @@
 #include <array>
 #include <cmath>
 #include <exception>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -421,6 +424,19 @@ int pipeline(int, char**) {
                     const size_t pass = passIndex(field(op, u"pass"));
                     const nm::JsString name = field(op, u"name").as_string();
                     pipeline->setPassUniform(pass, name, decodeNumbers(field(op, u"value")));
+                } else if (kind == u"applyStepParameterValues") {
+                    // The page renderer's registry and its merged enum tree.
+                    static nm::EffectRegistry registry;
+                    static const nm::Value enums = [] {
+                        registry.loadEmbedded();
+                        return nm::renderer_enum_tree(registry);
+                    }();
+                    const nm::Value values = decodeNumbers(field(op, u"values"));
+                    pipeline->applyStepParameterValues(
+                        values, [](const nm::JsString& key) { return registry.getEffectValue(key); },
+                        [](const nm::Value& value, const nm::Value& spec) {
+                            return nm::convert_parameter_for_uniform(value, spec, enums);
+                        });
                 } else if (kind == u"broadcastChainScopedParam") {
                     const size_t pass = passIndex(field(op, u"pass"));
                     const nm::JsString uniformName = field(op, u"uniformName").as_string();

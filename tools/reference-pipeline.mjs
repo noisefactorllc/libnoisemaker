@@ -44,6 +44,11 @@ const { bootstrapReference } = await import(pathToFileURL(join(dirname(fileURLTo
 await bootstrapReference()
 const { WebGPUBackend } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/backends/webgpu.js')).href)
 const { Pipeline } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/pipeline.js')).href)
+// The page's renderer, for its parameter path: CanvasRenderer methods on a
+// renderer whose _pipeline is the op's pipeline and _enums the merged enum
+// tree mergeIntoEnums leaves after the effects register.
+const { CanvasRenderer } = await import(pathToFileURL(join(REF, 'shaders/src/renderer/canvas.js')).href)
+const { default: mergedEnums } = await import(pathToFileURL(join(REF, 'shaders/src/lang/enums.js')).href)
 const { MidiState, AudioState } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/external-input.js')).href)
 // Date.now() reads the op's time while fn runs (MIDI note times, falloff).
 const realNow = Date.now
@@ -199,6 +204,13 @@ for await (const line of lines) {
       case 'clearSurface': pipeline.clearSurface(op.name); break
       case 'setUniform': pipeline.setUniform(op.name, decodeValue(op.value)); break
       case 'setPassUniform': passAt(op.pass).uniforms[op.name] = decodeValue(op.value); break
+      case 'applyStepParameterValues': {
+        const renderer = Object.create(CanvasRenderer.prototype)
+        renderer._pipeline = pipeline
+        renderer._enums = mergedEnums
+        renderer.applyStepParameterValues(decodeValue(op.values))
+        break
+      }
       case 'broadcastChainScopedParam': pipeline.broadcastChainScopedParam(passAt(op.pass), op.uniformName, op.scopedName); break
       case 'getFrameState': {
         const state = pipeline.getFrameState()

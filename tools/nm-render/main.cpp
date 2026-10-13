@@ -36,11 +36,18 @@
 // seconds and <out stem>.f<frames>.png every K frames and after each listed
 // frame count, the minter's sample schedule.
 //
-// Not yet: MIDI sidecars, Portable effects, the demo host's parameter
-// application and texture dumps.
+// A --dsl program gets the demo page's step values after it compiles: the
+// reference ProgramState's values for it, applied with the renderer's
+// applyStepParameterValues. The page's control initialization, which can
+// coerce some of them first, is not ported yet.
+//
+// Not yet: MIDI sidecars, Portable effects, natively produced host inputs
+// and texture dumps.
 
 #include "core/graph/dsl_compiler.h"
 #include "core/lang/effect_registry.h"
+#include "core/edit/program_state/host.h"
+#include "core/edit/program_state/program_state.h"
 #include "core/value/js_number.h"
 #include "core/value/json.h"
 #include "gpu/backend/backend.h"
@@ -325,12 +332,27 @@ nm::EffectRegistry& registry() {
     return instance;
 }
 
-nm::Value load_graph(const Fixture& fixture) {
+// The fixture's graph, and its DSL text when it has one.
+nm::Value load_graph(const Fixture& fixture, std::string& dslText) {
     std::string text;
     const std::string& path = fixture.dsl.empty() ? fixture.graph : fixture.dsl;
     if (!read_file(path, text)) throw std::runtime_error("cannot read " + path);
     if (!fixture.graph.empty()) return nm::json::parse(text);
+    dslText = text;
     return nm::Value(nm::compileGraphJson(nm::utf8_to_js(text), registry()));
+}
+
+// What the demo page does after compiling a program
+// (rebuildPipelineFromDsl): the UI loads it into ProgramState (fromDsl) and
+// the renderer applies the state's step values to the pipeline
+// (applyStepParameterValues).
+void apply_demo_step_values(be::Pipeline& pipeline, const std::string& dslText) {
+    nm::ProgramState<> state(registry());
+    state.from_dsl(nm::utf8_to_js(dslText));
+    static const nm::Value enums = nm::renderer_enum_tree(registry());
+    pipeline.applyStepParameterValues(
+        nm::Value(state.get_all_step_values()), [](const nm::JsString& key) { return registry().getEffectValue(key); },
+        [](const nm::Value& value, const nm::Value& spec) { return nm::convert_parameter_for_uniform(value, spec, enums); });
 }
 
 // /^global_mesh\d+_(positions|normals|uvs)/, the minter's mesh input test.
@@ -457,9 +479,11 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
         nm::gpu::DawnDevice dawn(device);
         be::WebGPUBackend backend(dawn);
         try {
-            const nm::Value graph = load_graph(fixture);
+            std::string dslText;
+            const nm::Value graph = load_graph(fixture, dslText);
             be::Pipeline pipeline(graph, backend, {});
             pipeline.init(fixture.width, fixture.height);
+            if (!fixture.dsl.empty()) apply_demo_step_values(pipeline, dslText);
             load_meshes(graph, fixture, backend);
             // The minter's captures: texture contents, uploaded with flipY false.
             std::vector<nm::JsString> keep;

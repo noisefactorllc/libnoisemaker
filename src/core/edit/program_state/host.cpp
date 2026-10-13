@@ -1,4 +1,5 @@
 #include "core/edit/program_state/host.h"
+#include "core/lang/effect_registry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -131,6 +132,30 @@ Value resolve_enum_value(const Value& path, const Value& enums) {
         return resolved.is_undefined() ? Value::null() : resolved;
     }
     return Value::null();
+}
+
+namespace {
+void merge_enums(Object& target, const Value& source) {
+    if (!source.is_object()) return;
+    for (const auto& key : source.as_object().keys()) {
+        if (key == u"__proto__" || key == u"constructor" || key == u"prototype") continue;
+        const Value item = *source.as_object().find(key);
+        const Value* existing = target.find(key);
+        if (item.is_object() && existing && existing->is_object() && !item.as_object().has(u"type")) {
+            Object child = existing->as_object();
+            merge_enums(child, item);
+            target.set(key, Value(child));
+        } else {
+            target.set(key, item);
+        }
+    }
+}
+}  // namespace
+
+Value renderer_enum_tree(const EffectRegistry& registry) {
+    Object combined = registry.enums().std().raw().as_object();
+    merge_enums(combined, registry.enums().project().raw());
+    return Value(std::move(combined));
 }
 
 Value convert_parameter_for_uniform(const Value& value, const Value& spec, const Value& enums) {

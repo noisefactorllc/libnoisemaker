@@ -3,6 +3,7 @@
 #include "gpu/backend/automation.h"
 
 #include "core/catalog/catalog.h"
+#include "core/edit/program_state/host.h"
 #include "core/edit/program_state/palette.h"
 #include "core/edit/jsv.h"
 #include "core/value/js_math.h"
@@ -1540,6 +1541,96 @@ void Pipeline::setPassUniform(size_t pass, const JsString& name, Value value) {
     const Value uniforms = jsv::get((*list)[pass], u"uniforms");
     if (!uniforms.is_object()) throw JsError(u"Error", u"pass uniforms other than an object are outside the port");
     jsv::set_plain((*list)[pass].as_object()[u"uniforms"].as_object(), name, std::move(value));
+}
+
+namespace {
+
+// isAutomationControlled (renderer/canvas.js).
+bool isAutomationControlled(const Value& value) {
+    if (!jsv::truthy(value) || !(value.is_object() || value.is_array())) return false;
+    if (jsv::truthy(jsv::member(value, u"_varRef"))) return true;
+    Value type = jsv::member(value, u"type");
+    if (!jsv::truthy(type)) {
+        const Value ast = jsv::member(value, u"_ast");
+        type = ast.is_undefined() || ast.is_null() ? Value() : jsv::member(ast, u"type");
+    }
+    return jsv::strict_equals(type, Value(u"Oscillator")) || jsv::strict_equals(type, Value(u"Midi")) ||
+           jsv::strict_equals(type, Value(u"Audio"));
+}
+
+Value sliceIfArray(const Value& value) { return value.is_array() ? Value(Array(value.as_array())) : value; }
+
+}  // namespace
+
+void Pipeline::applyStepParameterValues(const Value& stepParameterValues,
+                                        const std::function<Value(const JsString&)>& getEffect,
+                                        const std::function<Value(const Value&, const Value&)>& convert) {
+    if (!jsv::truthy(graph_) || !jsv::member(graph_, u"passes").is_array()) return;
+    Array* list = passes();
+    bool scopedParamChanged = false;
+    for (size_t index = 0; index < list->size(); ++index) {
+        if (!jsv::truthy((*list)[index])) continue;
+        const Value stepIndex = jsv::member((*list)[index], u"stepIndex");
+        if (stepIndex.is_undefined()) continue;
+        const Value stepParams = jsv::member(stepParameterValues, u"step_" + jsv::to_string(stepIndex));
+        if (!jsv::truthy(stepParams)) continue;
+        const Value effectKey = jsv::member((*list)[index], u"effectKey");
+        const Value effectDef = jsv::truthy(effectKey) && effectKey.is_string() ? getEffect(effectKey.as_string()) : Value::null();
+        if (!jsv::truthy(effectDef) || !jsv::truthy(jsv::member(effectDef, u"globals"))) continue;
+        const Value globals = jsv::member(effectDef, u"globals");
+        // Uniforms colorModeUniform controls: the expander sets them from the surface.
+        std::vector<Value> colorModeControlled;
+        for (const Value& globalSpec : jsv::values(globals)) {
+            const Value uniform = jsv::member(globalSpec, u"colorModeUniform");
+            if (jsv::truthy(uniform)) colorModeControlled.push_back(uniform);
+        }
+        const auto controlled = [&](const Value& name) {
+            for (const Value& v : colorModeControlled) {
+                if (jsv::same_value_zero(v, name)) return true;
+            }
+            return false;
+        };
+        Value paletteExpansion;
+        for (const auto& [paramName, value] : jsv::entries(stepParams)) {
+            if (paramName == u"_skip") continue;
+            if (isAutomationControlled(value)) continue;
+            const Value spec = jsv::member(globals, paramName);
+            if (!jsv::truthy(spec) || jsv::strict_equals(jsv::member(spec, u"type"), Value(u"surface"))) continue;
+            const Value specUniform = jsv::member(spec, u"uniform");
+            const Value uniformName = jsv::truthy(specUniform) ? specUniform : Value(paramName);
+            if (controlled(uniformName)) continue;
+            Value& pass = (*list)[index];
+            if (!jsv::truthy(jsv::member(pass, u"uniforms"))) continue;
+            if (!jsv::in_operator(uniformName, jsv::member(pass, u"uniforms"))) {
+                write_uniform_aliases(pass, paramName, uniformName, convert(value, spec));
+                continue;
+            }
+            const JsString name = jsv::to_property_key(uniformName);
+            // Consumer passes inherit volumeSize from the upstream emitter.
+            if (name == u"volumeSize" && jsv::truthy(jsv::member(pass, u"inheritsVolumeSize"))) continue;
+            const Value converted = convert(value, spec);
+            jsv::set_plain(pass.as_object()[u"uniforms"].as_object(), name, sliceIfArray(converted));
+            write_uniform_aliases(pass, paramName, uniformName, converted);
+            const Value scopedParams = jsv::member(pass, u"scopedParams");
+            if (jsv::truthy(scopedParams) && jsv::truthy(jsv::member(scopedParams, name))) {
+                const JsString scopedName = jsv::to_property_key(jsv::member(scopedParams, name));
+                Object& uniforms = pass.as_object()[u"uniforms"].as_object();
+                jsv::set_plain(uniforms, scopedName, jsv::member(Value(uniforms), name));
+                scopedParamChanged = true;
+                broadcastChainScopedParam(index, name, scopedName);
+            }
+            if (jsv::strict_equals(jsv::member(spec, u"type"), Value(u"palette"))) paletteExpansion = expand_palette_value(converted);
+        }
+        if (jsv::truthy(paletteExpansion)) {
+            Value& pass = (*list)[index];
+            for (const auto& [uName, uValue] : jsv::entries(paletteExpansion)) {
+                if (jsv::in_operator(Value(uName), jsv::member(pass, u"uniforms"))) {
+                    jsv::set_plain(pass.as_object()[u"uniforms"].as_object(), uName, sliceIfArray(uValue));
+                }
+            }
+        }
+    }
+    if (scopedParamChanged) recreateTextures(collectDefaultUniforms());
 }
 
 void Pipeline::setMidiState(std::shared_ptr<const MidiState> midi) {

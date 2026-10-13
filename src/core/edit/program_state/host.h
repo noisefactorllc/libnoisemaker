@@ -73,6 +73,11 @@ Value resolve_enum_value(const Value& path, const Value& enums);
 double parse_js_float_value(const Value& value);
 double parse_js_int_value(const Value& value, int radix = 10);
 Value convert_parameter_for_uniform(const Value& value, const Value& spec, const Value& enums);
+class EffectRegistry;
+// The page renderer's _enums once the effects have loaded: mergeIntoEnums of
+// the registry's project choices into its standard tree (a leaf, an object
+// with a type, replaces what it lands on; other objects merge).
+Value renderer_enum_tree(const EffectRegistry& registry);
 bool write_uniform_aliases(Value& pass, const JsString& param_name,
                            const Value& uniform_name, const Value& value);
 

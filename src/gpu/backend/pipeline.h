@@ -125,6 +125,17 @@ public:
     // pass.uniforms[name] = value on graph.passes[pass], as the UI parameter
     // paths write a pass's value before they broadcast it.
     void setPassUniform(size_t pass, const JsString& name, Value value);
+    // The reference CanvasRenderer's applyStepParameterValues
+    // (renderer/canvas.js): { step_N: { param: value } } written into each
+    // pass of step N, with getEffect's definition for the pass's effectKey
+    // and values converted by convert (convertParameterForUniform); aliases
+    // written, chain-scoped variants broadcast, palettes expanded after the
+    // step's writes, and textures recreated when a scoped parameter
+    // changed. The asyncInit regeneration it asks for is outside the port
+    // (the overlays are host inputs).
+    void applyStepParameterValues(const Value& stepParameterValues,
+                                  const std::function<Value(const JsString& effectKey)>& getEffect,
+                                  const std::function<Value(const Value& value, const Value& spec)>& convert);
     static bool dimensionReferencesParam(const Value& spec, const JsString& paramName);
 
     // setMidiState and setAudioState: the host's states automation and the
