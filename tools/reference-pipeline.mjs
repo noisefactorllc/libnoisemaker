@@ -14,8 +14,9 @@
 // render {time}; syncTime {time}; setTileRegion {offset, fullResolution,
 // renderScale}; clearTileRegion; clearSurface {name}; setUniform {name,
 // value}; setPassUniform {pass, name, value}, the write the UI parameter
-// paths make before broadcastChainScopedParam {pass (an index),
-// uniformName, scopedName}; getFrameState, whose
+// paths make before broadcastChainScopedParam {pass, uniformName,
+// scopedName}, where pass is a non-negative integer index into
+// graph.passes and any other value names no pass; getFrameState, whose
 // result is the frame state with texture records as their device ids. Numbers
 // JSON cannot hold travel as {"$number": text}. A graph's textures and
 // allocations, objects in JSON, are Maps again here.
@@ -45,6 +46,11 @@ const decodeValue = value => {
     return Object.fromEntries(keys.map(key => [key, decodeValue(value[key])]))
   }
   return value
+}
+// An op's pass, or undefined (see the header).
+const passAt = index => {
+  const passes = pipeline.graph?.passes
+  return Array.isArray(passes) && Number.isInteger(index) && index >= 0 ? passes[index] : undefined
 }
 const decodeGraph = graph => {
   if (!graph || typeof graph !== 'object' || Array.isArray(graph)) return graph
@@ -137,8 +143,8 @@ for await (const line of lines) {
       case 'clearTileRegion': pipeline.clearTileRegion(); break
       case 'clearSurface': pipeline.clearSurface(op.name); break
       case 'setUniform': pipeline.setUniform(op.name, decodeValue(op.value)); break
-      case 'setPassUniform': pipeline.graph.passes[op.pass].uniforms[op.name] = decodeValue(op.value); break
-      case 'broadcastChainScopedParam': pipeline.broadcastChainScopedParam(pipeline.graph?.passes?.[op.pass], op.uniformName, op.scopedName); break
+      case 'setPassUniform': passAt(op.pass).uniforms[op.name] = decodeValue(op.value); break
+      case 'broadcastChainScopedParam': pipeline.broadcastChainScopedParam(passAt(op.pass), op.uniformName, op.scopedName); break
       case 'getFrameState': {
         const state = pipeline.getFrameState()
         const surfaces = {}

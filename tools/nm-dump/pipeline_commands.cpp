@@ -8,7 +8,6 @@
 
 #include <array>
 #include <cmath>
-#include <cstdint>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -26,17 +25,13 @@ nm::Value field(const nm::Value& object, const char16_t* key) {
     return found ? *found : nm::Value();
 }
 
-// passes[index]: the index as a property key, which names an element only
-// when it is a canonical array index ("0", "12"; not "01", "0.5" or "-1").
+// An op's pass: a non-negative integer index into graph.passes; any other
+// value names no pass (tools/reference-pipeline.mjs reads it the same way).
 size_t passIndex(const nm::Value& value) {
-    const nm::JsString key = nm::jsv::to_property_key(value);
-    if (key.empty() || key.size() > 10 || (key.size() > 1 && key[0] == u'0')) return static_cast<size_t>(-1);
-    uint64_t n = 0;
-    for (const char16_t c : key) {
-        if (c < u'0' || c > u'9') return static_cast<size_t>(-1);
-        n = n * 10 + static_cast<uint64_t>(c - u'0');
-    }
-    return n < 4294967295ull ? static_cast<size_t>(n) : static_cast<size_t>(-1);
+    if (!value.is_number()) return static_cast<size_t>(-1);
+    const double n = value.as_number();
+    if (!(n >= 0) || n >= 4294967295.0 || std::floor(n) != n) return static_cast<size_t>(-1);
+    return static_cast<size_t>(n);
 }
 
 double number(const nm::Value& value, const char16_t* name) {
