@@ -101,15 +101,16 @@ DoubleDouble cosSeries(DoubleDouble r) {
 void reduceQuadrant(double x, DoubleDouble& r, int& quadrant);
 
 // 2 / pi in 32-bit words, most significant first: the sum of
-// kTwoOverPi[w] * 2^(-32 (w + 1)).
-constexpr uint32_t kTwoOverPi[40] = {
+// kTwoOverPi[w] * 2^(-32 (w + 1)). The largest double's window ends at the
+// last word.
+constexpr uint32_t kTwoOverPi[39] = {
     0xa2f9836e, 0x4e441529, 0xfc2757d1, 0xf534ddc0, 0xdb629599, 0x3c439041,
     0xfe5163ab, 0xdebbc561, 0xb7246e3a, 0x424dd2e0, 0x06492eea, 0x09d1921c,
     0xfe1deb1c, 0xb129a73e, 0xe88235f5, 0x2ebb4484, 0xe99c7026, 0xb45f7e41,
     0x3991d639, 0x835339f4, 0x9c845f8b, 0xbdf9283b, 0x1ff897ff, 0xde05980f,
     0xef2f118b, 0x5a0a6d1f, 0x6d367ecf, 0x27cb09b7, 0x4f463f66, 0x9e5fea2d,
     0x7527bac7, 0xebe5f17b, 0x3d0739f7, 0x8a5292ea, 0x6bfb5fb1, 0x1f8d5d08,
-    0x56033046, 0xfc7b6bab, 0xf0cfbc20, 0x9af4361d,
+    0x56033046, 0xfc7b6bab, 0xf0cfbc20,
 };
 
 // Bits [top - 52, top] of the little-endian 32-bit limbs, as an integer;

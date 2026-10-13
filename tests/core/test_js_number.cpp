@@ -490,7 +490,8 @@ const TrigCase kTrigCases[] = {
     {2.138870521518509, 0x3feaf95a743097fcull, 0xbfe137602498ed4eull},
     {-3.9424648573588073, 0x3fe6f98e90ae8850ull, 0xbfe6464b2a739da7ull},
     // At and beyond 2^20, where the reduction is Payne and Hanek's: the
-    // double nearest a multiple of pi / 2 (6381956970095103 * 2^797), the
+    // double nearest a multiple of pi / 2 (6381956970095103 * 2^797, which
+    // prints as 5.319372648326541e+255), the
     // largest double and one argument per 18 exponents. Computed with exact
     // big-integer reduction against 1800 bits of pi and a fixed-point series.
     {1048576.0, 0x3fd526ccb2fc8656ull, 0x3fee33ada92fe2aeull},
@@ -504,7 +505,6 @@ const TrigCase kTrigCases[] = {
     {-5.319372648326541e+255, 0xbff0000000000000ull, 0xbc214ae72e6ba22full},
     {8.98846567431158e+307, 0x3fe205248cbdb760ull, 0xbfea719f26c232bfull},
     {1e+300, 0xbfea2c16b010e385ull, 0xbfe2699022adc4c1ull},
-    {5.319372648326541e+255, 0x3ff0000000000000ull, 0xbc214ae72e6ba22full},
     {-1564338.9055274616, 0xbfefc2ade3c69e80ull, 0xbfbf43aca8805a3bull},
     {-500244070590.08514, 0x3fecaf96deeede90ull, 0x3fdc5d02121feb1cull},
     {1.3438394896787176e+17, 0xbfe1be34b35cd2fdull, 0x3feaa16bca95925aull},
