@@ -287,14 +287,30 @@ void WebGPUBackend::destroyTexture(const JsString& id) {
     const auto it = textures_.find(id);
     if (it == textures_.end()) return;
     device_.destroyTexture(it->second->handle);
+    const std::shared_ptr<TextureRecord> record = it->second;
     textures_.erase(it);
     textureOrder_.erase(std::find(textureOrder_.begin(), textureOrder_.end(), id));
+    releaseRecord(record);
+}
+
+// A record no id and no pipeline structure holds any more: the reference's
+// garbage collector may take its texture, views and mip bind groups.
+void WebGPUBackend::releaseRecord(const std::shared_ptr<TextureRecord>& record) {
+    if (!record || record.use_count() > 1) return;
+    for (const Handle group : record->mipBindGroups) device_.release(group);
+    for (const Handle view : record->mipViews) device_.release(view);
+    if (record->renderView) device_.release(*record->renderView);
+    device_.release(record->view);
+    device_.release(record->handle);
 }
 
 void WebGPUBackend::setTexture(const JsString& id, std::shared_ptr<TextureRecord> record) {
+    const auto existing = textures_.find(id);
+    std::shared_ptr<TextureRecord> replaced = existing == textures_.end() ? nullptr : existing->second;
     auto [it, inserted] = textures_.insert_or_assign(id, std::move(record));
     (void)it;
     if (inserted) textureOrder_.push_back(id);
+    if (replaced && replaced != it->second) releaseRecord(replaced);
 }
 
 std::shared_ptr<TextureRecord> WebGPUBackend::textureRecord(const JsString& id) const {
@@ -573,7 +589,10 @@ void WebGPUBackend::endFrame() {
         retiredStorageBuffers_.clear();
         // The reference's callback holds the buffers, not the backend.
         device_.onSubmittedWorkDone([device = &device_, retired] {
-            for (const Buffer& buffer : retired) device->destroyBuffer(buffer.handle);
+            for (const Buffer& buffer : retired) {
+                device->destroyBuffer(buffer.handle);
+                device->release(buffer.handle);
+            }
         });
     }
 }
@@ -674,6 +693,7 @@ Pixels WebGPUBackend::readPixels(const JsString& textureId) {
     }
     device_.unmap(stagingBuffer);
     device_.destroyBuffer(stagingBuffer);
+    device_.release(stagingBuffer);
     return out;
 }
 
@@ -1205,7 +1225,10 @@ Handle WebGPUBackend::resolveMRTRenderPipeline(ProgramInfo& program, const Value
 
 Handle WebGPUBackend::getDepthTexture(const Value& width, const Value& height) {
     if (!depthTexture_ || !jsv::strict_equals(depthTextureWidth_, width) || !jsv::strict_equals(depthTextureHeight_, height)) {
-        if (depthTexture_) device_.destroyTexture(depthTexture_);
+        if (depthTexture_) {
+            device_.destroyTexture(depthTexture_);
+            device_.release(depthTexture_);
+        }
         TextureDescriptor descriptor;
         descriptor.size = extent(width, height);
         descriptor.format = u"depth24plus";

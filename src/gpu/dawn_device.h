@@ -14,9 +14,11 @@
 // Objects the browser would let the garbage collector take are released
 // when WebGPU makes them unusable (a pass encoder at end(), a command
 // encoder at finish(), a command buffer at submit()) and when the backend
-// releases them (each pass's bind group and depth view). getBindGroupLayout
-// returns one handle per pipeline and group. The others, such as a resized
-// texture's old views, live until the DawnDevice is destroyed.
+// releases them (each pass's bind group and depth view, a destroyed or
+// replaced texture's record, destroyed buffers). getBindGroupLayout returns
+// one handle per pipeline and group. A released handle's number is reused,
+// as the recording device's never is: the gates, which run on the recording
+// device, refuse any use of a released handle.
 // destroyTexture and destroyBuffer destroy the GPU resource, as destroy()
 // does, and keep the handle valid.
 
@@ -121,6 +123,8 @@ private:
 
     gpu::Device& device_;
     std::vector<Object> objects_;
+    // Released slots, reused by add(): the table holds live objects only.
+    std::vector<backend::Handle> free_;
     std::map<std::pair<backend::Handle, uint32_t>, backend::Handle> layouts_;
     double maxTextureDimension2D_ = 0;
     double maxColorAttachmentBytesPerSample_ = 0;

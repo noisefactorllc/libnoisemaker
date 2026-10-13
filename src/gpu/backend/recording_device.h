@@ -56,7 +56,8 @@ public:
     std::vector<uint8_t> mapRead(Handle buffer) override;
     void unmap(Handle buffer) override;
     // Not logged: the reference has no such call. A released handle passed
-    // to any later call throws, so the gate fails on a premature release.
+    // to any later call that takes a handle throws, so the gate fails on a
+    // premature release.
     void release(Handle object) override { released_.insert(object); }
 
     // The calls since the last take, in order.

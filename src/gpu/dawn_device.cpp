@@ -262,6 +262,13 @@ DawnDevice::~DawnDevice() {
 }
 
 Handle DawnDevice::add(Kind kind, void* handle, uint64_t size) {
+    if (!free_.empty()) {
+        const Handle slot = free_.back();
+        free_.pop_back();
+        objects_[slot - 1] = Object{kind, handle, size};
+        return slot;
+    }
+    if (objects_.size() >= std::numeric_limits<Handle>::max()) throw JsError(u"RangeError", u"too many WebGPU objects");
     objects_.push_back(Object{kind, handle, size});
     return Handle(objects_.size());
 }
@@ -603,7 +610,7 @@ void DawnDevice::end(Handle pass) {
     } else {
         wgpuRenderPassEncoderEnd(as<WGPURenderPassEncoder>(pass, Kind::RenderPass, "end"));
     }
-    release(objects_[pass - 1]);
+    release(pass);
 }
 
 void DawnDevice::copyTextureToTexture(Handle encoder, const backend::TexelCopyTextureInfo& source,
@@ -630,7 +637,7 @@ void DawnDevice::copyTextureToBuffer(Handle encoder, const backend::TexelCopyTex
 Handle DawnDevice::finish(Handle encoder) {
     const auto enc = as<WGPUCommandEncoder>(encoder, Kind::CommandEncoder, "finish");
     const WGPUCommandBuffer buffer = wgpuCommandEncoderFinish(enc, nullptr);
-    release(objects_[encoder - 1]);
+    release(encoder);
     return add(Kind::CommandBuffer, buffer);
 }
 
@@ -639,7 +646,7 @@ void DawnDevice::submit(const std::vector<Handle>& commandBuffers) {
     buffers.reserve(commandBuffers.size());
     for (Handle buffer : commandBuffers) buffers.push_back(as<WGPUCommandBuffer>(buffer, Kind::CommandBuffer, "submit"));
     wgpuQueueSubmit(device_.queue, buffers.size(), buffers.data());
-    for (Handle buffer : commandBuffers) release(objects_[buffer - 1]);
+    for (Handle buffer : commandBuffers) release(buffer);
 }
 
 void DawnDevice::onSubmittedWorkDone(std::function<void()> done) {
@@ -647,7 +654,9 @@ void DawnDevice::onSubmittedWorkDone(std::function<void()> done) {
     info.mode = WGPUCallbackMode_AllowProcessEvents;
     info.callback = [](WGPUQueueWorkDoneStatus status, WGPUStringView, void* userdata1, void*) {
         std::unique_ptr<WorkDone> work(static_cast<WorkDone*>(userdata1));
-        if (status == WGPUQueueWorkDoneStatus_Success) work->done();
+        // The reference runs it when the promise settles either way; a
+        // cancelled callback comes at instance teardown, after this device.
+        if (status != WGPUQueueWorkDoneStatus_CallbackCancelled) work->done();
     };
     info.userdata1 = new WorkDone{std::move(done)};
     wgpuQueueOnSubmittedWorkDone(device_.queue, info);
@@ -682,8 +691,19 @@ void DawnDevice::unmap(Handle buffer) {
 }
 
 void DawnDevice::release(Handle object) {
-    if (object == 0 || object > objects_.size()) return;
+    if (object == 0 || object > objects_.size() || objects_[object - 1].kind == Kind::Released) return;
+    // The layout cache's entries refer to the pipeline, which the backend
+    // never releases; a released layout leaves the cache.
+    if (objects_[object - 1].kind == Kind::BindGroupLayout) {
+        for (auto it = layouts_.begin(); it != layouts_.end(); ++it) {
+            if (it->second == object) {
+                layouts_.erase(it);
+                break;
+            }
+        }
+    }
     release(objects_[object - 1]);
+    free_.push_back(object);
 }
 
 void DawnDevice::processEvents() {

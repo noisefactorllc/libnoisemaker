@@ -368,6 +368,7 @@ void RecordingDevice::setBindGroup(Handle pass, double index, Handle group) {
 }
 
 void RecordingDevice::setViewport(Handle pass, double x, double y, double width, double height, double minDepth, double maxDepth) {
+    live(pass);
     Object call;
     call.set(u"call", Value(u"setViewport"));
     call.set(u"pass", ref(pass));
@@ -376,6 +377,7 @@ void RecordingDevice::setViewport(Handle pass, double x, double y, double width,
 }
 
 void RecordingDevice::draw(Handle pass, double vertexCount, double instanceCount, double firstVertex, double firstInstance) {
+    live(pass);
     Object call;
     call.set(u"call", Value(u"draw"));
     call.set(u"pass", ref(pass));
@@ -384,6 +386,7 @@ void RecordingDevice::draw(Handle pass, double vertexCount, double instanceCount
 }
 
 void RecordingDevice::dispatchWorkgroups(Handle pass, double x, double y, double z) {
+    live(pass);
     Object call;
     call.set(u"call", Value(u"dispatchWorkgroups"));
     call.set(u"pass", ref(pass));
@@ -392,6 +395,7 @@ void RecordingDevice::dispatchWorkgroups(Handle pass, double x, double y, double
 }
 
 void RecordingDevice::end(Handle pass) {
+    live(pass);
     Object call;
     call.set(u"call", Value(u"end"));
     call.set(u"pass", ref(pass));
@@ -461,6 +465,7 @@ std::vector<uint8_t> RecordingDevice::mapRead(Handle buffer) {
 }
 
 void RecordingDevice::unmap(Handle buffer) {
+    live(buffer);
     Object call;
     call.set(u"call", Value(u"unmap"));
     call.set(u"buffer", ref(buffer));
@@ -479,6 +484,7 @@ Handle RecordingDevice::finish(Handle encoder) {
 }
 
 void RecordingDevice::submit(const std::vector<Handle>& commandBuffers) {
+    for (Handle buffer : commandBuffers) live(buffer);
     Array ids;
     for (Handle buffer : commandBuffers) ids.emplace_back(double(buffer));
     Object call;

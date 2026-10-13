@@ -22,6 +22,7 @@
 #include "gpu/device.h"
 #include "png.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -63,6 +64,14 @@ bool read_file(const std::string& path, std::string& text) {
     return true;
 }
 
+// A whole argument as a finite number, or nothing.
+std::optional<double> number(const char* text) {
+    char* end = nullptr;
+    const double value = std::strtod(text, &end);
+    if (end == text || *end != '\0' || !std::isfinite(value)) return std::nullopt;
+    return value;
+}
+
 std::optional<Options> parse(int argc, char** argv) {
     Options options;
     for (int i = 2; i < argc; ++i) {
@@ -74,18 +83,31 @@ std::optional<Options> parse(int argc, char** argv) {
             continue;
         }
         if (!(v = value())) return std::nullopt;
-        if (arg == "--dsl") options.dsl = v;
-        else if (arg == "--graph") options.graph = v;
-        else if (arg == "--out") options.out = v;
-        else if (arg == "--size") options.width = options.height = std::atof(v);
-        else if (arg == "--width") options.width = std::atof(v);
-        else if (arg == "--height") options.height = std::atof(v);
-        else if (arg == "--time") options.time = std::atof(v);
-        else if (arg == "--frames") options.frames = std::atoi(v);
+        if (arg == "--dsl") {
+            options.dsl = v;
+            continue;
+        }
+        if (arg == "--graph") {
+            options.graph = v;
+            continue;
+        }
+        if (arg == "--out") {
+            options.out = v;
+            continue;
+        }
+        const std::optional<double> n = number(v);
+        if (!n) return std::nullopt;
+        if (arg == "--size") options.width = options.height = *n;
+        else if (arg == "--width") options.width = *n;
+        else if (arg == "--height") options.height = *n;
+        else if (arg == "--time") options.time = *n;
+        else if (arg == "--frames" && *n == std::floor(*n) && *n >= 0 && *n <= 1e6) options.frames = int(*n);
         else return std::nullopt;
     }
     if (options.dsl.empty() == options.graph.empty() || options.out.empty()) return std::nullopt;
-    if (!(options.width >= 1 && options.height >= 1 && options.frames >= 0)) return std::nullopt;
+    // Sizes are whole pixels, as the minter's --size is.
+    const auto pixels = [](double v) { return v >= 1 && v <= 16384 && v == std::floor(v); };
+    if (!pixels(options.width) || !pixels(options.height)) return std::nullopt;
     return options;
 }
 
