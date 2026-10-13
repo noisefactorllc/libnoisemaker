@@ -47,9 +47,12 @@
 // connects a MIDI state to the pipeline and delivers those raw messages
 // after the program loads, as the minter does through the page's renderer.
 //
-// A --dsl program's media steps get the demo page's default image,
-// $NM_REFERENCE_ROOT/demo/shaders/img/testcard.png, or the host texture
-// given for their texture, with the page's imageSize.
+// A --dsl program's media steps that have passes in the graph get the demo
+// page's default image, $NM_REFERENCE_ROOT/demo/shaders/img/testcard.png, or
+// the host texture given for their texture, with the page's imageSize. (The
+// page also loads the image of a skipped media step, which renders
+// nothing.) The page uploads an image with copyExternalImageToTexture;
+// nm-render writes its decoded pixels.
 //
 // Not yet: Portable effects, text and the asyncInit overlays produced
 // natively, and texture dumps.
@@ -390,7 +393,7 @@ std::vector<nm::JsString> apply_demo_step_values(be::Pipeline& pipeline, be::Web
             [&enums](const nm::Value& value, const nm::Value& spec) { return nm::convert_parameter_for_uniform(value, spec, enums); });
     };
     apply();
-    // Media steps (an externalTexture other than textTex): the page loads
+    // Media steps with passes (an externalTexture other than textTex): the page loads
     // its default image, img/testcard.png, and once it decodes
     // (_updateMediaTexture) uploads it with flipY false, sets the step's
     // imageSize to its size and applies the step values again
