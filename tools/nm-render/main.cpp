@@ -47,8 +47,12 @@
 // connects a MIDI state to the pipeline and delivers those raw messages
 // after the program loads, as the minter does through the page's renderer.
 //
-// Not yet: Portable effects, natively produced host inputs and texture
-// dumps.
+// A --dsl program's media steps get the demo page's default image,
+// $NM_REFERENCE_ROOT/demo/shaders/img/testcard.png, or the host texture
+// given for their texture, with the page's imageSize.
+//
+// Not yet: Portable effects, text and the asyncInit overlays produced
+// natively, and texture dumps.
 
 #include "core/graph/dsl_compiler.h"
 #include "core/lang/effect_registry.h"
@@ -361,7 +365,9 @@ nm::Value load_graph(const Fixture& fixture, std::string& dslText) {
 // (applyStepParameterValues). The UI's control initialization between the
 // two, which can coerce some values, is not ported; the enum tree is a fresh
 // page's, with the program's effects' choices (renderer_enum_tree).
-void apply_demo_step_values(be::Pipeline& pipeline, const std::string& dslText) {
+// Returns the media textures it uploaded, which the fresh-state reset keeps.
+std::vector<nm::JsString> apply_demo_step_values(be::Pipeline& pipeline, be::WebGPUBackend& backend, const Fixture& fixture,
+                                                 const std::string& dslText) {
     nm::ProgramState<> state(registry());
     state.from_dsl(nm::utf8_to_js(dslText));
     // A fresh page's enum tree: the standard enums and the choices of the
@@ -378,9 +384,51 @@ void apply_demo_step_values(be::Pipeline& pipeline, const std::string& dslText) 
         }
     }
     const nm::Value enums = nm::renderer_enum_tree(registry(), &effects);
-    pipeline.applyStepParameterValues(
-        nm::Value(state.get_all_step_values()), [](const nm::JsString& key) { return registry().getEffectValue(key); },
-        [&enums](const nm::Value& value, const nm::Value& spec) { return nm::convert_parameter_for_uniform(value, spec, enums); });
+    const auto apply = [&]() {
+        pipeline.applyStepParameterValues(
+            nm::Value(state.get_all_step_values()), [](const nm::JsString& key) { return registry().getEffectValue(key); },
+            [&enums](const nm::Value& value, const nm::Value& spec) { return nm::convert_parameter_for_uniform(value, spec, enums); });
+    };
+    apply();
+    // Media steps (an externalTexture other than textTex): the page loads
+    // its default image, img/testcard.png, and once it decodes
+    // (_updateMediaTexture) uploads it with flipY false, sets the step's
+    // imageSize to its size and applies the step values again
+    // (_applyStepParams). A host texture given for the step's texture
+    // replaces the image, as a loaded file does.
+    std::vector<nm::JsString> media;
+    std::vector<double> seenSteps;
+    if (passes && passes->is_array()) {
+        for (const nm::Value& pass : passes->as_array()) {
+            const nm::Value key = pass.is_object() ? nm::jsv::member(pass, u"effectKey") : nm::Value();
+            const nm::Value step = pass.is_object() ? nm::jsv::member(pass, u"stepIndex") : nm::Value();
+            if (!key.is_string() || !step.is_number()) continue;
+            if (std::find(seenSteps.begin(), seenSteps.end(), step.as_number()) != seenSteps.end()) continue;
+            const nm::Value def = registry().getEffectValue(key.as_string());
+            const nm::Value external = def.is_object() ? nm::jsv::member(def, u"externalTexture") : nm::Value();
+            if (!nm::jsv::truthy(external) || nm::jsv::strict_equals(external, nm::Value(u"textTex"))) continue;
+            seenSteps.push_back(step.as_number());
+            const nm::JsString stepKey = u"step_" + nm::jsv::to_string(step);
+            const nm::JsString texId = nm::jsv::to_string(external) + u"_" + stepKey;
+            std::string path;
+            for (const auto& [id, png] : fixture.hostTextures) {
+                if (nm::utf8_to_js(id) == texId) path = png;
+            }
+            if (path.empty()) {
+                const std::string root = environment("NM_REFERENCE_ROOT");
+                if (root.empty()) throw std::runtime_error("the default media image needs NM_REFERENCE_ROOT");
+                path = root + "/demo/shaders/img/testcard.png";
+            }
+            const nm_render::Image image = nm_render::decode_png(nm_render::read_file(path));
+            const nm::Value size = backend.updateTextureFromPixels(texId, image.width, image.height, image.rgba, false);
+            const double width = nm::jsv::to_number(nm::jsv::member(size, u"width"));
+            const double height = nm::jsv::to_number(nm::jsv::member(size, u"height"));
+            if (width > 0 && height > 0) state.set_value(stepKey, u"imageSize", nm::Value(nm::Array{nm::Value(width), nm::Value(height)}));
+            media.push_back(texId);
+        }
+    }
+    if (!media.empty()) apply();
+    return media;
 }
 
 // /^global_mesh\d+_(positions|normals|uvs)/, the minter's mesh input test.
@@ -548,11 +596,11 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
             const nm::Value graph = load_graph(fixture, dslText);
             be::Pipeline pipeline(graph, backend, {});
             pipeline.init(fixture.width, fixture.height);
-            if (!fixture.dsl.empty()) apply_demo_step_values(pipeline, dslText);
+            std::vector<nm::JsString> keep;
+            if (!fixture.dsl.empty()) keep = apply_demo_step_values(pipeline, backend, fixture, dslText);
             load_meshes(graph, fixture, backend);
             deliver_midi(pipeline, fixture);
             // The minter's captures: texture contents, uploaded with flipY false.
-            std::vector<nm::JsString> keep;
             for (const auto& [id, path] : fixture.hostTextures) {
                 const nm_render::Image image = nm_render::decode_png(nm_render::read_file(path));
                 keep.push_back(nm::utf8_to_js(id));
