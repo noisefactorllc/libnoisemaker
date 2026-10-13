@@ -46,7 +46,7 @@
 // pinned clock: they step pipeline.render(t) with t = ((frame + 1) / 600) % 1
 // and save <name>.golden.t<sec>.png every S seconds and
 // <name>.golden.f<frames>.png every K frames and after each listed frame
-// count (nm-render's sample schedule).
+// count (parity/sweep.py's sample schedule).
 //
 // Exact intermediate state: --dump-texture ID (repeatable) reads a backend
 // texture, or a global surface's current read texture (ID = the surface name
@@ -57,7 +57,8 @@
 // pass list in <name>.golden[.<label>].passes.json. Texels are decoded from
 // the texture's format in the page (half floats widened exactly, 8-bit
 // channels as byte / 255) and leave the page as a binary upload, like the
-// PNG captures; nm-render --dump-texture/--dump-passes writes the same files.
+// PNG captures; rust-gpu's nm-render --dump-texture/--dump-passes writes the
+// same files (libnoisemaker's does not yet).
 //
 // Usage:
 //   NM_REFERENCE_ROOT=/path/to/noisemaker node parity/batch-golden.mjs <outDir> \
@@ -923,8 +924,11 @@ async function main () {
                 const dsl = readFileSync(dslPath, 'utf8')
                 const portable = await portableFor(dslPath)
                 const expectedPassCount = ref.compileGraph(dsl).passes.length
+                // The fixture's earlier goldens and captures; its candidates
+                // (<name>.candidate*.png) belong to the renderer.
                 for (const file of readdirSync(opts.outDir)) {
-                  if (file.startsWith(`${programName}.`) && /\.(png|bin)$|\.passes\.json$/.test(file)) unlinkSync(join(opts.outDir, file))
+                  if (file.startsWith(`${programName}.`) && !file.startsWith(`${programName}.candidate`) &&
+                    /\.(png|bin)$|\.passes\.json$/.test(file)) unlinkSync(join(opts.outDir, file))
                 }
                 const info = await mintOne(page, opts, dslPath, dsl, expectedPassCount, programName, portable)
                 const notes = session.getConsoleMessages().map(m => m.text)

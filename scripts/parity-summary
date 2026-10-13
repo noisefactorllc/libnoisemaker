@@ -98,10 +98,14 @@ LEDGER="$(mktemp -t nm-parity-summary.XXXXXX)"
 trap 'rm -f "$LEDGER" "$LEDGER.effects.json"' EXIT
 "$PY" "$ROOT/parity/sweep.py" --ledger "$LEDGER" --golden-backend "${NM_GOLDEN_BACKEND:-webgpu}" \
   ${CASE_ARGS[@]+"${CASE_ARGS[@]}"} >&2
-"$PY" - "$LEDGER" ${CASE_ARGS[@]+"${CASE_ARGS[@]}"} <<'EOF'
+SWEEP_RC=$?
+# The sweep fails when a tool fails even if every PNG it left grades exact.
+[ -s "$LEDGER" ] || fail_infra "the sweep wrote no ledger (exit $SWEEP_RC)"
+"$PY" - "$LEDGER" "$SWEEP_RC" ${CASE_ARGS[@]+"${CASE_ARGS[@]}"} <<'EOF'
 import json, os, sys
 rows = json.load(open(sys.argv[1]))
-only = set(sys.argv[2:])
+sweep_rc = int(sys.argv[2])
+only = set(sys.argv[3:])
 rows = [r for r in rows if not only or r["program"] in only]
 c = dict(expected=len(rows), executed=0, exact=0, strict=0, near=0, defer=0, skip=0, fail=0, missing=0,
          uninformative=0)
@@ -133,7 +137,10 @@ if uninformative:
 if missing_effects:
     print("parity-summary: effects without informative exact or strict evidence: " + " ".join(missing_effects),
           file=sys.stderr)
+if sweep_rc != 0:
+    print(f"parity-summary: the sweep exited {sweep_rc} (the minter or nm-render failed, or a case is outside the contract)",
+          file=sys.stderr)
 ok = c["executed"] == c["expected"] and c["near"] + c["fail"] + c["missing"] + c["skip"] == 0 \
-    and not missing_effects
+    and not missing_effects and sweep_rc == 0
 sys.exit(0 if ok else 1)
 EOF

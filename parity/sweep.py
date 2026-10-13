@@ -5,7 +5,8 @@ Cases are parity/programs/*.dsl (the shared fixture pool), parity/coverage/*.dsl
 (the generated effect x mode corpus), parity/portable/*.dsl (user-defined
 Portable effects: each registers its <id>.portable.json sidecar, WGSL in
 <id>.<program>.wgsl and GLSL in <id>.<program>.glsl, before its program runs,
-in the golden page and in the candidate), parity/timed/*.dsl (the timed tier, generated with the coverage
+in the golden page; libnoisemaker's nm-render does not load them yet),
+parity/timed/*.dsl (the timed tier, generated with the coverage
 corpus: every effect that evolves across frames, every oscillator kind and every
 shared or curated program running a stateful, particle or simulation effect,
 rendered with the timed protocol of parity/timed/manifest.json) and
@@ -512,6 +513,9 @@ def main():
     Path(args.ledger).write_text(json.dumps(rows, indent=1) + "\n")
     if full:
         effects_path(args.ledger).write_text(json.dumps(evidence, indent=1) + "\n")
+    elif effects_path(args.ledger).exists():
+        # An earlier full run's evidence does not describe this ledger.
+        effects_path(args.ledger).unlink()
     counts = {}
     buckets = {}
     for r in rows:
