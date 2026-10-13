@@ -615,6 +615,11 @@ Value WebGPUBackend::updateTextureFromPixels(const JsString& id, double width, d
         return Value(std::move(out));
     };
     if (width == 0 || height == 0) return size(0, 0);
+    // A canvas's size is whole pixels and getImageData returns all of them.
+    const auto whole = [](double v) { return v >= 0 && v <= 65536 && v == std::floor(v); };
+    if (!whole(width) || !whole(height) || rgba.size() != size_t(width) * size_t(height) * 4) {
+        throw JsError(u"RangeError", u"updateTextureFromPixels: the pixels are not width * height * 4 bytes");
+    }
     const auto it = textures_.find(id);
     std::shared_ptr<TextureRecord> tex = it == textures_.end() ? nullptr : it->second;
     if (!tex || !jsv::strict_equals(tex->width, Value(width)) || !jsv::strict_equals(tex->height, Value(height))) {

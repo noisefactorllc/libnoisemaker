@@ -321,6 +321,18 @@ int run_batch(const std::string& manifestPath, bool allowFallback) {
             std::cerr << "nm-render: entry " << i << ": " << e.what() << '\n';
             ++failed;
         }
+        bool lost = false;
+        {
+            std::lock_guard<std::mutex> lock(created->device.errors->mutex);
+            lost = created->device.errors->lost;
+        }
+        if (lost) {
+            // Every later fixture would fail for this one's loss.
+            std::cerr << "nm-render: batch stopped after entry " << i << ": the device was lost; " << entries.size() - i - 1
+                      << " entries not rendered\n";
+            failed += entries.size() - i - 1;
+            break;
+        }
     }
     std::cerr << "nm-render: batch: " << entries.size() - failed << " of " << entries.size() << " rendered\n";
     return failed == 0 ? 0 : 1;

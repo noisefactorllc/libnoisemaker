@@ -99,10 +99,14 @@ namespace {
 
 [[noreturn]] void bad(const std::string& what) { throw std::runtime_error("PNG: " + what); }
 
-// RFC 1951 inflate: stored, fixed and dynamic Huffman blocks.
+// RFC 1951 inflate: stored, fixed and dynamic Huffman blocks, refusing to
+// produce more than limit bytes.
 class Inflater {
 public:
-    explicit Inflater(const std::vector<uint8_t>& in) : in_(in) {}
+    Inflater(const std::vector<uint8_t>& in, size_t limit) : in_(in), limit_(limit) {}
+
+    // The input offset just past the last block, byte aligned.
+    size_t end() const { return pos_ + (bitPos_ != 0 ? 1 : 0); }
 
     std::vector<uint8_t> run() {
         bool last = false;
@@ -147,16 +151,36 @@ private:
         return v;
     }
 
-    static void build(Huffman& h, const uint8_t* lengths, size_t n) {
+    // The code's unused space: negative when oversubscribed, zero when
+    // complete.
+    static int build(Huffman& h, const uint8_t* lengths, size_t n) {
         h.counts.fill(0);
         for (size_t i = 0; i < n; ++i) ++h.counts[lengths[i]];
         h.counts[0] = 0;
+        int left = 1;
+        for (size_t len = 1; len < 16; ++len) {
+            left <<= 1;
+            left -= h.counts[len];
+            if (left < 0) return left;
+        }
         std::array<uint16_t, 16> offsets{};
         for (int len = 1; len < 16; ++len) offsets[size_t(len)] = uint16_t(offsets[size_t(len - 1)] + h.counts[size_t(len - 1)]);
         h.symbols.assign(n, 0);
         for (size_t i = 0; i < n; ++i) {
             if (lengths[i] != 0) h.symbols[offsets[lengths[i]]++] = uint16_t(i);
         }
+        return left;
+    }
+
+    static size_t used(const Huffman& h) {
+        size_t total = 0;
+        for (size_t len = 1; len < 16; ++len) total += h.counts[len];
+        return total;
+    }
+
+    void emit(uint8_t byte) {
+        if (out_.size() >= limit_) bad("more image data than the header declares");
+        out_.push_back(byte);
     }
 
     uint32_t decode(const Huffman& h) {
@@ -185,6 +209,7 @@ private:
         if ((len ^ 0xFFFFu) != nlen) bad("stored block length check fails");
         pos_ += 4;
         if (pos_ + len > in_.size()) bad("stored block ends early");
+        if (out_.size() + len > limit_) bad("more image data than the header declares");
         out_.insert(out_.end(), in_.begin() + long(pos_), in_.begin() + long(pos_ + len));
         pos_ += len;
     }
@@ -207,7 +232,7 @@ private:
         std::array<uint8_t, 19> codeLengths{};
         for (uint32_t i = 0; i < hclen; ++i) codeLengths[order[i]] = uint8_t(bits(3));
         Huffman lengthCodes;
-        build(lengthCodes, codeLengths.data(), codeLengths.size());
+        if (build(lengthCodes, codeLengths.data(), codeLengths.size()) != 0) bad("invalid code length code");
         std::vector<uint8_t> lengths(hlit + hdist, 0);
         for (uint32_t i = 0; i < hlit + hdist;) {
             const uint32_t sym = decode(lengthCodes);
@@ -229,8 +254,12 @@ private:
             if (i + repeat > hlit + hdist) bad("code lengths overflow");
             for (uint32_t k = 0; k < repeat; ++k) lengths[i++] = value;
         }
-        build(lit, lengths.data(), hlit);
-        build(dist, lengths.data() + hlit, hdist);
+        if (lengths[256] == 0) bad("no end-of-block code");
+        // Incomplete codes only for a single symbol, as zlib allows.
+        const int litLeft = build(lit, lengths.data(), hlit);
+        if (litLeft < 0 || (litLeft > 0 && used(lit) != 1)) bad("invalid literal/length code");
+        const int distLeft = build(dist, lengths.data() + hlit, hdist);
+        if (distLeft < 0 || (distLeft > 0 && used(dist) > 1)) bad("invalid distance code");
     }
 
     void block(const Huffman& lit, const Huffman& dist) {
@@ -245,7 +274,7 @@ private:
         for (;;) {
             const uint32_t sym = decode(lit);
             if (sym < 256) {
-                out_.push_back(uint8_t(sym));
+                emit(uint8_t(sym));
             } else if (sym == 256) {
                 return;
             } else {
@@ -257,12 +286,13 @@ private:
                 const uint32_t distance = distBase[di] + bits(distExtra[di]);
                 if (distance > out_.size()) bad("distance before the start");
                 const size_t from = out_.size() - distance;
-                for (uint32_t k = 0; k < length; ++k) out_.push_back(out_[from + k]);
+                for (uint32_t k = 0; k < length; ++k) emit(out_[from + k]);
             }
         }
     }
 
     const std::vector<uint8_t>& in_;
+    size_t limit_;
     size_t pos_ = 0;
     int bitPos_ = 0;
     std::vector<uint8_t> out_;
@@ -294,9 +324,10 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
     static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     if (bytes.size() < 8 || std::memcmp(bytes.data(), signature, 8) != 0) bad("not a PNG file");
     Image image;
-    uint8_t depth = 0, colorType = 0, interlace = 0;
+    uint8_t depth = 0, colorType = 0, compression = 0, filterMethod = 0, interlace = 0;
     std::vector<uint8_t> idat;
     size_t pos = 8;
+    bool header = false;
     bool ended = false;
     while (pos + 12 <= bytes.size() && !ended) {
         const uint32_t length = get32(&bytes[pos]);
@@ -305,12 +336,17 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
         const uint8_t* data = &bytes[pos + 8];
         if (crc32(type, size_t(length) + 4) != get32(data + length)) bad("chunk CRC mismatch");
         if (std::memcmp(type, "IHDR", 4) == 0) {
-            if (length < 13) bad("short IHDR");
+            if (header || pos != 8 || length != 13) bad("IHDR must come first, once, with 13 bytes");
+            header = true;
             image.width = get32(data);
             image.height = get32(data + 4);
             depth = data[8];
             colorType = data[9];
+            compression = data[10];
+            filterMethod = data[11];
             interlace = data[12];
+        } else if (!header) {
+            bad("IHDR must come first");
         } else if (std::memcmp(type, "IDAT", 4) == 0) {
             idat.insert(idat.end(), data, data + length);
         } else if (std::memcmp(type, "IEND", 4) == 0) {
@@ -318,7 +354,13 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
         }
         pos += 12 + size_t(length);
     }
-    if (image.width == 0 || image.height == 0) bad("no image header");
+    if (!header || !ended) bad("missing IHDR or IEND");
+    // Host textures are at most 16384 pixels on a side, so the sizes below
+    // stay far from overflow.
+    if (image.width == 0 || image.height == 0 || image.width > 16384 || image.height > 16384) {
+        bad("image size must be 1 to 16384 pixels on a side");
+    }
+    if (compression != 0 || filterMethod != 0) bad("unknown compression or filter method");
     if (depth != 8 || interlace != 0) bad("only non-interlaced 8-bit images are supported");
     size_t channels = 0;
     switch (colorType) {
@@ -328,11 +370,26 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
         case 6: channels = 4; break;
         default: bad("unsupported color type " + std::to_string(colorType));
     }
-    if (idat.size() < 6 || (idat[0] & 0x0F) != 8) bad("not a deflate stream");
-    const std::vector<uint8_t> payload(idat.begin() + 2, idat.end());
-    const std::vector<uint8_t> raw = Inflater(payload).run();
+    // zlib: deflate with a window of at most 32 KiB, a valid header check and
+    // no preset dictionary, then the Adler-32 of the data.
+    if (idat.size() < 6) bad("image data too short");
+    const uint8_t cmf = idat[0], flg = idat[1];
+    if ((cmf & 0x0F) != 8 || (cmf >> 4) > 7 || ((uint32_t(cmf) << 8) | flg) % 31 != 0 || (flg & 0x20) != 0) {
+        bad("not a zlib deflate stream");
+    }
     const size_t stride = size_t(image.width) * channels;
-    if (raw.size() < (stride + 1) * image.height) bad("image data ends early");
+    const size_t expected = (stride + 1) * size_t(image.height);
+    const std::vector<uint8_t> payload(idat.begin() + 2, idat.end());
+    Inflater inflater(payload, expected);
+    const std::vector<uint8_t> raw = inflater.run();
+    if (raw.size() != expected) bad("image data size differs from the header");
+    if (inflater.end() + 4 > payload.size()) bad("zlib checksum missing");
+    uint32_t a = 1, b = 0;
+    for (uint8_t byte : raw) {
+        a = (a + byte) % 65521;
+        b = (b + a) % 65521;
+    }
+    if (get32(&payload[inflater.end()]) != ((b << 16) | a)) bad("zlib checksum mismatch");
     std::vector<uint8_t> pixels(stride * image.height);
     for (size_t y = 0; y < image.height; ++y) {
         const uint8_t filter = raw[y * (stride + 1)];

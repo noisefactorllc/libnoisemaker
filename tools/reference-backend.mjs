@@ -26,7 +26,15 @@ globalThis.HTMLCanvasElement ??= class HTMLCanvasElement {
   constructor (width, height, data) { this.width = width; this.height = height; this.data = data }
   getContext (kind) {
     if (kind !== '2d') return null
-    return { getContextAttributes: () => ({ willReadFrequently: true }), getImageData: () => ({ data: this.data }) }
+    return {
+      getContextAttributes: () => ({ willReadFrequently: true }),
+      getImageData: (x, y, w, h) => {
+        if (x !== 0 || y !== 0 || w !== this.width || h !== this.height || this.data.length !== w * h * 4) {
+          throw new Error('the canvas stand-in holds exactly its own pixels')
+        }
+        return { data: this.data }
+      }
+    }
   }
 }
 const { WebGPUBackend } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/backends/webgpu.js')).href)

@@ -1,8 +1,8 @@
 // nm-render's PNG codec: decoding images zlib compressed with stored,
 // fixed and dynamic Huffman blocks, rows using all five filter types, in
 // gray, gray-alpha, RGB and RGBA (Python's zlib made them; the digest is
-// FNV-1a 64 of the expected RGBA rows), corrupt input refused, and the
-// encoder's output decoding to its input.
+// FNV-1a 64 of the expected RGBA rows), the corruptions below refused, and
+// the encoder's output decoding to its input.
 #include "check.h"
 #include "png.h"
 
@@ -43,6 +43,77 @@ uint64_t fnv(const std::vector<uint8_t>& bytes) {
     return h;
 }
 
+uint32_t crc32(const std::vector<uint8_t>& bytes, size_t from, size_t to) {
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = from; i < to; ++i) {
+        crc ^= bytes[i];
+        for (int k = 0; k < 8; ++k) crc = (crc & 1) ? 0xEDB88320u ^ (crc >> 1) : crc >> 1;
+    }
+    return ~crc;
+}
+
+void put32(std::vector<uint8_t>& out, uint32_t v) {
+    for (int k = 0; k < 4; ++k) out.push_back(uint8_t(v >> (24 - 8 * k)));
+}
+
+void chunk(std::vector<uint8_t>& out, const char* type, const std::vector<uint8_t>& data) {
+    put32(out, uint32_t(data.size()));
+    const size_t start = out.size();
+    out.insert(out.end(), type, type + 4);
+    out.insert(out.end(), data.begin(), data.end());
+    put32(out, crc32(out, start, out.size()));
+}
+
+// A 1x1 RGBA PNG whose zlib stream holds this deflate data.
+std::vector<uint8_t> png_with_deflate(const std::vector<uint8_t>& deflate) {
+    std::vector<uint8_t> png{0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    std::vector<uint8_t> header;
+    put32(header, 1);
+    put32(header, 1);
+    header.insert(header.end(), {8, 6, 0, 0, 0});
+    chunk(png, "IHDR", header);
+    std::vector<uint8_t> zlib{0x78, 0x01};
+    zlib.insert(zlib.end(), deflate.begin(), deflate.end());
+    put32(zlib, 1);
+    chunk(png, "IDAT", zlib);
+    chunk(png, "IEND", {});
+    return png;
+}
+
+// Deflate bits, least significant first.
+struct Bits {
+    std::vector<uint8_t> bytes;
+    int used = 8;
+    void put(uint32_t value, int count) {
+        for (int i = 0; i < count; ++i) {
+            if (used == 8) {
+                bytes.push_back(0);
+                used = 0;
+            }
+            bytes.back() = uint8_t(bytes.back() | (((value >> i) & 1u) << used));
+            ++used;
+        }
+    }
+};
+
+// A dynamic block header whose code length code gives symbols 0 and 1 one
+// bit each, then 258 lengths of 1: 257 one-bit literal codes, oversubscribed.
+// With allOnes false, the code length code itself is oversubscribed.
+std::vector<uint8_t> dynamic_header(bool allOnes) {
+    static const int order[19] = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
+    Bits bits;
+    bits.put(1, 1);
+    bits.put(2, 2);
+    bits.put(0, 5);
+    bits.put(0, 5);
+    bits.put(allOnes ? 14 : 15, 4);
+    for (int i = 0; i < (allOnes ? 18 : 19); ++i) bits.put(allOnes ? (order[i] <= 1 ? 1 : 0) : 1, 3);
+    if (allOnes) {
+        for (int i = 0; i < 258; ++i) bits.put(1, 1);
+    }
+    return bits.bytes;
+}
+
 bool throws(const std::vector<uint8_t>& bytes) {
     try {
         nm_render::decode_png(bytes);
@@ -65,7 +136,9 @@ int main() {
             return 1;
         }
     }
-    // A flipped CRC bit, a truncated stream and a bad signature are refused.
+    // A flipped CRC bit, a truncated stream, a bad signature, a missing
+    // IEND, an IHDR filter method, a zlib header check and an Adler-32 byte
+    // are refused.
     std::vector<uint8_t> bytes = unhex(kVectors[2].hex);
     std::vector<uint8_t> corrupt = bytes;
     corrupt[40] ^= 1;
@@ -74,6 +147,33 @@ int main() {
     corrupt = bytes;
     corrupt[1] = 'Q';
     NM_CHECK(throws(corrupt));
+    NM_CHECK(throws(std::vector<uint8_t>(bytes.begin(), bytes.end() - 12)));
+    // Rewrites a chunk's byte and its CRC: the IHDR starts at 8, the IDAT
+    // after it at 33.
+    const auto rewrite = [&](size_t chunk, size_t offset, uint8_t value) {
+        std::vector<uint8_t> out = bytes;
+        const uint32_t length = (uint32_t(out[chunk]) << 24) | (uint32_t(out[chunk + 1]) << 16) |
+                                (uint32_t(out[chunk + 2]) << 8) | out[chunk + 3];
+        out[chunk + 8 + offset] = value;
+        const std::vector<uint8_t> body(out.begin() + long(chunk + 4), out.begin() + long(chunk + 8 + length));
+        uint32_t crc = 0xFFFFFFFFu;
+        for (uint8_t byte : body) {
+            crc ^= byte;
+            for (int k = 0; k < 8; ++k) crc = (crc & 1) ? 0xEDB88320u ^ (crc >> 1) : crc >> 1;
+        }
+        crc = ~crc;
+        for (int k = 0; k < 4; ++k) out[chunk + 8 + length + size_t(k)] = uint8_t(crc >> (24 - 8 * k));
+        return out;
+    };
+    NM_CHECK(!throws(rewrite(8, 11, 0)));  // the unchanged filter method decodes
+    NM_CHECK(throws(rewrite(8, 11, 1)));
+    NM_CHECK(throws(rewrite(33, 1, uint8_t(bytes[33 + 9] ^ 1))));
+    const uint32_t idatLength = (uint32_t(bytes[33]) << 24) | (uint32_t(bytes[34]) << 16) | (uint32_t(bytes[35]) << 8) | bytes[36];
+    NM_CHECK(throws(rewrite(33, idatLength - 1, uint8_t(bytes[33 + 8 + idatLength - 1] ^ 1))));
+    // Oversubscribed Huffman codes: the code length code, and the literal
+    // and length code.
+    NM_CHECK(throws(png_with_deflate(dynamic_header(false))));
+    NM_CHECK(throws(png_with_deflate(dynamic_header(true))));
     // The encoder's stored blocks, over 65535 bytes so they split.
     std::vector<uint8_t> rgba(300 * 70 * 4);
     for (size_t i = 0; i < rgba.size(); ++i) rgba[i] = uint8_t(i * 131 + (i >> 9));

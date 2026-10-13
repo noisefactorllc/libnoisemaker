@@ -130,6 +130,7 @@ public:
     // updateTextureFromSource(id, canvas, { flipY }) for a 2D canvas created
     // with willReadFrequently, whose getImageData rows are rgba: the path
     // that writes CPU pixels. { width, height }, zero for an empty source.
+    // rgba holds width * height * 4 bytes, or it throws a RangeError.
     Value updateTextureFromPixels(const JsString& id, double width, double height, const std::vector<uint8_t>& rgba,
                                   bool flipY);
     // readPixels(textureId): the texture's texels as RGBA8, rgba16float and
