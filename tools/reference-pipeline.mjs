@@ -138,7 +138,7 @@ for await (const line of lines) {
       case 'clearSurface': pipeline.clearSurface(op.name); break
       case 'setUniform': pipeline.setUniform(op.name, decodeValue(op.value)); break
       case 'setPassUniform': pipeline.graph.passes[op.pass].uniforms[op.name] = decodeValue(op.value); break
-      case 'broadcastChainScopedParam': pipeline.broadcastChainScopedParam(pipeline.graph.passes[op.pass], op.uniformName, op.scopedName); break
+      case 'broadcastChainScopedParam': pipeline.broadcastChainScopedParam(pipeline.graph?.passes?.[op.pass], op.uniformName, op.scopedName); break
       case 'getFrameState': {
         const state = pipeline.getFrameState()
         const surfaces = {}

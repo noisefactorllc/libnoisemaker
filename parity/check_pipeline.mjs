@@ -519,7 +519,14 @@ sequence('synthetic/params-errors', [
   { op: 'init', width: 8, height: 8 },
   { op: 'setUniform', name: 'amount', value: 1 },
   { op: 'create', graph: graph([{ outputs: { color: 'global_o1' }, uniforms: { a: 1 }, uniformAliases: null }]) },
-  { op: 'setUniform', name: 'a', value: 2 }
+  { op: 'setUniform', name: 'a', value: 2 },
+  { op: 'broadcastChainScopedParam', pass: 1, uniformName: 'a', scopedName: 'a_chain_0' },
+  { op: 'broadcastChainScopedParam', pass: 0.5, uniformName: 'a', scopedName: 'a_chain_0' },
+  { op: 'broadcastChainScopedParam', pass: -1, uniformName: 'a', scopedName: 'a_chain_0' },
+  { op: 'setPassUniform', pass: 0.5, name: 'a', value: 3 },
+  { op: 'setPassUniform', pass: 4, name: 'a', value: 3 },
+  { op: 'create', graph: null },
+  { op: 'broadcastChainScopedParam', pass: 3, uniformName: 'a', scopedName: 'a_chain_0' }
 ])
 
 // Errors and degenerate graphs.

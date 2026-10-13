@@ -1454,7 +1454,9 @@ void Pipeline::setUniform(const JsString& name, Value value) {
 
 void Pipeline::broadcastChainScopedParam(size_t sourcePass, const JsString& uniformName, const JsString& scopedName) {
     Array* list = passes();
-    if (!list || sourcePass >= list->size()) return;
+    if (!list) return;
+    // sourcePass.uniforms on a pass that is not there.
+    if (sourcePass >= list->size()) throw JsError(u"TypeError", u"Cannot read properties of undefined (reading 'uniforms')");
     Value& source = (*list)[sourcePass];
     if (!jsv::truthy(jsv::get(source, u"uniforms"))) return;
     Value value = jsv::get(jsv::get(source, u"uniforms"), uniformName);

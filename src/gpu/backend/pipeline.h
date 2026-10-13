@@ -109,11 +109,14 @@ public:
 
     // setUniform(name, value): the global value, and every pass that reads
     // it, its aliases and, for an unscoped name, its chain- and node-scoped
-    // variants; textures whose size depends on it are resized. An object
-    // value counts as new on each call (the reference compares identity).
+    // variants; textures whose size depends on it are resized. Values are
+    // copied: an object value counts as new on each call (the reference
+    // compares identity), and no array is shared between the global value
+    // and the passes, as the reference shares the one its caller passed.
     void setUniform(const JsString& name, Value value);
     // broadcastChainScopedParam(sourcePass, uniformName, scopedName), with
-    // the source pass by its index in graph.passes.
+    // the source pass by its index in graph.passes; an index past the end
+    // reads an undefined pass, as the reference does.
     void broadcastChainScopedParam(size_t sourcePass, const JsString& uniformName, const JsString& scopedName);
     // pass.uniforms[name] = value on graph.passes[pass], as the UI parameter
     // paths write a pass's value before they broadcast it.

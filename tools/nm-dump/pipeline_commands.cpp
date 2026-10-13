@@ -25,6 +25,13 @@ nm::Value field(const nm::Value& object, const char16_t* key) {
     return found ? *found : nm::Value();
 }
 
+// passes[index]: an index that names no array element finds no pass.
+size_t passIndex(const nm::Value& value) {
+    const double n = value.is_number() ? value.as_number() : -1;
+    if (!(n >= 0) || n >= 9007199254740992.0 || std::floor(n) != n) return static_cast<size_t>(-1);
+    return static_cast<size_t>(n);
+}
+
 double number(const nm::Value& value, const char16_t* name) {
     if (!value.is_number()) throw nm::JsError(u"Error", nm::JsString(name) + u" must be a number");
     return value.as_number();
@@ -266,11 +273,11 @@ int pipeline(int, char**) {
                     const nm::JsString name = field(op, u"name").as_string();
                     pipeline->setUniform(name, decodeNumbers(field(op, u"value")));
                 } else if (kind == u"setPassUniform") {
-                    const auto pass = static_cast<size_t>(number(field(op, u"pass"), u"pass"));
+                    const size_t pass = passIndex(field(op, u"pass"));
                     const nm::JsString name = field(op, u"name").as_string();
                     pipeline->setPassUniform(pass, name, decodeNumbers(field(op, u"value")));
                 } else if (kind == u"broadcastChainScopedParam") {
-                    const auto pass = static_cast<size_t>(number(field(op, u"pass"), u"pass"));
+                    const size_t pass = passIndex(field(op, u"pass"));
                     const nm::JsString uniformName = field(op, u"uniformName").as_string();
                     const nm::JsString scopedName = field(op, u"scopedName").as_string();
                     pipeline->broadcastChainScopedParam(pass, uniformName, scopedName);
