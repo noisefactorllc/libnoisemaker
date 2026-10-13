@@ -145,6 +145,11 @@ public:
     static bool dimensionReferencesScopedParam(const Value& spec, const JsString& paramName);
     // The frame state, refreshed in place as the reference reuses its object.
     const FrameState& getFrameState();
+    // The writes parity/batch-golden.mjs makes for its fresh state:
+    // surface.read and surface.write of a surface, and globalUniforms = {},
+    // frameIndex = 0 and lastTime = 0.
+    void setSurfaceTextures(const JsString& name, JsString read, JsString write);
+    void resetFrameState();
 
     const Value& graph() const { return graph_; }
     double width() const { return width_; }

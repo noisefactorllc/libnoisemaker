@@ -196,10 +196,19 @@ public:
     virtual void end(Handle pass) = 0;
     virtual void copyTextureToTexture(Handle encoder, const TexelCopyTextureInfo& source,
                                       const TexelCopyTextureInfo& destination, const Extent3D& size) = 0;
+    virtual void copyTextureToBuffer(Handle encoder, const TexelCopyTextureInfo& source, Handle buffer,
+                                     const TexelCopyBufferLayout& layout, const Extent3D& size) = 0;
     virtual Handle finish(Handle encoder) = 0;
     virtual void submit(const std::vector<Handle>& commandBuffers) = 0;
     // queue.onSubmittedWorkDone().then(done)
     virtual void onSubmittedWorkDone(std::function<void()> done) = 0;
+    // await buffer.mapAsync(GPUMapMode.READ), then buffer.getMappedRange(): a
+    // copy of the buffer's bytes, once the queue's work before it is done.
+    virtual std::vector<uint8_t> mapRead(Handle buffer) = 0;
+    virtual void unmap(Handle buffer) = 0;
+    // The reference drops its last reference to the object, so the garbage
+    // collector may take it; the handle is not used again.
+    virtual void release(Handle object) = 0;
 };
 
 }  // namespace libnoisemaker::backend

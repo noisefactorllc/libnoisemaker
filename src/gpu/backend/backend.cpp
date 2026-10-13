@@ -2,12 +2,14 @@
 
 #include "core/catalog/catalog.h"
 #include "core/edit/jsv.h"
+#include "core/value/js_math.h"
 #include "core/value/json.h"
 #include "gpu/wgsl/jsre.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 namespace libnoisemaker::backend {
@@ -574,6 +576,105 @@ void WebGPUBackend::endFrame() {
             for (const Buffer& buffer : retired) device->destroyBuffer(buffer.handle);
         });
     }
+}
+
+namespace {
+
+// float16ToFloat32 (webgpu.js).
+double float16ToFloat32(uint16_t h) {
+    const int sign = (h >> 15) & 0x1;
+    const int exponent = (h >> 10) & 0x1f;
+    const int mantissa = h & 0x3ff;
+    if (exponent == 0) {
+        if (mantissa == 0) return sign ? -0.0 : 0.0;
+        const double f = mantissa / 1024.0;
+        return (sign ? -1 : 1) * f * js::pow(2, -14);
+    } else if (exponent == 31) {
+        if (mantissa == 0) return sign ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const double f = 1 + mantissa / 1024.0;
+    return (sign ? -1 : 1) * f * js::pow(2, exponent - 15);
+}
+
+// Math.max(0, Math.min(255, Math.round(v * 255))) stored in a Uint8Array.
+uint8_t toByte(double v) {
+    const double clamped = js::max(0, js::min(255, js::round(v * 255)));
+    return std::isnan(clamped) ? 0 : static_cast<uint8_t>(clamped);
+}
+
+}  // namespace
+
+Pixels WebGPUBackend::readPixels(const JsString& textureId) {
+    const auto it = textures_.find(textureId);
+    if (it == textures_.end()) throw JsError(u"Error", u"Texture " + textureId + u" not found");
+    const std::shared_ptr<TextureRecord> tex = it->second;
+    const Handle handle = tex->handle;
+    const Value width = tex->width;
+    const Value height = tex->height;
+    double bytesPerPixel = 4;
+    if (jsv::strict_equals(tex->gpuFormat, Value(u"rgba16float"))) {
+        bytesPerPixel = 8;
+    } else if (jsv::strict_equals(tex->gpuFormat, Value(u"rgba32float"))) {
+        bytesPerPixel = 16;
+    }
+    const double w = jsv::to_number(width);
+    const double h = jsv::to_number(height);
+    const double bytesPerRow = std::ceil(w * bytesPerPixel / 256) * 256;
+    const double bufferSize = bytesPerRow * h;
+    const Handle stagingBuffer = device_.createBuffer(BufferDescriptor{bufferSize, BufferUsage::CopyDst | BufferUsage::MapRead});
+    const Handle commandEncoder = device_.createCommandEncoder();
+    device_.copyTextureToBuffer(commandEncoder, TexelCopyTextureInfo{handle}, stagingBuffer,
+                                TexelCopyBufferLayout{0, bytesPerRow, std::nullopt}, Extent3D{w, h, 1});
+    const Handle commandBuffer = device_.finish(commandEncoder);
+    device_.submit({commandBuffer});
+    const std::vector<uint8_t> mapped = device_.mapRead(stagingBuffer);
+
+    const double length = w * h * 4;
+    Pixels out{width, height, std::vector<uint8_t>(length > 0 ? size_t(length) : 0)};
+    const auto u16 = [&](double index) -> uint16_t {
+        if (!(index >= 0) || (index + 1) * 2 > double(mapped.size() & ~size_t(1))) return 0;
+        uint16_t value = 0;
+        std::memcpy(&value, mapped.data() + size_t(index) * 2, 2);
+        return value;
+    };
+    const auto f32 = [&](double index) -> double {
+        if (!(index >= 0) || (index + 1) * 4 > double(mapped.size() & ~size_t(3))) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        float value = 0;
+        std::memcpy(&value, mapped.data() + size_t(index) * 4, 4);
+        return double(value);
+    };
+    if (bytesPerPixel == 8) {
+        for (double row = 0; row < h; row++) {
+            const double srcRowOffset = (row * bytesPerRow) / 2;
+            for (double col = 0; col < w; col++) {
+                const double srcPixel = srcRowOffset + col * 4;
+                const size_t dstPixel = size_t((row * w + col) * 4);
+                for (int c = 0; c < 4; c++) out.data[dstPixel + size_t(c)] = toByte(float16ToFloat32(u16(srcPixel + c)));
+            }
+        }
+    } else if (bytesPerPixel == 16) {
+        for (double row = 0; row < h; row++) {
+            const double srcRowOffset = (row * bytesPerRow) / 4;
+            for (double col = 0; col < w; col++) {
+                const double srcPixel = srcRowOffset + col * 4;
+                const size_t dstPixel = size_t((row * w + col) * 4);
+                for (int c = 0; c < 4; c++) out.data[dstPixel + size_t(c)] = toByte(f32(srcPixel + c));
+            }
+        }
+    } else {
+        for (double row = 0; row < h; row++) {
+            const size_t srcOffset = size_t(row * bytesPerRow);
+            const size_t dstOffset = size_t(row * w * 4);
+            const size_t end = std::min(mapped.size(), srcOffset + size_t(w * 4));
+            if (srcOffset < end) std::copy(mapped.begin() + long(srcOffset), mapped.begin() + long(end), out.data.begin() + long(dstOffset));
+        }
+    }
+    device_.unmap(stagingBuffer);
+    device_.destroyBuffer(stagingBuffer);
+    return out;
 }
 
 WebGPUBackend::Buffer WebGPUBackend::bufferFor(double size) {
@@ -1177,9 +1278,12 @@ void WebGPUBackend::executeRenderPass(const Value& pass, ProgramInfo& program, c
         pipeline = resolveRenderPipeline(program, jsv::member(pass, u"blend"), topology, resolvedFormat);
     }
     const Handle passEncoder = device_.beginRenderPass(encoder(), descriptor);
+    // The reference's depth view and bind group are locals of this pass.
+    if (descriptor.depthStencilAttachment) device_.release(descriptor.depthStencilAttachment->view);
     const Handle bindGroup = createBindGroup(pass, program, state, pipeline);
     device_.setPipeline(passEncoder, pipeline);
     device_.setBindGroup(passEncoder, 0, bindGroup);
+    device_.release(bindGroup);
     if (viewport) {
         const double x = jsv::to_number(viewport->x);
         const double y = jsv::to_number(viewport->y);
@@ -1227,6 +1331,7 @@ void WebGPUBackend::executeMRTRenderPass(const Value& pass, ProgramInfo& program
     const Handle bindGroup = createBindGroup(pass, program, state, pipeline);
     device_.setPipeline(passEncoder, pipeline);
     device_.setBindGroup(passEncoder, 0, bindGroup);
+    device_.release(bindGroup);
     drawPass(passEncoder, pass, state, Value::null(), viewportTex);
 }
 
@@ -1283,6 +1388,7 @@ void WebGPUBackend::executeComputePass(const Value& pass, ProgramInfo& program, 
     const Handle passEncoder = device_.beginComputePass(commandEncoder_);
     device_.setPipeline(passEncoder, pipeline);
     device_.setBindGroup(passEncoder, 0, bindGroup);
+    device_.release(bindGroup);
     // dispatchWorkgroups(x, y = 1, z = 1)
     auto dimension = [](const Value& v) { return v.is_undefined() ? 1.0 : jsv::to_number(v); };
     const double x = jsv::to_number(workgroups[0]);
@@ -1373,6 +1479,7 @@ void WebGPUBackend::copyBufferToTexture(const FrameState& state, const Value& ou
     const Handle passEncoder = device_.beginRenderPass(encoder(), descriptor);
     device_.setPipeline(passEncoder, pipeline);
     device_.setBindGroup(passEncoder, 0, bindGroup);
+    device_.release(bindGroup);
     device_.draw(passEncoder, 3, 1, 0, 0);
     device_.end(passEncoder);
     activeUniformBuffers_.push_back(Buffer{paramsBuffer, 16});
@@ -1536,11 +1643,13 @@ void WebGPUBackend::copyTextureScaled(const JsString& srcId, const JsString& dst
     const Handle bindGroup = device_.createBindGroup(layout, {BindGroupEntry{0, BindGroupEntry::Kind::TextureView, srcView},
                                                              BindGroupEntry{1, BindGroupEntry::Kind::Buffer, dimsBuffer}});
     device_.setBindGroup(renderPass, 0, bindGroup);
+    device_.release(bindGroup);
     device_.draw(renderPass, 3, 1, 0, 0);
     device_.end(renderPass);
     const Handle commandBuffer = device_.finish(commandEncoder);
     device_.submit({commandBuffer});
     device_.destroyBuffer(dimsBuffer);
+    device_.release(dimsBuffer);
 }
 
 void WebGPUBackend::generateMipmaps(const std::vector<JsString>& ids) {

@@ -75,6 +75,11 @@ for await (const line of lines) {
       case 'copyTextureScaled': backend.copyTextureScaled(op.src, op.dst); break
       case 'generateMipmaps': backend.generateMipmaps(op.ids); break
       case 'clearTexture': backend.clearTexture(op.id); break
+      case 'readPixels': {
+        const pixels = await backend.readPixels(op.id)
+        result = { width: pixels.width, height: pixels.height, data: Buffer.from(pixels.data).toString('hex') }
+        break
+      }
       default: throw new Error(`unknown op ${op.op}`)
     }
   } catch (err) {

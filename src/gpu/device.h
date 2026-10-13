@@ -13,6 +13,10 @@ namespace libnoisemaker::gpu {
 struct DeviceOptions {
     bool allow_fallback = false;
     WGPUBackendType backend = WGPUBackendType_Undefined;
+    // What the reference's createPipeline requests: float32-filterable when
+    // the adapter has it, maxColorAttachmentBytesPerSample up to 128 and the
+    // adapter's maxTextureDimension2D.
+    bool reference_requests = false;
 };
 
 struct ErrorSink {

@@ -79,6 +79,11 @@ export function createMockDevice () {
     e.copyTextureToTexture = (source, destination, size) => log.push({
       call: 'copyTextureToTexture', encoder: idOf(e), source: copyInfo(source), destination: copyInfo(destination), size: extent(size)
     })
+    e.copyTextureToBuffer = (source, destination, size) => log.push({
+      call: 'copyTextureToBuffer', encoder: idOf(e), source: copyInfo(source), buffer: idOf(destination.buffer),
+      offset: num(def(destination.offset, 0)), bytesPerRow: destination.bytesPerRow === undefined ? null : num(destination.bytesPerRow),
+      rowsPerImage: destination.rowsPerImage === undefined ? null : num(destination.rowsPerImage), size: extent(size)
+    })
     e.finish = () => { const b = make('commandBuffer'); log.push({ call: 'finish', id: idOf(b), encoder: idOf(e) }); return b }
     return e
   }
@@ -146,6 +151,19 @@ export function createMockDevice () {
       const b = make('buffer')
       b.size = d.size
       b.destroy = () => log.push({ call: 'destroyBuffer', buffer: idOf(b) })
+      // The 16-bit unit k of a mapped buffer is (k * 40503 + id * 11) &
+      // 65535, little-endian, as RecordingDevice's are.
+      b.mapAsync = async (mode) => { log.push({ call: 'mapAsync', buffer: idOf(b), mode: num(mode) }) }
+      b.getMappedRange = () => {
+        log.push({ call: 'getMappedRange', buffer: idOf(b) })
+        const bytes = new Uint8Array(num(d.size))
+        for (let i = 0; i < bytes.length; i++) {
+          const unit = (Math.floor(i / 2) * 40503 + idOf(b) * 11) & 65535
+          bytes[i] = i % 2 === 0 ? unit & 255 : unit >> 8
+        }
+        return bytes.buffer
+      }
+      b.unmap = () => log.push({ call: 'unmap', buffer: idOf(b) })
       log.push({ call: 'createBuffer', id: idOf(b), size: num(d.size), usage: num(d.usage), mappedAtCreation: !!d.mappedAtCreation })
       return b
     },

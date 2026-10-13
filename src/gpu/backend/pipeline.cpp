@@ -1274,6 +1274,24 @@ void Pipeline::FrameBindings::clear() {
     index_.clear();
 }
 
+void Pipeline::setSurfaceTextures(const JsString& name, JsString read, JsString write) {
+    if (Surface* target = surface(name)) {
+        target->read = std::move(read);
+        target->write = std::move(write);
+    }
+}
+
+void Pipeline::resetFrameState() {
+    // A new object: no global aliases an audio state's arrays any more.
+    globalUniforms_ = Value(Object{});
+    ++globalUniformsVersion_;
+    audioAlias_.reset();
+    waveformAliased_ = false;
+    spectrumAliased_ = false;
+    frameIndex_ = 0;
+    lastTime_ = 0;
+}
+
 // The global uniforms are copied when they have changed since the last call
 // (they change once per frame, before the passes).
 const FrameState& Pipeline::getFrameState() {

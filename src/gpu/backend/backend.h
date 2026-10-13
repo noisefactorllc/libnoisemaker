@@ -97,6 +97,13 @@ struct FrameState {
     Value screenHeight;
 };
 
+// readPixels' result: RGBA8 rows, row 0 first.
+struct Pixels {
+    Value width;
+    Value height;
+    std::vector<uint8_t> data;
+};
+
 class WebGPUBackend {
 public:
     explicit WebGPUBackend(Device& device);
@@ -120,6 +127,9 @@ public:
     void copyTextureScaled(const JsString& srcId, const JsString& dstId);
     void generateMipmaps(const std::vector<JsString>& ids);
     void clearTexture(const JsString& id);
+    // readPixels(textureId): the texture's texels as RGBA8, rgba16float and
+    // rgba32float converted as round(v * 255) clamped to 0..255.
+    Pixels readPixels(const JsString& textureId);
     // this.textures: get, set (texture pooling names one record by several
     // ids) and keys, in a Map's insertion order.
     const TextureRecord* texture(const JsString& id) const;

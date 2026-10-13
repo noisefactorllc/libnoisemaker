@@ -1,5 +1,6 @@
 #include "gpu/device.h"
 
+#include <algorithm>
 #include <cstring>
 #include <utility>
 
@@ -169,6 +170,21 @@ DeviceResult create_device(const DeviceOptions& options) {
             sink->lost_message = to_string(msg);
         };
     device_desc.deviceLostCallbackInfo.userdata1 = d.errors.get();
+    const WGPUFeatureName float32Filterable = WGPUFeatureName_Float32Filterable;
+    WGPULimits adapterLimits = WGPU_LIMITS_INIT;
+    WGPULimits requiredLimits = WGPU_LIMITS_INIT;
+    if (options.reference_requests) {
+        if (wgpuAdapterHasFeature(d.adapter, float32Filterable)) {
+            device_desc.requiredFeatureCount = 1;
+            device_desc.requiredFeatures = &float32Filterable;
+        }
+        if (wgpuAdapterGetLimits(d.adapter, &adapterLimits) == WGPUStatus_Success) {
+            requiredLimits.maxColorAttachmentBytesPerSample =
+                std::min<uint32_t>(adapterLimits.maxColorAttachmentBytesPerSample, 128);
+            requiredLimits.maxTextureDimension2D = adapterLimits.maxTextureDimension2D;
+            device_desc.requiredLimits = &requiredLimits;
+        }
+    }
 
     DeviceReply reply;
     WGPURequestDeviceCallbackInfo device_cb = {};

@@ -428,7 +428,15 @@ sequence('synthetic/texture-operations', [
   { op: 'generateMipmaps', ids: ['mipTex'] },
   { op: 'clearTexture', id: 'mipTex' },
   { op: 'clearTexture', id: 'plainTex' },
-  { op: 'clearTexture', id: 'missing' }
+  { op: 'clearTexture', id: 'missing' },
+  // Readback: the recording devices fill a mapped buffer's 16-bit units
+  // with a permutation of 0..65535, so f16all's 65536 halves are every half
+  // float, infinities and NaNs included.
+  { op: 'createTexture', id: 'f16all', spec: { width: 256, height: 64, format: 'rgba16f' } },
+  { op: 'createTexture', id: 'f16odd', spec: { width: 30, height: 5, format: 'rgba16f' } },
+  { op: 'createTexture', id: 'f32odd', spec: { width: 7, height: 3, format: 'rgba32f' } },
+  ...['plainTex', 'mipTex', 'f16all', 'f16odd', 'f32odd', 'global_mesh0_positions', 'smaller', 'plainTex3', 'noFormat', 'vol3d', 'missing']
+    .map(id => ({ op: 'readPixels', id }))
 ])
 sequence('synthetic/textures', [
   { op: 'init' },

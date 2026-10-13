@@ -60,7 +60,12 @@ Handle RecordingDevice::createTexture(const TextureDescriptor& descriptor) {
     return id;
 }
 
+void RecordingDevice::live(Handle handle) const {
+    if (handle != 0 && released_.count(handle)) throw DeviceError(u"object " + jsv::to_string(Value(double(handle))) + u" used after release");
+}
+
 Handle RecordingDevice::createView(Handle texture, const TextureViewDescriptor& descriptor) {
+    live(texture);
     const Handle id = next();
     Object call;
     call.set(u"call", Value(u"createView"));
@@ -78,6 +83,7 @@ Handle RecordingDevice::createView(Handle texture, const TextureViewDescriptor& 
 }
 
 void RecordingDevice::destroyTexture(Handle texture) {
+    live(texture);
     Object call;
     call.set(u"call", Value(u"destroyTexture"));
     call.set(u"texture", ref(texture));
@@ -105,6 +111,7 @@ Handle RecordingDevice::createSampler(const SamplerDescriptor& descriptor) {
 
 Handle RecordingDevice::createBuffer(const BufferDescriptor& descriptor) {
     const Handle id = next();
+    bufferSizes_[id] = descriptor.size;
     Object call;
     call.set(u"call", Value(u"createBuffer"));
     call.set(u"id", Value(double(id)));
@@ -116,6 +123,7 @@ Handle RecordingDevice::createBuffer(const BufferDescriptor& descriptor) {
 }
 
 void RecordingDevice::destroyBuffer(Handle buffer) {
+    live(buffer);
     Object call;
     call.set(u"call", Value(u"destroyBuffer"));
     call.set(u"buffer", ref(buffer));
@@ -133,6 +141,8 @@ Handle RecordingDevice::createShaderModule(const JsString& code) {
 }
 
 Handle RecordingDevice::createRenderPipeline(const RenderPipelineDescriptor& descriptor) {
+    live(descriptor.vertexModule);
+    live(descriptor.fragmentModule);
     const Handle id = next();
     Object vertex;
     vertex.set(u"module", ref(descriptor.vertexModule));
@@ -188,6 +198,7 @@ Handle RecordingDevice::createRenderPipeline(const RenderPipelineDescriptor& des
 }
 
 Handle RecordingDevice::createComputePipeline(const ComputePipelineDescriptor& descriptor) {
+    live(descriptor.module);
     const Handle id = next();
     Object compute;
     compute.set(u"module", ref(descriptor.module));
@@ -202,6 +213,7 @@ Handle RecordingDevice::createComputePipeline(const ComputePipelineDescriptor& d
 }
 
 Handle RecordingDevice::getBindGroupLayout(Handle pipeline, double index) {
+    live(pipeline);
     const Handle id = next();
     Object call;
     call.set(u"call", Value(u"getBindGroupLayout"));
@@ -213,6 +225,8 @@ Handle RecordingDevice::getBindGroupLayout(Handle pipeline, double index) {
 }
 
 Handle RecordingDevice::createBindGroup(Handle layout, const std::vector<BindGroupEntry>& entries) {
+    live(layout);
+    for (const BindGroupEntry& entry : entries) live(entry.resource);
     std::optional<JsString> failure = failMessage_;
     if (!failure) {
         for (const BindGroupEntry& entry : entries) {
@@ -250,6 +264,7 @@ Handle RecordingDevice::createBindGroup(Handle layout, const std::vector<BindGro
 }
 
 void RecordingDevice::writeBuffer(Handle buffer, double offset, const std::vector<uint8_t>& bytes) {
+    live(buffer);
     Object call;
     call.set(u"call", Value(u"writeBuffer"));
     call.set(u"buffer", ref(buffer));
@@ -260,6 +275,7 @@ void RecordingDevice::writeBuffer(Handle buffer, double offset, const std::vecto
 
 void RecordingDevice::writeTexture(const TexelCopyTextureInfo& destination, const std::vector<uint8_t>& bytes,
                                    const TexelCopyBufferLayout& layout, const Extent3D& size) {
+    live(destination.texture);
     Object call;
     call.set(u"call", Value(u"writeTexture"));
     call.set(u"texture", ref(destination.texture));
@@ -284,6 +300,9 @@ Handle RecordingDevice::createCommandEncoder() {
 }
 
 Handle RecordingDevice::beginRenderPass(Handle encoder, const RenderPassDescriptor& descriptor) {
+    live(encoder);
+    for (const RenderPassColorAttachment& attachment : descriptor.colorAttachments) live(attachment.view);
+    if (descriptor.depthStencilAttachment) live(descriptor.depthStencilAttachment->view);
     const Handle id = next();
     Array colors;
     for (const RenderPassColorAttachment& attachment : descriptor.colorAttachments) {
@@ -317,6 +336,7 @@ Handle RecordingDevice::beginRenderPass(Handle encoder, const RenderPassDescript
 }
 
 Handle RecordingDevice::beginComputePass(Handle encoder) {
+    live(encoder);
     const Handle id = next();
     Object call;
     call.set(u"call", Value(u"beginComputePass"));
@@ -327,6 +347,8 @@ Handle RecordingDevice::beginComputePass(Handle encoder) {
 }
 
 void RecordingDevice::setPipeline(Handle pass, Handle pipeline) {
+    live(pass);
+    live(pipeline);
     Object call;
     call.set(u"call", Value(u"setPipeline"));
     call.set(u"pass", ref(pass));
@@ -335,6 +357,8 @@ void RecordingDevice::setPipeline(Handle pass, Handle pipeline) {
 }
 
 void RecordingDevice::setBindGroup(Handle pass, double index, Handle group) {
+    live(pass);
+    live(group);
     Object call;
     call.set(u"call", Value(u"setBindGroup"));
     call.set(u"pass", ref(pass));
@@ -387,6 +411,9 @@ Value copyInfo(const TexelCopyTextureInfo& info) {
 
 void RecordingDevice::copyTextureToTexture(Handle encoder, const TexelCopyTextureInfo& source,
                                            const TexelCopyTextureInfo& destination, const Extent3D& size) {
+    live(encoder);
+    live(source.texture);
+    live(destination.texture);
     Object call;
     call.set(u"call", Value(u"copyTextureToTexture"));
     call.set(u"encoder", ref(encoder));
@@ -396,7 +423,52 @@ void RecordingDevice::copyTextureToTexture(Handle encoder, const TexelCopyTextur
     log(std::move(call));
 }
 
+void RecordingDevice::copyTextureToBuffer(Handle encoder, const TexelCopyTextureInfo& source, Handle buffer,
+                                          const TexelCopyBufferLayout& layout, const Extent3D& size) {
+    live(encoder);
+    live(source.texture);
+    live(buffer);
+    Object call;
+    call.set(u"call", Value(u"copyTextureToBuffer"));
+    call.set(u"encoder", ref(encoder));
+    call.set(u"source", copyInfo(source));
+    call.set(u"buffer", ref(buffer));
+    call.set(u"offset", Value(layout.offset));
+    call.set(u"bytesPerRow", optional_number(layout.bytesPerRow));
+    call.set(u"rowsPerImage", optional_number(layout.rowsPerImage));
+    call.set(u"size", extent(size));
+    log(std::move(call));
+}
+
+std::vector<uint8_t> RecordingDevice::mapRead(Handle buffer) {
+    live(buffer);
+    Object map;
+    map.set(u"call", Value(u"mapAsync"));
+    map.set(u"buffer", ref(buffer));
+    map.set(u"mode", Value(1.0));
+    log(std::move(map));
+    Object range;
+    range.set(u"call", Value(u"getMappedRange"));
+    range.set(u"buffer", ref(buffer));
+    log(std::move(range));
+    const auto size = bufferSizes_.find(buffer);
+    std::vector<uint8_t> bytes(size == bufferSizes_.end() ? 0 : size_t(size->second));
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        const size_t unit = ((i / 2) * 40503 + size_t(buffer) * 11) & 65535;
+        bytes[i] = uint8_t(i % 2 == 0 ? unit & 255 : unit >> 8);
+    }
+    return bytes;
+}
+
+void RecordingDevice::unmap(Handle buffer) {
+    Object call;
+    call.set(u"call", Value(u"unmap"));
+    call.set(u"buffer", ref(buffer));
+    log(std::move(call));
+}
+
 Handle RecordingDevice::finish(Handle encoder) {
+    live(encoder);
     const Handle id = next();
     Object call;
     call.set(u"call", Value(u"finish"));

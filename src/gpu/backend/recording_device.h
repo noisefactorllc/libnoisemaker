@@ -8,6 +8,9 @@
 
 #include "gpu/backend/device.h"
 
+#include <unordered_map>
+#include <unordered_set>
+
 namespace libnoisemaker::backend {
 
 class RecordingDevice : public Device {
@@ -43,8 +46,18 @@ public:
                               const Extent3D& size) override;
     Handle finish(Handle encoder) override;
     void submit(const std::vector<Handle>& commandBuffers) override;
+    void copyTextureToBuffer(Handle encoder, const TexelCopyTextureInfo& source, Handle buffer,
+                             const TexelCopyBufferLayout& layout, const Extent3D& size) override;
     // The work is done when it is submitted: done runs at once.
     void onSubmittedWorkDone(std::function<void()> done) override { done(); }
+    // A mapped buffer's 16-bit unit k is (k * 40503 + buffer * 11) & 65535,
+    // little-endian, as the mock device's are: 65536 consecutive units hold
+    // every value, so a large enough readback converts every half float.
+    std::vector<uint8_t> mapRead(Handle buffer) override;
+    void unmap(Handle buffer) override;
+    // Not logged: the reference has no such call. A released handle passed
+    // to any later call throws, so the gate fails on a premature release.
+    void release(Handle object) override { released_.insert(object); }
 
     // The calls since the last take, in order.
     Array takeLog();
@@ -59,6 +72,9 @@ private:
     void log(Object call);
 
     Handle next_ = 1;
+    std::unordered_map<Handle, double> bufferSizes_;
+    std::unordered_set<Handle> released_;
+    void live(Handle handle) const;
     Array log_;
     std::vector<double> rejected_;
     std::optional<JsString> failMessage_;

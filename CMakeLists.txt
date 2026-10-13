@@ -165,6 +165,14 @@ endif()
 add_subdirectory(tools/nm-dump)
 
 if(NM_BUILD_GPU)
+  # The backend's device on Dawn, and nm-render, which renders with it.
+  add_library(noisemaker_dawn STATIC src/gpu/dawn_device.cpp)
+  target_include_directories(noisemaker_dawn PRIVATE ${PROJECT_SOURCE_DIR}/src)
+  target_link_libraries(noisemaker_dawn PUBLIC noisemaker_gpu noisemaker_backend)
+  add_subdirectory(tools/nm-render)
+endif()
+
+if(NM_BUILD_GPU)
   add_library(noisemaker STATIC src/capi/context.cpp)
   target_include_directories(noisemaker PRIVATE ${PROJECT_SOURCE_DIR}/src)
   target_link_libraries(noisemaker PUBLIC noisemaker_core_impl PRIVATE noisemaker_gpu)
