@@ -29,7 +29,8 @@ globalThis.HTMLCanvasElement ??= class HTMLCanvasElement {
     return {
       getContextAttributes: () => ({ willReadFrequently: true }),
       getImageData: (x, y, w, h) => {
-        if (x !== 0 || y !== 0 || w !== this.width || h !== this.height || this.data.length !== w * h * 4) {
+        if (x !== 0 || y !== 0 || w !== this.width || h !== this.height || !Number.isInteger(w) || !Number.isInteger(h) ||
+            this.data.length !== w * h * 4) {
           throw new Error('the canvas stand-in holds exactly its own pixels')
         }
         return { data: this.data }

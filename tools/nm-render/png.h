@@ -15,8 +15,9 @@ struct Image {
     uint32_t height = 0;
     std::vector<uint8_t> rgba;  // rows in file order, row 0 first
 };
-// A non-interlaced 8-bit PNG (gray, gray-alpha, RGB or RGBA) as RGBA rows;
-// throws std::runtime_error naming what it cannot read.
+// A non-interlaced 8-bit PNG (gray, gray-alpha, RGB or RGBA) of at most
+// 4096 x 4096 pixels as RGBA rows; throws std::runtime_error naming what it
+// cannot read.
 Image decode_png(const std::vector<uint8_t>& bytes);
 std::vector<uint8_t> read_file(const std::string& path);
 

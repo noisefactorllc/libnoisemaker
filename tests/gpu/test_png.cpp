@@ -64,12 +64,12 @@ void chunk(std::vector<uint8_t>& out, const char* type, const std::vector<uint8_
     put32(out, crc32(out, start, out.size()));
 }
 
-// A 1x1 RGBA PNG whose zlib stream holds this deflate data.
-std::vector<uint8_t> png_with_deflate(const std::vector<uint8_t>& deflate) {
+// An RGBA PNG of this size whose zlib stream holds this deflate data.
+std::vector<uint8_t> png_with_deflate(const std::vector<uint8_t>& deflate, uint32_t width = 1, uint32_t height = 1) {
     std::vector<uint8_t> png{0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
     std::vector<uint8_t> header;
-    put32(header, 1);
-    put32(header, 1);
+    put32(header, width);
+    put32(header, height);
     header.insert(header.end(), {8, 6, 0, 0, 0});
     chunk(png, "IHDR", header);
     std::vector<uint8_t> zlib{0x78, 0x01};
@@ -114,11 +114,11 @@ std::vector<uint8_t> dynamic_header(bool allOnes) {
     return bits.bytes;
 }
 
-bool throws(const std::vector<uint8_t>& bytes) {
+bool throws(const std::vector<uint8_t>& bytes, const char* reason = nullptr) {
     try {
         nm_render::decode_png(bytes);
-    } catch (const std::runtime_error&) {
-        return true;
+    } catch (const std::runtime_error& e) {
+        return reason == nullptr || std::string(e.what()).find(reason) != std::string::npos;
     }
     return false;
 }
@@ -174,6 +174,10 @@ int main() {
     // and length code.
     NM_CHECK(throws(png_with_deflate(dynamic_header(false))));
     NM_CHECK(throws(png_with_deflate(dynamic_header(true))));
+    // Larger than 4096 x 4096 in all, though each side is allowed.
+    NM_CHECK(throws(png_with_deflate({}, 4097, 4096), "4096 x 4096"));
+    NM_CHECK(throws(png_with_deflate({}, 16385, 1), "16384"));
+    NM_CHECK(!throws(png_with_deflate({}, 16384, 1), "pixels"));
     // The encoder's stored blocks, over 65535 bytes so they split.
     std::vector<uint8_t> rgba(300 * 70 * 4);
     for (size_t i = 0; i < rgba.size(); ++i) rgba[i] = uint8_t(i * 131 + (i >> 9));

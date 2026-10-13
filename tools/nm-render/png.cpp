@@ -355,10 +355,13 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
         pos += 12 + size_t(length);
     }
     if (!header || !ended) bad("missing IHDR or IEND");
-    // Host textures are at most 16384 pixels on a side, so the sizes below
-    // stay far from overflow.
-    if (image.width == 0 || image.height == 0 || image.width > 16384 || image.height > 16384) {
-        bad("image size must be 1 to 16384 pixels on a side");
+    // Host textures are at most 16384 pixels on a side and 4096 x 4096 in
+    // all, so the sizes below stay far from overflow and decoding holds at
+    // most about 134 MB beside the file: the inflated rows (67,112,960
+    // bytes), unfiltered in place, and the RGBA copy (67,108,864).
+    if (image.width == 0 || image.height == 0 || image.width > 16384 || image.height > 16384 ||
+        uint64_t(image.width) * image.height > uint64_t(4096) * 4096) {
+        bad("image size must be 1 to 16384 pixels on a side and at most 4096 x 4096 in all");
     }
     if (compression != 0 || filterMethod != 0) bad("unknown compression or filter method");
     if (depth != 8 || interlace != 0) bad("only non-interlaced 8-bit images are supported");
@@ -379,9 +382,10 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
     }
     const size_t stride = size_t(image.width) * channels;
     const size_t expected = (stride + 1) * size_t(image.height);
-    const std::vector<uint8_t> payload(idat.begin() + 2, idat.end());
+    std::vector<uint8_t> payload(idat.begin() + 2, idat.end());
+    idat = std::vector<uint8_t>();
     Inflater inflater(payload, expected);
-    const std::vector<uint8_t> raw = inflater.run();
+    std::vector<uint8_t> raw = inflater.run();
     if (raw.size() != expected) bad("image data size differs from the header");
     if (inflater.end() + 4 > payload.size()) bad("zlib checksum missing");
     uint32_t a = 1, b = 0;
@@ -390,17 +394,18 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
         b = (b + a) % 65521;
     }
     if (get32(&payload[inflater.end()]) != ((b << 16) | a)) bad("zlib checksum mismatch");
-    std::vector<uint8_t> pixels(stride * image.height);
+    payload = std::vector<uint8_t>();
+    // Unfilter in place: each row's previous and upper bytes are already
+    // decoded when a byte reads them.
     for (size_t y = 0; y < image.height; ++y) {
-        const uint8_t filter = raw[y * (stride + 1)];
-        const uint8_t* src = &raw[y * (stride + 1) + 1];
-        uint8_t* row = &pixels[y * stride];
-        const uint8_t* up = y > 0 ? &pixels[(y - 1) * stride] : nullptr;
+        uint8_t* row = &raw[y * (stride + 1) + 1];
+        const uint8_t filter = row[-1];
+        const uint8_t* up = y > 0 ? row - (stride + 1) : nullptr;
         for (size_t x = 0; x < stride; ++x) {
             const int a = x >= channels ? row[x - channels] : 0;
             const int b = up ? up[x] : 0;
             const int c = up && x >= channels ? up[x - channels] : 0;
-            int value = src[x];
+            int value = row[x];
             switch (filter) {
                 case 0: break;
                 case 1: value += a; break;
@@ -413,17 +418,20 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
         }
     }
     image.rgba.resize(size_t(image.width) * image.height * 4);
-    for (size_t i = 0; i < size_t(image.width) * image.height; ++i) {
-        const uint8_t* p = &pixels[i * channels];
-        uint8_t* q = &image.rgba[i * 4];
-        if (channels >= 3) {
-            q[0] = p[0];
-            q[1] = p[1];
-            q[2] = p[2];
-        } else {
-            q[0] = q[1] = q[2] = p[0];
+    for (size_t y = 0; y < image.height; ++y) {
+        const uint8_t* row = &raw[y * (stride + 1) + 1];
+        for (size_t x = 0; x < image.width; ++x) {
+            const uint8_t* p = row + x * channels;
+            uint8_t* q = &image.rgba[(y * image.width + x) * 4];
+            if (channels >= 3) {
+                q[0] = p[0];
+                q[1] = p[1];
+                q[2] = p[2];
+            } else {
+                q[0] = q[1] = q[2] = p[0];
+            }
+            q[3] = channels == 4 ? p[3] : channels == 2 ? p[1] : 255;
         }
-        q[3] = channels == 4 ? p[3] : channels == 2 ? p[1] : 255;
     }
     return image;
 }
