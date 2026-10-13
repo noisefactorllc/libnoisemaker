@@ -606,6 +606,47 @@ void WebGPUBackend::endFrame() {
     }
 }
 
+Value WebGPUBackend::updateTextureFromPixels(const JsString& id, double width, double height,
+                                             const std::vector<uint8_t>& rgba, bool flipY) {
+    const auto size = [](double w, double h) {
+        Object out;
+        out.set(u"width", Value(w));
+        out.set(u"height", Value(h));
+        return Value(std::move(out));
+    };
+    if (width == 0 || height == 0) return size(0, 0);
+    const auto it = textures_.find(id);
+    std::shared_ptr<TextureRecord> tex = it == textures_.end() ? nullptr : it->second;
+    if (!tex || !jsv::strict_equals(tex->width, Value(width)) || !jsv::strict_equals(tex->height, Value(height))) {
+        if (tex) device_.destroyTexture(tex->handle);
+        TextureDescriptor descriptor;
+        descriptor.size = Extent3D{width, height, 1};
+        descriptor.format = u"rgba8unorm";
+        descriptor.usage = TextureUsage::TextureBinding | TextureUsage::CopyDst | TextureUsage::RenderAttachment;
+        TextureRecord record;
+        record.handle = device_.createTexture(descriptor);
+        record.view = device_.createView(record.handle, {});
+        record.width = Value(width);
+        record.height = Value(height);
+        record.format = Value(u"rgba8");
+        record.gpuFormat = Value(u"rgba8unorm");
+        record.isExternal = true;
+        tex = ownRecord(std::move(record));
+        setTexture(id, tex);
+    }
+    const auto rowBytes = size_t(width * 4);
+    std::vector<uint8_t> data = rgba;
+    if (flipY) {
+        for (size_t row = 0; row < size_t(height); ++row) {
+            const size_t from = (size_t(height) - 1 - row) * rowBytes;
+            std::copy(rgba.begin() + long(from), rgba.begin() + long(from + rowBytes), data.begin() + long(row * rowBytes));
+        }
+    }
+    device_.writeTexture(TexelCopyTextureInfo{tex->handle}, data, TexelCopyBufferLayout{0, double(rowBytes), height},
+                         Extent3D{width, height, 1});
+    return size(width, height);
+}
+
 namespace {
 
 // float16ToFloat32 (webgpu.js).

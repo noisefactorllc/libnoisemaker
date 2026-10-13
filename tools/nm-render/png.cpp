@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
+#include <stdexcept>
 
 namespace nm_render {
 
@@ -86,6 +89,286 @@ bool write_file(const std::string& path, const std::vector<uint8_t>& bytes) {
     std::unique_ptr<FILE, int (*)(FILE*)> file(std::fopen(path.c_str(), "wb"), &std::fclose);
     if (!file) return false;
     return std::fwrite(bytes.data(), 1, bytes.size(), file.get()) == bytes.size();
+}
+
+}  // namespace nm_render
+
+namespace nm_render {
+
+namespace {
+
+[[noreturn]] void bad(const std::string& what) { throw std::runtime_error("PNG: " + what); }
+
+// RFC 1951 inflate: stored, fixed and dynamic Huffman blocks.
+class Inflater {
+public:
+    explicit Inflater(const std::vector<uint8_t>& in) : in_(in) {}
+
+    std::vector<uint8_t> run() {
+        bool last = false;
+        while (!last) {
+            last = bits(1) != 0;
+            const uint32_t type = bits(2);
+            if (type == 0) {
+                stored();
+            } else if (type == 1) {
+                Huffman lit, dist;
+                fixedTables(lit, dist);
+                block(lit, dist);
+            } else if (type == 2) {
+                Huffman lit, dist;
+                dynamicTables(lit, dist);
+                block(lit, dist);
+            } else {
+                bad("invalid deflate block type");
+            }
+        }
+        return std::move(out_);
+    }
+
+private:
+    struct Huffman {
+        std::array<uint16_t, 16> counts{};
+        std::vector<uint16_t> symbols;
+    };
+
+    uint32_t bit() {
+        if (pos_ >= in_.size()) bad("deflate stream ends early");
+        const uint32_t b = (in_[pos_] >> bitPos_) & 1u;
+        if (++bitPos_ == 8) {
+            bitPos_ = 0;
+            ++pos_;
+        }
+        return b;
+    }
+    uint32_t bits(int n) {
+        uint32_t v = 0;
+        for (int i = 0; i < n; ++i) v |= bit() << i;
+        return v;
+    }
+
+    static void build(Huffman& h, const uint8_t* lengths, size_t n) {
+        h.counts.fill(0);
+        for (size_t i = 0; i < n; ++i) ++h.counts[lengths[i]];
+        h.counts[0] = 0;
+        std::array<uint16_t, 16> offsets{};
+        for (int len = 1; len < 16; ++len) offsets[size_t(len)] = uint16_t(offsets[size_t(len - 1)] + h.counts[size_t(len - 1)]);
+        h.symbols.assign(n, 0);
+        for (size_t i = 0; i < n; ++i) {
+            if (lengths[i] != 0) h.symbols[offsets[lengths[i]]++] = uint16_t(i);
+        }
+    }
+
+    uint32_t decode(const Huffman& h) {
+        int code = 0, first = 0, index = 0;
+        for (int len = 1; len < 16; ++len) {
+            code |= int(bit());
+            const int count = h.counts[size_t(len)];
+            if (code - count < first) return h.symbols[size_t(index + (code - first))];
+            index += count;
+            first += count;
+            first <<= 1;
+            code <<= 1;
+        }
+        bad("invalid Huffman code");
+    }
+
+    void stored() {
+        // The rest of the current byte is padding.
+        if (bitPos_ != 0) {
+            bitPos_ = 0;
+            ++pos_;
+        }
+        if (pos_ + 4 > in_.size()) bad("stored block ends early");
+        const uint32_t len = in_[pos_] | (uint32_t(in_[pos_ + 1]) << 8);
+        const uint32_t nlen = in_[pos_ + 2] | (uint32_t(in_[pos_ + 3]) << 8);
+        if ((len ^ 0xFFFFu) != nlen) bad("stored block length check fails");
+        pos_ += 4;
+        if (pos_ + len > in_.size()) bad("stored block ends early");
+        out_.insert(out_.end(), in_.begin() + long(pos_), in_.begin() + long(pos_ + len));
+        pos_ += len;
+    }
+
+    static void fixedTables(Huffman& lit, Huffman& dist) {
+        std::array<uint8_t, 288> lengths{};
+        for (size_t i = 0; i < 144; ++i) lengths[i] = 8;
+        for (size_t i = 144; i < 256; ++i) lengths[i] = 9;
+        for (size_t i = 256; i < 280; ++i) lengths[i] = 7;
+        for (size_t i = 280; i < 288; ++i) lengths[i] = 8;
+        build(lit, lengths.data(), lengths.size());
+        std::array<uint8_t, 30> d{};
+        d.fill(5);
+        build(dist, d.data(), d.size());
+    }
+
+    void dynamicTables(Huffman& lit, Huffman& dist) {
+        const uint32_t hlit = bits(5) + 257, hdist = bits(5) + 1, hclen = bits(4) + 4;
+        static const uint8_t order[19] = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
+        std::array<uint8_t, 19> codeLengths{};
+        for (uint32_t i = 0; i < hclen; ++i) codeLengths[order[i]] = uint8_t(bits(3));
+        Huffman lengthCodes;
+        build(lengthCodes, codeLengths.data(), codeLengths.size());
+        std::vector<uint8_t> lengths(hlit + hdist, 0);
+        for (uint32_t i = 0; i < hlit + hdist;) {
+            const uint32_t sym = decode(lengthCodes);
+            if (sym < 16) {
+                lengths[i++] = uint8_t(sym);
+                continue;
+            }
+            uint32_t repeat = 0;
+            uint8_t value = 0;
+            if (sym == 16) {
+                if (i == 0) bad("repeat with no previous length");
+                value = lengths[i - 1];
+                repeat = 3 + bits(2);
+            } else if (sym == 17) {
+                repeat = 3 + bits(3);
+            } else {
+                repeat = 11 + bits(7);
+            }
+            if (i + repeat > hlit + hdist) bad("code lengths overflow");
+            for (uint32_t k = 0; k < repeat; ++k) lengths[i++] = value;
+        }
+        build(lit, lengths.data(), hlit);
+        build(dist, lengths.data() + hlit, hdist);
+    }
+
+    void block(const Huffman& lit, const Huffman& dist) {
+        static const uint16_t lengthBase[29] = {3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59,
+                                                67, 83, 99, 115, 131, 163, 195, 227, 258};
+        static const uint8_t lengthExtra[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+                                                4, 4, 4, 4, 5, 5, 5, 5, 0};
+        static const uint16_t distBase[30] = {1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129,
+                                              193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
+        static const uint8_t distExtra[30] = {0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6,
+                                              6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
+        for (;;) {
+            const uint32_t sym = decode(lit);
+            if (sym < 256) {
+                out_.push_back(uint8_t(sym));
+            } else if (sym == 256) {
+                return;
+            } else {
+                const uint32_t li = sym - 257;
+                if (li >= 29) bad("invalid length symbol");
+                const uint32_t length = lengthBase[li] + bits(lengthExtra[li]);
+                const uint32_t di = decode(dist);
+                if (di >= 30) bad("invalid distance symbol");
+                const uint32_t distance = distBase[di] + bits(distExtra[di]);
+                if (distance > out_.size()) bad("distance before the start");
+                const size_t from = out_.size() - distance;
+                for (uint32_t k = 0; k < length; ++k) out_.push_back(out_[from + k]);
+            }
+        }
+    }
+
+    const std::vector<uint8_t>& in_;
+    size_t pos_ = 0;
+    int bitPos_ = 0;
+    std::vector<uint8_t> out_;
+};
+
+uint32_t get32(const uint8_t* p) { return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3]; }
+
+uint8_t paeth(int a, int b, int c) {
+    const int p = a + b - c;
+    const int pa = std::abs(p - a), pb = std::abs(p - b), pc = std::abs(p - c);
+    if (pa <= pb && pa <= pc) return uint8_t(a);
+    if (pb <= pc) return uint8_t(b);
+    return uint8_t(c);
+}
+
+}  // namespace
+
+std::vector<uint8_t> read_file(const std::string& path) {
+    std::unique_ptr<FILE, int (*)(FILE*)> file(std::fopen(path.c_str(), "rb"), &std::fclose);
+    if (!file) throw std::runtime_error("cannot read " + path);
+    std::vector<uint8_t> bytes;
+    uint8_t buffer[65536];
+    size_t n = 0;
+    while ((n = std::fread(buffer, 1, sizeof buffer, file.get())) > 0) bytes.insert(bytes.end(), buffer, buffer + n);
+    return bytes;
+}
+
+Image decode_png(const std::vector<uint8_t>& bytes) {
+    static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    if (bytes.size() < 8 || std::memcmp(bytes.data(), signature, 8) != 0) bad("not a PNG file");
+    Image image;
+    uint8_t depth = 0, colorType = 0, interlace = 0;
+    std::vector<uint8_t> idat;
+    size_t pos = 8;
+    bool ended = false;
+    while (pos + 12 <= bytes.size() && !ended) {
+        const uint32_t length = get32(&bytes[pos]);
+        if (pos + 12 + size_t(length) > bytes.size()) bad("chunk ends early");
+        const uint8_t* type = &bytes[pos + 4];
+        const uint8_t* data = &bytes[pos + 8];
+        if (crc32(type, size_t(length) + 4) != get32(data + length)) bad("chunk CRC mismatch");
+        if (std::memcmp(type, "IHDR", 4) == 0) {
+            if (length < 13) bad("short IHDR");
+            image.width = get32(data);
+            image.height = get32(data + 4);
+            depth = data[8];
+            colorType = data[9];
+            interlace = data[12];
+        } else if (std::memcmp(type, "IDAT", 4) == 0) {
+            idat.insert(idat.end(), data, data + length);
+        } else if (std::memcmp(type, "IEND", 4) == 0) {
+            ended = true;
+        }
+        pos += 12 + size_t(length);
+    }
+    if (image.width == 0 || image.height == 0) bad("no image header");
+    if (depth != 8 || interlace != 0) bad("only non-interlaced 8-bit images are supported");
+    size_t channels = 0;
+    switch (colorType) {
+        case 0: channels = 1; break;
+        case 2: channels = 3; break;
+        case 4: channels = 2; break;
+        case 6: channels = 4; break;
+        default: bad("unsupported color type " + std::to_string(colorType));
+    }
+    if (idat.size() < 6 || (idat[0] & 0x0F) != 8) bad("not a deflate stream");
+    const std::vector<uint8_t> payload(idat.begin() + 2, idat.end());
+    const std::vector<uint8_t> raw = Inflater(payload).run();
+    const size_t stride = size_t(image.width) * channels;
+    if (raw.size() < (stride + 1) * image.height) bad("image data ends early");
+    std::vector<uint8_t> pixels(stride * image.height);
+    for (size_t y = 0; y < image.height; ++y) {
+        const uint8_t filter = raw[y * (stride + 1)];
+        const uint8_t* src = &raw[y * (stride + 1) + 1];
+        uint8_t* row = &pixels[y * stride];
+        const uint8_t* up = y > 0 ? &pixels[(y - 1) * stride] : nullptr;
+        for (size_t x = 0; x < stride; ++x) {
+            const int a = x >= channels ? row[x - channels] : 0;
+            const int b = up ? up[x] : 0;
+            const int c = up && x >= channels ? up[x - channels] : 0;
+            int value = src[x];
+            switch (filter) {
+                case 0: break;
+                case 1: value += a; break;
+                case 2: value += b; break;
+                case 3: value += (a + b) / 2; break;
+                case 4: value += paeth(a, b, c); break;
+                default: bad("invalid filter type");
+            }
+            row[x] = uint8_t(value);
+        }
+    }
+    image.rgba.resize(size_t(image.width) * image.height * 4);
+    for (size_t i = 0; i < size_t(image.width) * image.height; ++i) {
+        const uint8_t* p = &pixels[i * channels];
+        uint8_t* q = &image.rgba[i * 4];
+        if (channels >= 3) {
+            q[0] = p[0];
+            q[1] = p[1];
+            q[2] = p[2];
+        } else {
+            q[0] = q[1] = q[2] = p[0];
+        }
+        q[3] = channels == 4 ? p[3] : channels == 2 ? p[1] : 255;
+    }
+    return image;
 }
 
 }  // namespace nm_render

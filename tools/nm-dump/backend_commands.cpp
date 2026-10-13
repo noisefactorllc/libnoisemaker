@@ -130,6 +130,14 @@ int backend(int, char**) {
                     backend->generateMipmaps(ids);
                 } else if (kind == u"clearTexture") {
                     backend->clearTexture(id.as_string());
+                } else if (kind == u"updateTextureFromPixels") {
+                    const nm::Value bytes = field(op, u"data");
+                    std::vector<uint8_t> rgba;
+                    for (const nm::Value& byte : bytes.as_array()) rgba.push_back(static_cast<uint8_t>(byte.as_number()));
+                    const double width = field(op, u"width").as_number();
+                    const double height = field(op, u"height").as_number();
+                    const bool flipY = !nm::jsv::strict_equals(field(op, u"flipY"), nm::Value(false));
+                    record.set(u"result", backend->updateTextureFromPixels(id.as_string(), width, height, rgba, flipY));
                 } else if (kind == u"readPixels") {
                     const be::Pixels pixels = backend->readPixels(id.as_string());
                     static const char hexDigits[] = "0123456789abcdef";

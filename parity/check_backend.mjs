@@ -278,6 +278,9 @@ sequence('synthetic/aliases-and-samplers', [
   bind({ inputs: { inputTex: 'plainTex', second: 'mipTex', volTex: 'vol3d', meshTex: 'global_mesh0_positions_chain_2', flatTex: 'global_o0' } }, 'aliases'),
   bind({ inputs: { first: 'plainTex', second: 'global_feedback', volTex: 'volLinear_chain_1', meshTex: 'global_mesh0_positions', flatTex: 'globalFeedback' }, samplerTypes: { samp: 'repeat', volSamp: 7 } }, 'aliases'),
   bind({ inputs: { inputTex: 'global_o0_chain_4', tex1: 'noFormat' } }, 'aliases', surfaceState({ surfaces: {} })),
+  // A pass sampling a host upload (isExternal) takes the linear sampler.
+  { op: 'updateTextureFromPixels', id: 'hostTex', width: 2, height: 2, flipY: false, data: Array.from({ length: 16 }, (_, i) => i * 9) },
+  bind({ inputs: { inputTex: 'hostTex', second: 'mipTex', volTex: 'vol3d', meshTex: 'global_mesh0_positions', flatTex: 'global_o0' } }, 'aliases'),
   { op: 'endFrame' }
 ])
 sequence('synthetic/uniform-defaults', [
@@ -429,6 +432,14 @@ sequence('synthetic/texture-operations', [
   { op: 'clearTexture', id: 'mipTex' },
   { op: 'clearTexture', id: 'plainTex' },
   { op: 'clearTexture', id: 'missing' },
+  // CPU pixels from a willReadFrequently canvas: new, same size, flipped or
+  // not, resized (the old texture destroyed), empty.
+  ...[[5, 3, undefined], [5, 3, false], [5, 3, true], [2, 4, false], [0, 4, false], [3, 0, true]].map(([width, height, flipY]) => ({
+    op: 'updateTextureFromPixels', id: 'canvasTex', width, height, flipY,
+    data: Array.from({ length: width * height * 4 }, (_, i) => (i * 29 + width) % 256)
+  })),
+  { op: 'updateTextureFromPixels', id: 'plainTex', width: 64, height: 32, flipY: false, data: Array.from({ length: 64 * 32 * 4 }, (_, i) => i % 251) },
+  { op: 'readPixels', id: 'canvasTex' },
   // Readback: the recording devices fill a mapped buffer's 16-bit units
   // with a permutation of 0..65535, so f16all's 65536 halves are every half
   // float, infinities and NaNs included.

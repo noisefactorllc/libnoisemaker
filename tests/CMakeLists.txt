@@ -4,6 +4,11 @@ if(NM_BUILD_GPU)
   target_link_libraries(test_device PRIVATE noisemaker_gpu)
   add_test(NAME test_device COMMAND test_device)
 
+  # nm-render's PNG codec, built with nm-render.
+  add_executable(test_png gpu/test_png.cpp ${PROJECT_SOURCE_DIR}/tools/nm-render/png.cpp)
+  target_include_directories(test_png PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/tools/nm-render)
+  add_test(NAME test_png COMMAND test_png)
+
   add_executable(test_context capi/test_context.c)
   target_link_libraries(test_context PRIVATE noisemaker)
   add_test(NAME test_context COMMAND test_context)

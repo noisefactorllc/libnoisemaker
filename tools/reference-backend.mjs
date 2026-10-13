@@ -16,6 +16,19 @@ if (!process.env.NM_REFERENCE_ROOT) { console.error('NM_REFERENCE_ROOT is not se
 const REF = resolve(process.env.NM_REFERENCE_ROOT)
 // The reference logs warnings; keep stdout for records.
 console.log = console.warn = console.info = (...args) => process.stderr.write(args.map(String).join(' ') + '\n')
+// The DOM classes updateTextureFromSource tests sources against, and a 2D
+// canvas created with willReadFrequently whose getImageData returns the
+// op's bytes: the path that writes CPU pixels.
+globalThis.HTMLVideoElement ??= class HTMLVideoElement {}
+globalThis.HTMLImageElement ??= class HTMLImageElement {}
+globalThis.ImageBitmap ??= class ImageBitmap {}
+globalThis.HTMLCanvasElement ??= class HTMLCanvasElement {
+  constructor (width, height, data) { this.width = width; this.height = height; this.data = data }
+  getContext (kind) {
+    if (kind !== '2d') return null
+    return { getContextAttributes: () => ({ willReadFrequently: true }), getImageData: () => ({ data: this.data }) }
+  }
+}
 const { WebGPUBackend } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/backends/webgpu.js')).href)
 
 let mock = createMockDevice()
@@ -75,6 +88,11 @@ for await (const line of lines) {
       case 'copyTextureScaled': backend.copyTextureScaled(op.src, op.dst); break
       case 'generateMipmaps': backend.generateMipmaps(op.ids); break
       case 'clearTexture': backend.clearTexture(op.id); break
+      case 'updateTextureFromPixels': {
+        const canvas = new HTMLCanvasElement(op.width, op.height, Uint8ClampedArray.from(op.data))
+        result = backend.updateTextureFromSource(op.id, canvas, op.flipY === undefined ? {} : { flipY: op.flipY })
+        break
+      }
       case 'readPixels': {
         const pixels = await backend.readPixels(op.id)
         result = { width: pixels.width, height: pixels.height, data: Buffer.from(pixels.data).toString('hex') }

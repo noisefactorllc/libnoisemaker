@@ -127,6 +127,11 @@ public:
     void copyTextureScaled(const JsString& srcId, const JsString& dstId);
     void generateMipmaps(const std::vector<JsString>& ids);
     void clearTexture(const JsString& id);
+    // updateTextureFromSource(id, canvas, { flipY }) for a 2D canvas created
+    // with willReadFrequently, whose getImageData rows are rgba: the path
+    // that writes CPU pixels. { width, height }, zero for an empty source.
+    Value updateTextureFromPixels(const JsString& id, double width, double height, const std::vector<uint8_t>& rgba,
+                                  bool flipY);
     // readPixels(textureId): the texture's texels as RGBA8, rgba16float and
     // rgba32float converted as round(v * 255) clamped to 0..255.
     Pixels readPixels(const JsString& textureId);
