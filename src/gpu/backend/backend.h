@@ -174,7 +174,7 @@ private:
     std::optional<Handle> outputStorageView(const FrameState& state);
     Handle legacyBindGroup(const Value& pass, const ProgramInfo& program, const FrameState& state);
     Handle createBindGroupFromEntries(Handle layout, const std::vector<BindGroupEntry>& entries);
-    void releaseRecord(const std::shared_ptr<TextureRecord>& record);
+    std::shared_ptr<TextureRecord> ownRecord(TextureRecord record);
 
     struct Viewport {
         Value x, y, w, h;

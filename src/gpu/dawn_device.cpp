@@ -692,16 +692,21 @@ void DawnDevice::unmap(Handle buffer) {
 
 void DawnDevice::release(Handle object) {
     if (object == 0 || object > objects_.size() || objects_[object - 1].kind == Kind::Released) return;
-    // The layout cache's entries refer to the pipeline, which the backend
-    // never releases; a released layout leaves the cache.
-    if (objects_[object - 1].kind == Kind::BindGroupLayout) {
-        for (auto it = layouts_.begin(); it != layouts_.end(); ++it) {
-            if (it->second == object) {
-                layouts_.erase(it);
-                break;
-            }
+    // A released layout leaves the cache, and a released pipeline's layouts
+    // with it, before the slots are reused.
+    const Kind kind = objects_[object - 1].kind;
+    for (auto it = layouts_.begin(); it != layouts_.end();) {
+        const bool layoutOfPipeline =
+            (kind == Kind::RenderPipeline || kind == Kind::ComputePipeline) && it->first.first == object;
+        if (it->second == object || layoutOfPipeline) {
+            const Handle layout = it->second;
+            it = layouts_.erase(it);
+            if (layoutOfPipeline) release(layout);
+        } else {
+            ++it;
         }
     }
+    if (objects_[object - 1].kind == Kind::Released) return;
     release(objects_[object - 1]);
     free_.push_back(object);
 }

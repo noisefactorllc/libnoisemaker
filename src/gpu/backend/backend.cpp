@@ -253,7 +253,7 @@ void WebGPUBackend::createTexture(const JsString& id, const Value& spec) {
     record.mipmaps = mipLevels > 1;
     record.mipLevels = mipLevels;
     record.persistent = jsv::truthy(jsv::get(spec, u"persistent"));
-    setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
+    setTexture(id, ownRecord(std::move(record)));
 }
 
 void WebGPUBackend::createTexture3D(const JsString& id, const Value& spec) {
@@ -280,37 +280,36 @@ void WebGPUBackend::createTexture3D(const JsString& id, const Value& spec) {
     record.is3D = true;
     const Value filter = jsv::get(spec, u"filter");
     record.filter = jsv::truthy(filter) ? filter : Value(u"linear");
-    setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
+    setTexture(id, ownRecord(std::move(record)));
 }
 
 void WebGPUBackend::destroyTexture(const JsString& id) {
     const auto it = textures_.find(id);
     if (it == textures_.end()) return;
     device_.destroyTexture(it->second->handle);
-    const std::shared_ptr<TextureRecord> record = it->second;
     textures_.erase(it);
     textureOrder_.erase(std::find(textureOrder_.begin(), textureOrder_.end(), id));
-    releaseRecord(record);
 }
 
-// A record no id and no pipeline structure holds any more: the reference's
-// garbage collector may take its texture, views and mip bind groups.
-void WebGPUBackend::releaseRecord(const std::shared_ptr<TextureRecord>& record) {
-    if (!record || record.use_count() > 1) return;
-    for (const Handle group : record->mipBindGroups) device_.release(group);
-    for (const Handle view : record->mipViews) device_.release(view);
-    if (record->renderView) device_.release(*record->renderView);
-    device_.release(record->view);
-    device_.release(record->handle);
+// A record that releases its texture, views and mip bind groups when its
+// last owner (an id here, a pipeline structure or a local) drops it, as the
+// reference's garbage collector may then take them.
+std::shared_ptr<TextureRecord> WebGPUBackend::ownRecord(TextureRecord record) {
+    Device* device = &device_;
+    return std::shared_ptr<TextureRecord>(new TextureRecord(std::move(record)), [device](TextureRecord* owned) {
+        for (const Handle group : owned->mipBindGroups) device->release(group);
+        for (const Handle view : owned->mipViews) device->release(view);
+        if (owned->renderView) device->release(*owned->renderView);
+        device->release(owned->view);
+        device->release(owned->handle);
+        delete owned;
+    });
 }
 
 void WebGPUBackend::setTexture(const JsString& id, std::shared_ptr<TextureRecord> record) {
-    const auto existing = textures_.find(id);
-    std::shared_ptr<TextureRecord> replaced = existing == textures_.end() ? nullptr : existing->second;
     auto [it, inserted] = textures_.insert_or_assign(id, std::move(record));
     (void)it;
     if (inserted) textureOrder_.push_back(id);
-    if (replaced && replaced != it->second) releaseRecord(replaced);
 }
 
 std::shared_ptr<TextureRecord> WebGPUBackend::textureRecord(const JsString& id) const {
@@ -331,7 +330,7 @@ void WebGPUBackend::createCubeTexture(const JsString& id, const Value& size) {
     record.width = size;
     record.height = size;
     record.cube = true;
-    setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
+    setTexture(id, ownRecord(std::move(record)));
 }
 
 void WebGPUBackend::uploadDataTexture(const JsString& id, const std::vector<float>& data, const Value& width,
@@ -350,7 +349,7 @@ void WebGPUBackend::uploadDataTexture(const JsString& id, const std::vector<floa
         record.height = height;
         record.format = Value(u"rgba32float");
         record.view = device_.createView(record.handle, {});
-        setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
+        setTexture(id, ownRecord(std::move(record)));
         it = textures_.find(id);
     }
     const double w = jsv::to_number(width);
@@ -1589,7 +1588,7 @@ Value WebGPUBackend::uploadMeshData(const JsString& meshId, const std::vector<fl
             record.height = height;
             record.format = Value(u"rgba32f");
             record.gpuFormat = Value(u"rgba32float");
-            setTexture(id, std::make_shared<TextureRecord>(std::move(record)));
+            setTexture(id, ownRecord(std::move(record)));
             it = textures_.find(id);
         }
         writeTextureRows(it->second->handle, data, width, height, 16);
