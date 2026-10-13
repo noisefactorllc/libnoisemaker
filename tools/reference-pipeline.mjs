@@ -21,11 +21,19 @@
 // JSON cannot hold travel as {"$number": text}. A graph's textures and
 // allocations, objects in JSON, are Maps again here.
 //
+// Math.sin and Math.cos are tools/js-math.mjs's, the correctly rounded
+// functions the port uses: the last bit of V8's depends on the platform.
+//
 //   NM_REFERENCE_ROOT=<reference-checkout> node tools/reference-pipeline.mjs < ops.jsonl
 import { createInterface } from 'node:readline'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createMockDevice } from './mock-device.mjs'
+import { makeJsMath } from './js-math.mjs'
+
+const jsMath = makeJsMath(Math.sin, Math.cos)
+Math.sin = jsMath.sin
+Math.cos = jsMath.cos
 
 if (!process.env.NM_REFERENCE_ROOT) { console.error('NM_REFERENCE_ROOT is not set'); process.exit(3) }
 const REF = resolve(process.env.NM_REFERENCE_ROOT)

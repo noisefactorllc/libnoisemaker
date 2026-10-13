@@ -1,5 +1,6 @@
 // Batch helpers for the differential parity gates.
 #include "core/js/js_syntax.h"
+#include "core/value/js_math.h"
 #include "host_commands.h"
 #include "frontend_commands.h"
 #include "dsl_commands.h"
@@ -9,7 +10,9 @@
 #include "uniforms_commands.h"
 #include "wgsl_commands.h"
 
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -65,8 +68,26 @@ int cmd_js_syntax(int, char**) {
     return 0;
 }
 
+// js-math: for each line of stdin, a double as 16 hex digits of its bits,
+// the bits of js::sin and js::cos of it (parity/check_js_math.mjs).
+int cmd_js_math(int, char**) {
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        if (line.empty()) continue;
+        const uint64_t bits = std::strtoull(line.c_str(), nullptr, 16);
+        double x = 0;
+        std::memcpy(&x, &bits, sizeof x);
+        const double results[2] = {libnoisemaker::js::sin(x), libnoisemaker::js::cos(x)};
+        uint64_t out[2] = {};
+        std::memcpy(out, results, sizeof out);
+        std::printf("%016llx %016llx\n", static_cast<unsigned long long>(out[0]), static_cast<unsigned long long>(out[1]));
+    }
+    return 0;
+}
+
 int dispatch(const std::string& subcommand, int argc, char** argv) {
     if (subcommand == "js-syntax") return cmd_js_syntax(argc, argv);
+    if (subcommand == "js-math") return cmd_js_math(argc, argv);
     if (subcommand == "midi-state") return nm_dump::midi_state(argc, argv);
     if (subcommand == "audio-state") return nm_dump::audio_state(argc, argv);
     if (subcommand == "obj-parser") return nm_dump::obj_parser(argc, argv);
