@@ -22,16 +22,16 @@
 // allocations, objects in JSON, are Maps again here.
 //
 // Math.sin and Math.cos are tools/js-math.mjs's, the correctly rounded
-// functions the port uses: the last bit of V8's depends on the platform.
+// functions the port uses: the last bit of V8's is not the same in every V8
+// build.
 //
 //   NM_REFERENCE_ROOT=<reference-checkout> node tools/reference-pipeline.mjs < ops.jsonl
 import { createInterface } from 'node:readline'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createMockDevice } from './mock-device.mjs'
-import { makeJsMath } from './js-math.mjs'
+import * as jsMath from './js-math.mjs'
 
-const jsMath = makeJsMath(Math.sin, Math.cos)
 Math.sin = jsMath.sin
 Math.cos = jsMath.cos
 

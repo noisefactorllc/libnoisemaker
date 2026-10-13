@@ -98,8 +98,101 @@ DoubleDouble cosSeries(DoubleDouble r) {
 // x = k * pi / 2 + r for |x| < 2^20, with pi / 2 in four parts (the fdlibm
 // pio2_1, pio2_2, pio2_3 and pio2_3t constants; the first three have 33
 // significant bits, so k times each is exact).
-bool reduceQuadrant(double x, DoubleDouble& r, int& quadrant) {
-    if (!(std::fabs(x) < 1048576.0)) return false;
+void reduceQuadrant(double x, DoubleDouble& r, int& quadrant);
+
+// 2 / pi in 32-bit words, most significant first: the sum of
+// kTwoOverPi[w] * 2^(-32 (w + 1)).
+constexpr uint32_t kTwoOverPi[40] = {
+    0xa2f9836e, 0x4e441529, 0xfc2757d1, 0xf534ddc0, 0xdb629599, 0x3c439041,
+    0xfe5163ab, 0xdebbc561, 0xb7246e3a, 0x424dd2e0, 0x06492eea, 0x09d1921c,
+    0xfe1deb1c, 0xb129a73e, 0xe88235f5, 0x2ebb4484, 0xe99c7026, 0xb45f7e41,
+    0x3991d639, 0x835339f4, 0x9c845f8b, 0xbdf9283b, 0x1ff897ff, 0xde05980f,
+    0xef2f118b, 0x5a0a6d1f, 0x6d367ecf, 0x27cb09b7, 0x4f463f66, 0x9e5fea2d,
+    0x7527bac7, 0xebe5f17b, 0x3d0739f7, 0x8a5292ea, 0x6bfb5fb1, 0x1f8d5d08,
+    0x56033046, 0xfc7b6bab, 0xf0cfbc20, 0x9af4361d,
+};
+
+// Bits [top - 52, top] of the little-endian 32-bit limbs, as an integer;
+// bits below 0 are zero.
+uint64_t bitsBelow(const uint32_t* limbs, int top) {
+    uint64_t out = 0;
+    for (int bit = top; bit > top - 53; --bit) {
+        out <<= 1;
+        if (bit >= 0) out |= (limbs[bit / 32] >> (bit % 32)) & 1u;
+    }
+    return out;
+}
+
+// x = k * pi / 2 + r for finite x >= 2^20 (Payne and Hanek): x * 2 / pi
+// mod 4 with 255 or more fraction bits, from exact integer products with
+// 288 bits of 2 / pi; the fraction to 106 bits times pi / 2 in double-double.
+void reduceLarge(double x, DoubleDouble& r, int& quadrant) {
+    int exponent = 0;
+    const double mantissa = std::frexp(x, &exponent);
+    const auto m = static_cast<uint64_t>(std::ldexp(mantissa, 53));
+    const int e = exponent - 53;  // x = m * 2^e, 2^52 <= m < 2^53
+    // Words before wStart contribute multiples of 4 to x * 2 / pi.
+    const int wStart = e >= 2 ? (e - 2) / 32 : 0;
+    constexpr int kWords = 9;
+    uint32_t product[kWords + 2] = {};
+    const uint64_t mLimbs[2] = {m & 0xffffffffu, m >> 32};
+    for (int i = 0; i < kWords; ++i) {
+        const uint64_t word = kTwoOverPi[wStart + kWords - 1 - i];
+        uint64_t carry = 0;
+        for (int j = 0; j < 2; ++j) {
+            const uint64_t sum = uint64_t(product[i + j]) + word * mLimbs[j] + carry;
+            product[i + j] = uint32_t(sum);
+            carry = sum >> 32;
+        }
+        for (int k = i + 2; carry != 0; ++k) {
+            const uint64_t sum = uint64_t(product[k]) + carry;
+            product[k] = uint32_t(sum);
+            carry = sum >> 32;
+        }
+    }
+    const int fractionBits = 32 * (wStart + kWords) - e;
+    const auto bit = [&](int index) { return (product[index / 32] >> (index % 32)) & 1u; };
+    int q = int(bit(fractionBits) | (bit(fractionBits + 1) << 1));
+    // The fraction, or 1 minus it when it is at least 1/2.
+    uint32_t fraction[kWords + 2] = {};
+    for (int i = 0; i < kWords + 2; ++i) {
+        const int low = 32 * i;
+        if (low >= fractionBits) break;
+        const int keep = fractionBits - low;
+        fraction[i] = keep >= 32 ? product[i] : product[i] & ((1u << keep) - 1u);
+    }
+    const bool negative = bit(fractionBits - 1) != 0;
+    if (negative) {
+        // 2^fractionBits - fraction
+        uint64_t borrow = 0;
+        for (int i = 0; i < kWords + 2; ++i) {
+            const uint64_t limb = (uint64_t(0) - uint64_t(fraction[i]) - borrow) & 0xffffffffu;
+            borrow = (fraction[i] != 0 || borrow != 0) ? 1 : 0;
+            fraction[i] = uint32_t(limb);
+        }
+        for (int i = 0; i < kWords + 2; ++i) {
+            const int low = 32 * i;
+            if (low >= fractionBits) fraction[i] = 0;
+            else if (fractionBits - low < 32) fraction[i] &= (1u << (fractionBits - low)) - 1u;
+        }
+        q = (q + 1) % 4;
+    }
+    int top = fractionBits - 1;
+    while (top >= 0 && ((fraction[top / 32] >> (top % 32)) & 1u) == 0) --top;
+    if (top < 0) {
+        r = DoubleDouble{0.0, 0.0};
+        quadrant = q;
+        return;
+    }
+    const double hi = std::ldexp(double(bitsBelow(fraction, top)), top - 52 - fractionBits);
+    const double lo = std::ldexp(double(bitsBelow(fraction, top - 53)), top - 105 - fractionBits);
+    DoubleDouble f = quickTwoSum(hi, lo);
+    if (negative) f = ddNeg(f);
+    r = ddMul(f, DoubleDouble{1.57079632679489655800e+00, 6.12323399573676588613e-17});
+    quadrant = q;
+}
+
+void reduceQuadrant(double x, DoubleDouble& r, int& quadrant) {
     const double k = std::nearbyint(x * 6.36619772367581382433e-01);
     DoubleDouble acc{x, 0.0};
     acc = ddAdd(acc, DoubleDouble{-k * 1.57079632673412561417e+00, 0.0});
@@ -110,7 +203,6 @@ bool reduceQuadrant(double x, DoubleDouble& r, int& quadrant) {
     long long q = static_cast<long long>(k) % 4;
     if (q < 0) q += 4;
     quadrant = static_cast<int>(q);
-    return true;
 }
 
 }  // namespace
@@ -142,14 +234,20 @@ double pow(double base, double exponent) {
     return std::pow(base, exponent);
 }
 
-// Arguments at or beyond 2^20 do not occur in the three effects (their
-// angles stay below 400 rad); they fall back to the platform functions.
+// Arguments at or beyond 2^20 reduce as their magnitude, sin being odd and
+// cos even.
 double sin(double x) {
     if (x == 0.0) return x;
     if (!std::isfinite(x)) return std::numeric_limits<double>::quiet_NaN();
     DoubleDouble r{};
     int quadrant = 0;
-    if (!reduceQuadrant(x, r, quadrant)) return std::sin(x);
+    if (!(std::fabs(x) < 1048576.0)) {
+        reduceLarge(std::fabs(x), r, quadrant);
+        if (x < 0) r = ddNeg(r);
+        if (x < 0) quadrant = (4 - quadrant) % 4;
+    } else {
+        reduceQuadrant(x, r, quadrant);
+    }
     switch (quadrant) {
     case 0: return sinSeries(r).hi;
     case 1: return cosSeries(r).hi;
@@ -163,7 +261,13 @@ double cos(double x) {
     if (x == 0.0) return 1.0;
     DoubleDouble r{};
     int quadrant = 0;
-    if (!reduceQuadrant(x, r, quadrant)) return std::cos(x);
+    if (!(std::fabs(x) < 1048576.0)) {
+        reduceLarge(std::fabs(x), r, quadrant);
+        if (x < 0) r = ddNeg(r);
+        if (x < 0) quadrant = (4 - quadrant) % 4;
+    } else {
+        reduceQuadrant(x, r, quadrant);
+    }
     switch (quadrant) {
     case 0: return cosSeries(r).hi;
     case 1: return -sinSeries(r).hi;
