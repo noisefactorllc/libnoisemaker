@@ -342,10 +342,12 @@ nm::Value load_graph(const Fixture& fixture, std::string& dslText) {
     return nm::Value(nm::compileGraphJson(nm::utf8_to_js(text), registry()));
 }
 
-// What the demo page does after compiling a program
+// Part of what the demo page does after compiling a program
 // (rebuildPipelineFromDsl): the UI loads it into ProgramState (fromDsl) and
 // the renderer applies the state's step values to the pipeline
-// (applyStepParameterValues).
+// (applyStepParameterValues). The UI's control initialization between the
+// two, which can coerce some values, is not ported; the enum tree holds every
+// catalog effect's choices (renderer_enum_tree).
 void apply_demo_step_values(be::Pipeline& pipeline, const std::string& dslText) {
     nm::ProgramState<> state(registry());
     state.from_dsl(nm::utf8_to_js(dslText));

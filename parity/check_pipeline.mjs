@@ -63,10 +63,13 @@ for (const file of readdirSync(programsDir).filter(f => f.endsWith('.dsl')).sort
   if ([...(compiled.textures?.keys() ?? []), ...(compiled.allocations?.keys() ?? [])].some(isIndex)) indexKeyed.push(file)
   graphs.push({ file, graph: plain(compiled) })
 }
-// The page's parameter path: each corpus program's step values as the demo
-// UI holds them (the reference ProgramState's getAllStepValues after
-// fromDsl), applied with the renderer's applyStepParameterValues, then a
-// frame. Numbers JSON cannot hold travel as {"$number": text}.
+// The page's parameter path: each corpus program's step values from the
+// reference ProgramState's getAllStepValues after fromDsl (the page's UI
+// builds its controls before it applies them, which can coerce some first;
+// that initialization is not ported), applied with the renderer's
+// applyStepParameterValues, then a frame. Both sides convert with the enum
+// tree of every catalog effect. Numbers JSON cannot hold travel as
+// {"$number": text}.
 const { ProgramState } = await import(pathToFileURL(join(process.env.NM_REFERENCE_ROOT, 'demo/shaders/lib/program-state.js')).href)
 const encodeNumbers = value => JSON.parse(JSON.stringify(value, (_key, member) =>
   typeof member === 'number' && (!Number.isFinite(member) || Object.is(member, -0)) ? { $number: String(member === 0 ? '-0' : member) } : member))

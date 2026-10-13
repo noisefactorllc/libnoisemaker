@@ -132,7 +132,9 @@ public:
     // written, chain-scoped variants broadcast, palettes expanded after the
     // step's writes, and textures recreated when a scoped parameter
     // changed. The asyncInit regeneration it asks for is outside the port
-    // (the overlays are host inputs).
+    // (the overlays are host inputs). As in setUniform, values are copied:
+    // the reference gives a scoped variant the same array as its base
+    // uniform, which nothing then changes in place.
     void applyStepParameterValues(const Value& stepParameterValues,
                                   const std::function<Value(const JsString& effectKey)>& getEffect,
                                   const std::function<Value(const Value& value, const Value& spec)>& convert);
