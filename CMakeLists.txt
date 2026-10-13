@@ -136,6 +136,7 @@ endif()
 add_library(noisemaker::core ALIAS noisemaker_core)
 
 add_library(noisemaker_host STATIC
+  src/host/async_overlays.cpp
   src/host/worm_tracer.cpp
   src/host/stroke_canvas.cpp
   src/host/stroke_fill.cpp

@@ -45,7 +45,7 @@ target_include_directories(test_jsre PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_C
 target_link_libraries(test_jsre PRIVATE noisemaker_backend)
 add_test(NAME test_jsre COMMAND test_jsre)
 
-foreach(name test_midi_state test_obj_parser)
+foreach(name test_async_overlays test_midi_state test_obj_parser)
   add_executable(${name} host/${name}.cpp)
   target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries(${name} PRIVATE noisemaker_host)
