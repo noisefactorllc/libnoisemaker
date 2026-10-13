@@ -16,11 +16,18 @@
 // `batch MANIFEST` renders a JSON array of fixtures in one process and
 // device, a fresh pipeline each: {"graph" | "dsl", "out", "size" or
 // "width" and "height", "time", "frames", "hostTextures": {id: png}}, the
-// names of rust-gpu's nm-render manifest; a fixture with any other member
-// fails, as nm-render does not support it yet.
+// names of rust-gpu's nm-render manifest, and "obj"; a fixture with any other
+// member fails, as nm-render does not support it yet.
 //
-// Not yet: meshes, MIDI sidecars, Portable effects, the demo host's
-// parameter application, timed sampling and texture dumps.
+// Meshes follow the minter's plan: when a pass reads a mesh texture or the
+// fixture has an OBJ (--obj, "obj"), each externalMesh effect's first
+// built-in mesh (read from $NM_REFERENCE_ROOT/<path>, as the demo page
+// fetches it) loads into its mesh, then the OBJ into mesh0, or an empty
+// mesh0 when there is neither; each is packed into 256 x 256 textures and
+// uploaded with the backend's uploadMeshData, as the page's renderer does.
+//
+// Not yet: MIDI sidecars, Portable effects, the demo host's parameter
+// application, timed sampling and texture dumps.
 
 #include "core/graph/dsl_compiler.h"
 #include "core/lang/effect_registry.h"
@@ -29,6 +36,7 @@
 #include "gpu/backend/pipeline.h"
 #include "gpu/dawn_device.h"
 #include "gpu/device.h"
+#include "host/obj_parser.h"
 #include "png.h"
 
 #include <algorithm>
@@ -52,7 +60,7 @@ namespace {
 
 const char* kUsage =
     "usage: nm-render render (--dsl FILE | --graph FILE) --out FILE.png [--size N | --width W --height H]\n"
-    "                        [--time T] [--frames N] [--host-texture ID=PNG ...] [--allow-fallback]\n"
+    "                        [--time T] [--frames N] [--host-texture ID=PNG ...] [--obj FILE] [--allow-fallback]\n"
     "       nm-render batch MANIFEST [--allow-fallback]\n"
     "\n"
     "Renders programs with the golden protocol of parity/batch-golden.mjs (defaults: size 256,\n"
@@ -68,6 +76,7 @@ struct Fixture {
     double time = 0.25;
     int frames = 8;
     std::vector<std::pair<std::string, std::string>> hostTextures;
+    std::string obj;
 };
 
 struct Usage : std::runtime_error {
@@ -115,6 +124,8 @@ Fixture parse_render(int argc, char** argv, bool& allowFallback) {
             fixture.graph = v;
         } else if (arg == "--out") {
             fixture.out = v;
+        } else if (arg == "--obj") {
+            fixture.obj = v;
         } else if (arg == "--host-texture") {
             const std::string pair = v;
             const size_t eq = pair.find('=');
@@ -155,7 +166,7 @@ Fixture parse_entry(const nm::Value& value) {
     const nm::Object& entry = value.as_object();
     for (const auto& key : entry.keys()) {
         static const char16_t* supported[] = {u"graph", u"dsl", u"out", u"size", u"width", u"height", u"time", u"frames",
-                                              u"hostTextures"};
+                                              u"hostTextures", u"obj"};
         bool known = false;
         for (const char16_t* name : supported) known = known || key == name;
         if (!known) throw Usage("unsupported member " + nm::js_to_utf8(key));
@@ -164,6 +175,7 @@ Fixture parse_entry(const nm::Value& value) {
     fixture.graph = string_member(entry, u"graph");
     fixture.dsl = string_member(entry, u"dsl");
     fixture.out = string_member(entry, u"out");
+    fixture.obj = string_member(entry, u"obj");
     if (const auto size = number_member(entry, u"size")) fixture.width = fixture.height = *size;
     if (const auto width = number_member(entry, u"width")) fixture.width = *width;
     if (const auto height = number_member(entry, u"height")) fixture.height = *height;
@@ -184,15 +196,92 @@ Fixture parse_entry(const nm::Value& value) {
     return fixture;
 }
 
+nm::EffectRegistry& registry() {
+    static nm::EffectRegistry instance;
+    static const bool loaded = (instance.loadEmbedded(), true);
+    (void)loaded;
+    return instance;
+}
+
 nm::Value load_graph(const Fixture& fixture) {
     std::string text;
     const std::string& path = fixture.dsl.empty() ? fixture.graph : fixture.dsl;
     if (!read_file(path, text)) throw std::runtime_error("cannot read " + path);
     if (!fixture.graph.empty()) return nm::json::parse(text);
-    static nm::EffectRegistry registry;
-    static const bool loaded = (registry.loadEmbedded(), true);
-    (void)loaded;
-    return nm::Value(nm::compileGraphJson(nm::utf8_to_js(text), registry));
+    return nm::Value(nm::compileGraphJson(nm::utf8_to_js(text), registry()));
+}
+
+// /^global_mesh\d+_(positions|normals|uvs)/, the minter's mesh input test.
+bool reads_mesh(const nm::JsString& id) {
+    const nm::JsString prefix = u"global_mesh";
+    if (id.rfind(prefix, 0) != 0) return false;
+    size_t i = prefix.size();
+    while (i < id.size() && id[i] >= u'0' && id[i] <= u'9') ++i;
+    if (i == prefix.size() || i >= id.size() || id[i] != u'_') return false;
+    for (const nm::JsString name : {u"positions", u"normals", u"uvs"}) {
+        if (id.compare(i + 1, name.size(), name) == 0) return true;
+    }
+    return false;
+}
+
+// _packCacheAndUploadMesh: 256 x 256 textures.
+void upload_mesh(be::WebGPUBackend& backend, const nm::JsString& meshId, const nm::ObjMeshData& mesh) {
+    const nm::PackedMeshData packed = nm::packMeshDataForTextures(mesh, 256, 256);
+    backend.uploadMeshData(meshId, packed.positionData, packed.normalData, packed.uvData, nm::Value(256.0),
+                           nm::Value(256.0), nm::Value(double(packed.vertexCount)));
+}
+
+// The minter's meshPlan and applyMeshPlan (batch-golden.mjs).
+void load_meshes(const nm::Value& graph, const Fixture& fixture, be::WebGPUBackend& backend) {
+    std::optional<std::string> objText;
+    if (!fixture.obj.empty()) {
+        std::string text;
+        if (!read_file(fixture.obj, text)) throw std::runtime_error("cannot read " + fixture.obj);
+        objText = std::move(text);
+    }
+    const nm::Value* passes = graph.is_object() ? graph.as_object().find(u"passes") : nullptr;
+    if (!passes || !passes->is_array()) return;
+    bool readsMesh = false;
+    for (const nm::Value& pass : passes->as_array()) {
+        const nm::Value* inputs = pass.is_object() ? pass.as_object().find(u"inputs") : nullptr;
+        if (!inputs || !inputs->is_object()) continue;
+        for (const auto& key : inputs->as_object().keys()) {
+            const nm::Value* id = inputs->as_object().find(key);
+            if (id && id->is_string() && reads_mesh(id->as_string())) readsMesh = true;
+        }
+    }
+    if (!readsMesh && !objText) return;
+    std::vector<std::pair<nm::JsString, std::string>> builtins;
+    std::vector<nm::JsString> seen;
+    for (const nm::Value& pass : passes->as_array()) {
+        if (!pass.is_object()) continue;
+        const nm::Value* key = pass.as_object().find(u"effectKey");
+        if (!key || !key->is_string() || key->as_string().empty()) continue;
+        const nm::Value* step = pass.as_object().find(u"stepIndex");
+        const nm::JsString seenKey = (step ? nm::jsv::to_string(*step) : nm::JsString(u"undefined")) + u"|" + key->as_string();
+        if (std::find(seen.begin(), seen.end(), seenKey) != seen.end()) continue;
+        seen.push_back(seenKey);
+        const nm::Value def = registry().getEffectValue(key->as_string());
+        if (!def.is_object()) continue;
+        const nm::Value* meshId = def.as_object().find(u"externalMesh");
+        const nm::Value* meshes = def.as_object().find(u"builtinMeshes");
+        if (!meshId || !meshId->is_string() || !meshes) continue;
+        // The catalog lists builtinMeshes as [{ name, path }] in the
+        // definition's order; the minter takes the first.
+        const nm::Value* first = meshes->is_array() && !meshes->as_array().empty() ? &meshes->as_array()[0] : nullptr;
+        const nm::Value* path = first && first->is_object() ? first->as_object().find(u"path") : nullptr;
+        if (path && path->is_string()) builtins.emplace_back(meshId->as_string(), nm::js_to_utf8(path->as_string()));
+    }
+    for (const auto& [meshId, path] : builtins) {
+        const char* root = std::getenv("NM_REFERENCE_ROOT");
+        if (!root || !*root) throw std::runtime_error("a built-in mesh (" + path + ") needs NM_REFERENCE_ROOT");
+        upload_mesh(backend, meshId, nm::loadOBJ(std::string(root) + "/" + path));
+    }
+    if (objText) {
+        upload_mesh(backend, u"mesh0", nm::parseOBJ(nm::utf8_to_js(*objText)));
+    } else if (builtins.empty()) {
+        upload_mesh(backend, u"mesh0", nm::parseOBJ(u""));
+    }
 }
 
 // /^global_mesh\d+_(positions|normals|uvs)$/
@@ -245,6 +334,7 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
             const nm::Value graph = load_graph(fixture);
             be::Pipeline pipeline(graph, backend, {});
             pipeline.init(fixture.width, fixture.height);
+            load_meshes(graph, fixture, backend);
             // The minter's captures: texture contents, uploaded with flipY false.
             std::vector<nm::JsString> keep;
             for (const auto& [id, path] : fixture.hostTextures) {
