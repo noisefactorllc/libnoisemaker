@@ -319,6 +319,8 @@ std::vector<uint8_t> read_file(const std::string& path) {
     uint8_t buffer[65536];
     size_t n = 0;
     while ((n = std::fread(buffer, 1, sizeof buffer, file.get())) > 0) bytes.insert(bytes.end(), buffer, buffer + n);
+    // A directory, or an I/O error after opening.
+    if (std::ferror(file.get())) throw std::runtime_error("cannot read " + path);
     return bytes;
 }
 

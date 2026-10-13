@@ -43,9 +43,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
-#include <iterator>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -83,11 +81,16 @@ struct Usage : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
+// The whole file, or false when it cannot be opened or read (a directory,
+// an I/O error).
 bool read_file(const std::string& path, std::string& text) {
-    std::ifstream input(path, std::ios::binary);
-    if (!input) return false;
-    text.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
-    return !input.bad();
+    try {
+        const std::vector<uint8_t> bytes = nm_render::read_file(path);
+        text.assign(bytes.begin(), bytes.end());
+        return true;
+    } catch (const std::runtime_error&) {
+        return false;
+    }
 }
 
 // An environment variable, or empty; MSVC's /W4 refuses std::getenv.

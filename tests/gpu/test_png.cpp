@@ -193,6 +193,14 @@ int main() {
     const std::vector<uint8_t> wide(16384 * 4, 7);
     NM_CHECK(nm_render::decode_png(nm_render::encode_png_rgba8(16384, 1, wide)).rgba == wide);
     NM_CHECK(nm_render::decode_png(nm_render::encode_png_rgba8(1, 16384, wide)).rgba == wide);
+    // A directory is not a readable file.
+    bool directoryRefused = false;
+    try {
+        nm_render::read_file(".");
+    } catch (const std::runtime_error&) {
+        directoryRefused = true;
+    }
+    NM_CHECK(directoryRefused);
     // The encoder's stored blocks, over 65535 bytes so they split.
     std::vector<uint8_t> rgba(300 * 70 * 4);
     for (size_t i = 0; i < rgba.size(); ++i) rgba[i] = uint8_t(i * 131 + (i >> 9));
