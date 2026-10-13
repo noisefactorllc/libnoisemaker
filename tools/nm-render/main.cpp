@@ -27,11 +27,20 @@
 // mesh0 when there is neither; each is packed into 256 x 256 textures and
 // uploaded with the backend's uploadMeshData, as the page's renderer does.
 //
+// A timed fixture (--run-seconds S --sample-every E, --run-frames N,
+// --sample-every-frames K, --sample-frames a,b,c; the manifest's runSeconds,
+// sampleEvery, runFrames, sampleEveryFrames and sampleFrames) skips the
+// pinned clock: after the same fresh-state reset it steps render(t) with
+// t = ((frame + 1) / 600) % 1 and writes <out stem>.t<sec>.png every E
+// seconds and <out stem>.f<frames>.png every K frames and after each listed
+// frame count, the minter's sample schedule.
+//
 // Not yet: MIDI sidecars, Portable effects, the demo host's parameter
-// application, timed sampling and texture dumps.
+// application and texture dumps.
 
 #include "core/graph/dsl_compiler.h"
 #include "core/lang/effect_registry.h"
+#include "core/value/js_number.h"
 #include "core/value/json.h"
 #include "gpu/backend/backend.h"
 #include "gpu/backend/pipeline.h"
@@ -60,6 +69,8 @@ namespace {
 const char* kUsage =
     "usage: nm-render render (--dsl FILE | --graph FILE) --out FILE.png [--size N | --width W --height H]\n"
     "                        [--time T] [--frames N] [--host-texture ID=PNG ...] [--obj FILE] [--allow-fallback]\n"
+    "                        [--run-seconds S --sample-every E] [--run-frames N] [--sample-every-frames K]\n"
+    "                        [--sample-frames a,b,c]\n"
     "       nm-render batch MANIFEST [--allow-fallback]\n"
     "\n"
     "Renders programs with the golden protocol of parity/batch-golden.mjs (defaults: size 256,\n"
@@ -76,7 +87,55 @@ struct Fixture {
     int frames = 8;
     std::vector<std::pair<std::string, std::string>> hostTextures;
     std::string obj;
+    // A timed run (batch-golden.mjs isTimed and sampleSchedule).
+    double runSeconds = 0;
+    double sampleEvery = 5;
+    int runFrames = 0;
+    int sampleEveryFrames = 0;
+    std::vector<int> sampleFrames;
+    bool timed() const { return runSeconds > 0 || runFrames > 0 || !sampleFrames.empty(); }
 };
+
+struct Sample {
+    int frame;
+    std::vector<std::string> labels;
+};
+
+// sampleSchedule: [{ frame, labels }] in frame order.
+std::vector<Sample> sample_schedule(const Fixture& fixture) {
+    std::vector<Sample> samples;
+    const auto add = [&](int frame, const std::string& label) {
+        if (frame <= 0) return;
+        for (Sample& s : samples) {
+            if (s.frame != frame) continue;
+            if (std::find(s.labels.begin(), s.labels.end(), label) == s.labels.end()) s.labels.push_back(label);
+            return;
+        }
+        samples.push_back(Sample{frame, {label}});
+    };
+    int total = fixture.runFrames;
+    if (fixture.runSeconds > 0) {
+        // Math.max(1, Math.round(sampleEvery * 60)), Math.floor(runSeconds * 60 / everyFrames)
+        const int everyFrames = int(std::max(1.0, std::floor(fixture.sampleEvery * 60 + 0.5)));
+        const int count = int(std::max(1.0, std::floor(fixture.runSeconds * 60 / everyFrames)));
+        for (int k = 0; k < count; ++k) {
+            add((k + 1) * everyFrames, "t" + nm::js_to_utf8(nm::js_number_to_string((k + 1) * fixture.sampleEvery)));
+        }
+        total = std::max(total, count * everyFrames);
+    }
+    if (fixture.sampleEveryFrames > 0) {
+        for (int f = fixture.sampleEveryFrames; f <= total; f += fixture.sampleEveryFrames) add(f, "f" + std::to_string(f));
+    }
+    for (const int f : fixture.sampleFrames) add(f, "f" + std::to_string(f));
+    std::sort(samples.begin(), samples.end(), [](const Sample& a, const Sample& b) { return a.frame < b.frame; });
+    return samples;
+}
+
+// out without its .png, then .<label>.png.
+std::string sample_path(const std::string& out, const std::string& label) {
+    const std::string stem = out.size() > 4 && out.compare(out.size() - 4, 4, ".png") == 0 ? out.substr(0, out.size() - 4) : out;
+    return stem + "." + label + ".png";
+}
 
 struct Usage : std::runtime_error {
     using std::runtime_error::runtime_error;
@@ -145,6 +204,18 @@ Fixture parse_render(int argc, char** argv, bool& allowFallback) {
             fixture.out = v;
         } else if (arg == "--obj") {
             fixture.obj = v;
+        } else if (arg == "--sample-frames") {
+            std::string list = v;
+            size_t start = 0;
+            while (start <= list.size()) {
+                const size_t comma = list.find(',', start);
+                const std::string item = list.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+                const std::optional<double> n = number(item.c_str());
+                if (!n || *n != std::floor(*n) || *n < 1 || *n > 1e6) throw Usage("--sample-frames takes whole frame counts");
+                fixture.sampleFrames.push_back(int(*n));
+                if (comma == std::string::npos) break;
+                start = comma + 1;
+            }
         } else if (arg == "--host-texture") {
             const std::string pair = v;
             const size_t eq = pair.find('=');
@@ -158,6 +229,10 @@ Fixture parse_render(int argc, char** argv, bool& allowFallback) {
             else if (arg == "--height") fixture.height = *n;
             else if (arg == "--time") fixture.time = *n;
             else if (arg == "--frames" && *n == std::floor(*n) && *n >= 0 && *n <= 1e6) fixture.frames = int(*n);
+            else if (arg == "--run-seconds" && *n >= 0 && *n <= 3600) fixture.runSeconds = *n;
+            else if (arg == "--sample-every" && *n > 0 && *n <= 3600) fixture.sampleEvery = *n;
+            else if (arg == "--run-frames" && *n == std::floor(*n) && *n >= 0 && *n <= 1e6) fixture.runFrames = int(*n);
+            else if (arg == "--sample-every-frames" && *n == std::floor(*n) && *n >= 0 && *n <= 1e6) fixture.sampleEveryFrames = int(*n);
             else throw Usage("unknown option or value: " + arg);
         }
     }
@@ -185,7 +260,8 @@ Fixture parse_entry(const nm::Value& value) {
     const nm::Object& entry = value.as_object();
     for (const auto& key : entry.keys()) {
         static const char16_t* supported[] = {u"graph", u"dsl", u"out", u"size", u"width", u"height", u"time", u"frames",
-                                              u"hostTextures", u"obj"};
+                                              u"hostTextures", u"obj", u"runSeconds", u"sampleEvery", u"runFrames",
+                                              u"sampleEveryFrames", u"sampleFrames"};
         bool known = false;
         for (const char16_t* name : supported) known = known || key == name;
         if (!known) throw Usage("unsupported member " + nm::js_to_utf8(key));
@@ -202,6 +278,31 @@ Fixture parse_entry(const nm::Value& value) {
     if (const auto frames = number_member(entry, u"frames")) {
         if (*frames != std::floor(*frames) || *frames < 0 || *frames > 1e6) throw Usage("frames must be a whole count");
         fixture.frames = int(*frames);
+    }
+    const auto whole = [&](const char16_t* key, int& out) {
+        if (const auto n = number_member(entry, key)) {
+            if (*n != std::floor(*n) || *n < 0 || *n > 1e6) throw Usage(nm::js_to_utf8(key) + " must be a whole count");
+            out = int(*n);
+        }
+    };
+    if (const auto n = number_member(entry, u"runSeconds")) {
+        if (*n < 0 || *n > 3600) throw Usage("runSeconds must be from 0 to 3600");
+        fixture.runSeconds = *n;
+    }
+    if (const auto n = number_member(entry, u"sampleEvery")) {
+        if (*n <= 0 || *n > 3600) throw Usage("sampleEvery must be above 0 and at most 3600");
+        fixture.sampleEvery = *n;
+    }
+    whole(u"runFrames", fixture.runFrames);
+    whole(u"sampleEveryFrames", fixture.sampleEveryFrames);
+    if (const nm::Value* frames = entry.find(u"sampleFrames")) {
+        if (!frames->is_array()) throw Usage("sampleFrames must be an array");
+        for (const nm::Value& f : frames->as_array()) {
+            if (!f.is_number() || f.as_number() != std::floor(f.as_number()) || f.as_number() < 1 || f.as_number() > 1e6) {
+                throw Usage("sampleFrames holds whole frame counts");
+            }
+            fixture.sampleFrames.push_back(int(f.as_number()));
+        }
     }
     if (const nm::Value* host = entry.find(u"hostTextures")) {
         if (!host->is_object()) throw Usage("hostTextures must be an object");
@@ -366,24 +467,40 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
                 backend.updateTextureFromPixels(keep.back(), image.width, image.height, image.rgba, false);
             }
             reset_to_fresh_state(pipeline, backend, keep);
-            for (int i = 0; i < fixture.frames; ++i) {
-                pipeline.render(fixture.time);
-                dawn.processEvents();
-            }
-            const nm::Value* surfaceName = graph.is_object() ? graph.as_object().find(u"renderSurface") : nullptr;
-            const nm::JsString surface = surfaceName && surfaceName->is_string() && !surfaceName->as_string().empty()
-                                             ? surfaceName->as_string()
-                                             : nm::JsString(u"o0");
-            std::optional<nm::JsString> readId;
-            for (const auto& [id, record] : pipeline.surfaces()) {
-                if (id == surface) readId = record.read;
-            }
-            if (!readId) throw nm::JsError(u"Error", u"no render surface " + surface);
-            const be::Pixels pixels = backend.readPixels(*readId);
-            const auto width = uint32_t(nm::jsv::to_number(pixels.width));
-            const auto height = uint32_t(nm::jsv::to_number(pixels.height));
-            if (!nm_render::write_file(fixture.out, nm_render::encode_png_rgba8(width, height, pixels.data))) {
-                status = fail("cannot write the PNG");
+            // The capture: the render surface's read texture, as readPixels converts it.
+            const auto capture = [&]() {
+                const nm::Value* surfaceName = graph.is_object() ? graph.as_object().find(u"renderSurface") : nullptr;
+                const nm::JsString surface = surfaceName && surfaceName->is_string() && !surfaceName->as_string().empty()
+                                                 ? surfaceName->as_string()
+                                                 : nm::JsString(u"o0");
+                std::optional<nm::JsString> readId;
+                for (const auto& [id, record] : pipeline.surfaces()) {
+                    if (id == surface) readId = record.read;
+                }
+                if (!readId) throw nm::JsError(u"Error", u"no render surface " + surface);
+                const be::Pixels pixels = backend.readPixels(*readId);
+                const auto width = uint32_t(nm::jsv::to_number(pixels.width));
+                const auto height = uint32_t(nm::jsv::to_number(pixels.height));
+                return nm_render::encode_png_rgba8(width, height, pixels.data);
+            };
+            if (fixture.timed()) {
+                int frame = 0;
+                for (const Sample& sample : sample_schedule(fixture)) {
+                    for (; frame < sample.frame; ++frame) {
+                        pipeline.render(std::fmod((frame + 1) / 600.0, 1.0));
+                        dawn.processEvents();
+                    }
+                    const std::vector<uint8_t> png = capture();
+                    for (const std::string& label : sample.labels) {
+                        if (!nm_render::write_file(sample_path(fixture.out, label), png)) status = fail("cannot write " + label);
+                    }
+                }
+            } else {
+                for (int i = 0; i < fixture.frames; ++i) {
+                    pipeline.render(fixture.time);
+                    dawn.processEvents();
+                }
+                if (!nm_render::write_file(fixture.out, capture())) status = fail("cannot write the PNG");
             }
         } catch (const nm::JsError& e) {
             status = fail(nm::js_to_utf8(e.name()) + ": " + nm::js_to_utf8(e.message()));
