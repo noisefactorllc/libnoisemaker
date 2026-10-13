@@ -138,7 +138,14 @@ automated.forEach(({ file, graph }) => {
   sequence(`automated/${file}`, [
     { op: 'create', graph, options: {} },
     { op: 'init', width: 128, height: 72 },
-    ...[0.05, 0.3, 0.61, 0.99, 0.02].map(time => ({ op: 'render', time }))
+    ...[0.05, 0.3, 0.61, 0.99, 0.02].map(time => ({ op: 'render', time })),
+    { op: 'attachMidi' },
+    { op: 'attachAudio' },
+    { op: 'midiMessage', data: [0x90, 60, 100], time: 1_700_000_000_000 },
+    { op: 'midiMessage', data: [0xb0, 1, 64], time: 1_700_000_000_010 },
+    { op: 'audioBands', low: 0.3, mid: 0.6, high: 0.2 },
+    ...[0.12, 0.7].map(time => ({ op: 'render', time, wallTime: 1_700_000_000_500 })),
+    { op: 'getAudioInputRequirements' }
   ], true)
 })
 
@@ -534,6 +541,114 @@ sequence('synthetic/params-errors', [
   { op: 'broadcastChainScopedParam', pass: { toString: null }, uniformName: 'a', scopedName: 'a_chain_0' }
 ])
 
+// MIDI and audio states: every MIDI mode on a channel, an MPE zone and a
+// port, falloff by the wall time, controllers, NRPN, pitch bend and pressure;
+// every audio band, the raw signal, default-input and device channels by id,
+// name and inventory, invalid selectors; the note grid, the waveform and
+// spectrum uniforms, and getAudioInputRequirements.
+const midi = (mode, extra = {}) => ({ type: 'Midi', mode, channel: 1, min: 0, max: 1, sensitivity: 1, ...extra })
+const audio = (band, extra = {}) => ({ type: 'Audio', band, min: 0, max: 1, ...extra })
+const externalUniforms = {
+  m0: midi(0), m1: midi(1), m2: midi(2), m3: midi(3, { sensitivity: 2 }), m4: midi(4), m4b: midi(4, { channel: 2 }),
+  m5: midi(5, { cc: 7 }), m5d: midi(5), m6: midi(6, { cc: 3 }), m7: midi(7, { nrpn: 300 }), m8: midi(8), m9: midi(9), m10: midi(10),
+  mStr: midi('2'), mNone: midi(undefined), mCh17: midi(5, { channel: 17 }), mChBad: midi(2, { channel: 0 }), mCc200: midi(5, { cc: 200 }), mNrpnBad: midi(7, { nrpn: 1.5 }),
+  mZone: midi(2, { channel: undefined, zone: 0 }), mZoneUp: midi(0, { channel: undefined, zone: 1, members: 3 }),
+  mZoneCh: midi(2, { zone: 0 }), mZoneBad: midi(2, { channel: undefined, zone: 2 }), mMembersBad: midi(2, { channel: undefined, zone: 0, members: 20 }),
+  mMembersNoZone: midi(2, { members: 3 }), mPortName: midi(2, { name: 'Keys' }), mPortId: midi(2, { id: 'port-a', name: 'Keys' }),
+  mPortMissing: midi(2, { id: 'port-x' }), mInvalid: midi(2, { _invalid: true, min: 0.3 }), mBounds: midi(2, { min: osc(0), max: 0.5 }),
+  a0: audio(0), a1: audio(1), a2: audio(2), a3: audio(3), a4: audio(4), a9: audio(9), aDefault: audio(0, { channel: 2 }),
+  aDevice: audio(1, { id: 'dev-1', name: 'Mic', channel: 1 }), aName: audio(2, { name: 'Mic', channel: 2 }), aEmptyName: audio(0, { name: '', channel: 1 }),
+  aIdNoName: audio(0, { id: 'dev-1', channel: 1 }), aAst: { ...audio(0), _ast: { type: 'Audio', channel: 3 } }, aChannelBad: audio(0, { channel: 40 }),
+  aInvalid: audio(1, { _invalid: true, min: 0.2 }), aRaw: audio(4, { name: 'Mic', channel: 1 }),
+  fmMidi: osc(0, { speed: midi(2) }), fmMidiDynamic: osc(1, { speed: midi(2, { min: osc(0) }) }), fmAudio: osc(2, { speed: audio(0) })
+}
+const externalProgram = structProgram([...Object.keys(externalUniforms).map(name => [name, 'f32'])])
+const external = graph([
+  { program: 'ext', outputs: { color: 'global_o1' }, uniforms: externalUniforms, uniformSpecs: { m3: { min: 0, max: 10 } } },
+  { program: 'globals', inputs: { notes: 'midiNoteGrid' }, outputs: { color: 'global_o2' }, uniforms: { amount: 1 } },
+  { effectKey: 'synth.media', outputs: { color: 'global_o3' } }
+], {}, { programs: { ...programs, ext: externalProgram } })
+const noteOn = (channel, key, velocity) => [0x90 | (channel - 1), key, velocity]
+const cc = (channel, controller, value) => [0xb0 | (channel - 1), controller, value]
+const KEYS = { id: 'port-a', name: 'Keys' }
+const KEYS2 = { id: 'port-c', name: 'Keys' }
+let midiTime = 1_700_000_000_000
+const msg = (data, port) => ({ op: 'midiMessage', data, port, time: midiTime += 13 })
+sequence('synthetic/external', [
+  { op: 'create', graph: external },
+  { op: 'init', width: 16, height: 16 },
+  { op: 'render', time: 0.1, wallTime: midiTime },
+  { op: 'getAudioInputRequirements' },
+  { op: 'attachMidi' },
+  { op: 'attachAudio' },
+  { op: 'render', time: 0.15, wallTime: midiTime },
+  msg(noteOn(1, 60, 100)), msg(noteOn(2, 64, 90)), msg(cc(1, 7, 99)), msg(cc(1, 3, 40)), msg(cc(1, 35, 17)),
+  msg(cc(1, 99, 2)), msg(cc(1, 98, 44)), msg(cc(1, 6, 70)), msg(cc(1, 38, 5)), msg(cc(1, 1, 88)), msg(cc(1, 0, 5)),
+  msg([0xe0, 0x10, 0x50]), msg([0xd0, 77]), msg([0xa0, 60, 33]), msg([0xf8]), msg([0xf8]),
+  { op: 'render', time: 0.2, wallTime: midiTime + 400 },
+  // An MPE lower zone of 3 members (RPN 6 on channel 1), notes on members.
+  msg(cc(1, 101, 0)), msg(cc(1, 100, 6)), msg(cc(1, 6, 3)),
+  msg(noteOn(2, 50, 80)), msg(noteOn(3, 52, 70)), msg(noteOn(16, 70, 60)), msg(noteOn(14, 72, 65)), msg(noteOn(12, 74, 50)),
+  { op: 'render', time: 0.25, wallTime: midiTime + 900 },
+  { op: 'midiRegisterPort', port: KEYS },
+  msg(noteOn(1, 67, 120), KEYS), msg(noteOn(3, 55, 110), KEYS),
+  { op: 'render', time: 0.3, wallTime: midiTime + 50 },
+  { op: 'midiRegisterPort', port: KEYS2 },
+  { op: 'render', time: 0.31, wallTime: midiTime + 60 },
+  { op: 'midiInventory', ports: [KEYS, { id: 'port-d', name: 'Pads' }] },
+  { op: 'render', time: 0.32, wallTime: midiTime + 70 },
+  { op: 'midiDisconnectPort', id: 'port-a' },
+  msg([0x80, 60, 0]), msg(noteOn(1, 61, 0)),
+  { op: 'audioBands', low: 0.25, mid: 0.5, high: 0.75 },
+  { op: 'audioRaw', value: -0.4 },
+  { op: 'audioSpectrum', bytes: Array.from({ length: 128 }, (_, i) => (i * 37) % 256) },
+  { op: 'audioWaveform', bytes: Array.from({ length: 128 }, (_, i) => (i * 11 + 3) % 256) },
+  { op: 'audioRegisterDevice', device: { id: 'dev-1', name: 'Mic', channelCount: 2 } },
+  { op: 'audioChannelValues', id: 'dev-1', channel: 1, values: { low: 0.1, mid: 0.6, high: 0.9, vol: 0.4, raw: 0.8 } },
+  { op: 'audioChannelValues', id: 'dev-1', channel: 2, values: { high: 0.33 } },
+  { op: 'audioRegisterDefault', count: 2 },
+  { op: 'audioDefaultBands', channel: 2, low: 0.66, mid: 0.2, high: 0.1 },
+  { op: 'render', time: 0.4, wallTime: midiTime + 2000 },
+  { op: 'audioInventory', devices: [{ id: 'dev-1', name: 'Mic' }, { id: 'dev-2', name: 'Mic' }] },
+  { op: 'audioRawUnavailable' },
+  { op: 'render', time: 0.45, wallTime: midiTime + 2500 },
+  { op: 'audioDisconnectDevice', id: 'dev-1' },
+  { op: 'render', time: 0.5, wallTime: midiTime + 3000 },
+  { op: 'getAudioInputRequirements' },
+  { op: 'detachMidi' },
+  { op: 'detachAudio' },
+  { op: 'render', time: 0.55, wallTime: midiTime + 3500 }
+], true)
+sequence('synthetic/external-unregistered', [
+  { op: 'create', graph: external },
+  { op: 'init', width: 16, height: 16 },
+  { op: 'attachMidi', registry: false },
+  { op: 'attachAudio', registry: false },
+  msg(noteOn(1, 40, 64)), msg(cc(1, 101, 0)), msg(cc(1, 100, 6)), msg(cc(1, 6, 15)), msg(noteOn(5, 41, 65)),
+  { op: 'audioBands', low: 0.9, mid: 0.1, high: 0.4 },
+  { op: 'audioRaw', value: 2 },
+  { op: 'render', time: 0.6, wallTime: midiTime + 10 }
+], true)
+// Requirements for selector and legacy captures, nested bounds and audio effects.
+const requirements = graph([
+  { uniforms: { a: audio(4, { name: 'Mic', channel: 2 }), b: audio(0, { name: 'Mic', channel: 2 }), c: audio(1, { id: 'dev-9', name: 'Line', channel: 1 }) } },
+  { uniforms: { d: audio(4), e: osc(0, { min: audio(2, { name: 'Line', channel: 3 }), max: audio(9) }), f: [audio(1)], g: { nested: audio(3, { channel: 5 }) } } },
+  { uniforms: { h: audio(0, { name: '', channel: 1 }), i: { ...audio(2), _invalid: true }, j: audio(2.5) } },
+  { uniforms: { k: audio(0, { name: 'Line', channel: 4 }), l: audio(4, { name: 'Line', channel: 4 }) } },
+  { effectKey: 'synth.noise', uniforms: null }
+])
+const audioEffect = graph([{ effectKey: 'synth.scope', uniforms: { a: 1 } }])
+sequence('synthetic/audio-requirements', [
+  { op: 'create', graph: requirements },
+  { op: 'getAudioInputRequirements' },
+  { op: 'create', graph: graph([{ uniforms: { a: osc(0) } }]) },
+  { op: 'getAudioInputRequirements' },
+  { op: 'create', graph: audioEffect },
+  { op: 'getAudioInputRequirements' },
+  { op: 'create', graph: null },
+  { op: 'getAudioInputRequirements' }
+], true)
+
 // Errors and degenerate graphs.
 sequence('synthetic/missing-program', [
   { op: 'create', graph: { passes: [{ id: 'x', program: 'nope' }], programs: {}, textures: {} } },
@@ -642,10 +757,11 @@ for (const op of ops) {
       if (index >= 0) {
         detail = `call ${index}: reference ${show(ref.calls[index])} vs candidate ${show(cand.calls[index])}`
       } else {
-        const field = [...new Set([...Object.keys(ref), ...Object.keys(cand), ...Object.keys(ref.state ?? {}), ...Object.keys(cand.state ?? {})])]
-          .find(k => k in (ref.state ?? {}) || k in (cand.state ?? {})
-            ? canonical(ref.state?.[k]) !== canonical(cand.state?.[k])
-            : canonical(ref[k]) !== canonical(cand[k]))
+        // The first differing state field, else the first differing member.
+        const stateKeys = [...new Set([...Object.keys(ref.state ?? {}), ...Object.keys(cand.state ?? {})])]
+        const recordKeys = [...new Set([...Object.keys(ref), ...Object.keys(cand)])].filter(k => k !== 'state')
+        const field = stateKeys.find(k => canonical(ref.state?.[k]) !== canonical(cand.state?.[k])) ??
+          recordKeys.find(k => canonical(ref[k]) !== canonical(cand[k]))
         const pick = record => field in (record.state ?? {}) ? record.state[field] : record[field]
         detail = `${field}: reference ${show(pick(ref))} vs candidate ${show(pick(cand))}`
       }

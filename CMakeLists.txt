@@ -157,7 +157,8 @@ add_library(noisemaker_backend STATIC src/gpu/wgsl/jsre.cpp src/gpu/wgsl/wgsl.cp
             src/gpu/backend/automation.cpp src/gpu/backend/backend.cpp src/gpu/backend/pipeline.cpp
             src/gpu/backend/recording_device.cpp)
 target_include_directories(noisemaker_backend PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(noisemaker_backend PUBLIC noisemaker_core_impl)
+# The host's MIDI and audio states, which automation reads; they bring core.
+target_link_libraries(noisemaker_backend PUBLIC noisemaker_host)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   target_compile_options(noisemaker_backend PRIVATE -ffp-contract=off)
 endif()

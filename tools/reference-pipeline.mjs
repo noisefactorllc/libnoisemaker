@@ -36,6 +36,14 @@ const { bootstrapReference } = await import(pathToFileURL(join(dirname(fileURLTo
 await bootstrapReference()
 const { WebGPUBackend } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/backends/webgpu.js')).href)
 const { Pipeline } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/pipeline.js')).href)
+const { MidiState, AudioState } = await import(pathToFileURL(join(REF, 'shaders/src/runtime/external-input.js')).href)
+// Date.now() reads the op's time while fn runs (MIDI note times, falloff).
+const realNow = Date.now
+const at = (time, fn) => {
+  if (time === undefined) return fn()
+  Date.now = () => time
+  try { return fn() } finally { Date.now = realNow }
+}
 
 // {"$number": text} stands for a number JSON cannot hold.
 const decodeValue = value => {
@@ -60,9 +68,11 @@ const decodeGraph = graph => {
   }
   return out
 }
-// JSON has no -0, NaN or Infinity: they travel as {"$number": text}.
+// JSON has no -0, NaN or Infinity: they travel as {"$number": text}, and a
+// Float32Array as {"$float32": [numbers]}.
 const plain = value => JSON.parse(JSON.stringify(value, (_key, member) => {
   if (member instanceof Map) return Object.fromEntries(member)
+  if (member instanceof Float32Array) return { $float32: Array.from(member) }
   if (typeof member === 'number' && (!Number.isFinite(member) || Object.is(member, -0))) {
     return { $number: Object.is(member, -0) ? '-0' : String(member) }
   }
@@ -76,7 +86,17 @@ const taggedUndefined = object => object && typeof object === 'object'
 let mock = createMockDevice()
 let backend = null
 let pipeline = null
-const state = () => {
+let midiState = null
+let audioState = null
+// The global audioWaveform and audioSpectrum alias the audio state's arrays
+// here and are copies the frame takes in the port: they are compared only
+// after a render, when both hold the frame's values.
+const globalsFor = op => {
+  const globals = { ...pipeline.globalUniforms }
+  if (op.op !== 'render') { delete globals.audioWaveform; delete globals.audioSpectrum }
+  return globals
+}
+const state = op => {
   if (!pipeline) return null
   const textures = []
   for (const [id, tex] of backend.textures) {
@@ -100,7 +120,7 @@ const state = () => {
     passUniforms: passes.map(pass => pass?.uniforms ?? null),
     textureSpecs: pipeline.graph?.textures ?? null,
     resourcePlan: pipeline.getResourcePlan(),
-    globalUniforms: pipeline.globalUniforms,
+    globalUniforms: globalsFor(op),
     frameIndex: pipeline.frameIndex,
     lastTime: pipeline.lastTime,
     lastPassCount: pipeline.lastPassCount,
@@ -124,6 +144,8 @@ for await (const line of lines) {
         mock = createMockDevice()
         backend = new WebGPUBackend(mock.device, null)
         pipeline = new Pipeline(decodeGraph(op.graph), backend, op.options ?? {})
+        midiState = null
+        audioState = null
         break
       case 'init': await pipeline.init(op.width, op.height); break
       case 'resize': pipeline.resize(op.width, op.height); break
@@ -137,7 +159,27 @@ for await (const line of lines) {
         break
       }
       case 'updateParameterTextures': pipeline.updateParameterTextures(op.uniforms); break
-      case 'render': pipeline.render(op.time); break
+      case 'render': at(op.wallTime, () => pipeline.render(op.time)); break
+      case 'attachMidi': midiState = new MidiState({ portRegistry: op.registry !== false }); pipeline.setMidiState(midiState); break
+      case 'detachMidi': pipeline.setMidiState(null); break
+      case 'midiMessage': at(op.time, () => midiState.handleMessage(Uint8Array.from(op.data), op.port ?? undefined)); break
+      case 'midiRegisterPort': midiState.registerPort(op.port); break
+      case 'midiDisconnectPort': midiState.disconnectPort(op.id); break
+      case 'midiInventory': midiState.setPortInventory(op.ports); break
+      case 'attachAudio': audioState = new AudioState({ deviceRegistry: op.registry !== false }); pipeline.setAudioState(audioState); break
+      case 'detachAudio': pipeline.setAudioState(null); break
+      case 'audioBands': audioState.setBands(op.low, op.mid, op.high); break
+      case 'audioRaw': audioState.setRaw(op.value); break
+      case 'audioRawUnavailable': audioState.setRawUnavailable(); break
+      case 'audioSpectrum': audioState.setSpectrum(Uint8Array.from(op.bytes)); break
+      case 'audioWaveform': audioState.setWaveform(Uint8Array.from(op.bytes)); break
+      case 'audioRegisterDevice': audioState.registerDevice(op.device); break
+      case 'audioChannelValues': audioState.setChannelValues(op.id, op.channel, op.values); break
+      case 'audioRegisterDefault': audioState.registerDefaultChannels(op.count); break
+      case 'audioDefaultBands': audioState.getDefaultChannelState(op.channel)?.setBands(op.low, op.mid, op.high); break
+      case 'audioInventory': audioState.setDeviceInventory(op.devices); break
+      case 'audioDisconnectDevice': audioState.disconnectDevice(op.id); break
+      case 'getAudioInputRequirements': result = plain(pipeline.getAudioInputRequirements()); break
       case 'syncTime': pipeline.syncTime(op.time); break
       case 'setTileRegion': pipeline.setTileRegion({ offset: op.offset, fullResolution: op.fullResolution, renderScale: op.renderScale }); break
       case 'clearTileRegion': pipeline.clearTileRegion(); break
@@ -152,7 +194,7 @@ for await (const line of lines) {
         const writeSurfaces = {}
         for (const [name, id] of Object.entries(state.writeSurfaces)) writeSurfaces[name] = id ?? null
         result = plain({
-          frameIndex: state.frameIndex, time: state.time, globalUniforms: state.globalUniforms, surfaces, writeSurfaces,
+          frameIndex: state.frameIndex, time: state.time, globalUniforms: globalsFor(op), surfaces, writeSurfaces,
           screenWidth: state.screenWidth, screenHeight: state.screenHeight, renderSurface: state.graph?.renderSurface ?? null
         })
         break
@@ -172,7 +214,7 @@ for await (const line of lines) {
   }
   // Promise callbacks (asyncInit failures, onSubmittedWorkDone) run before the next op.
   await new Promise(resolve => setImmediate(resolve))
-  const record = { key: op.key, calls: mock.takeLog(), state: state() }
+  const record = { key: op.key, calls: mock.takeLog(), state: state(op) }
   if (result !== undefined) record.result = result
   if (error) record.error = error
   process.stdout.write(JSON.stringify(record) + '\n')

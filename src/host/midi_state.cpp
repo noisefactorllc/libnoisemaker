@@ -1,7 +1,10 @@
 #include "midi_state.h"
 
+#include "core/edit/jsv.h"
+
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <string>
 #include <chrono>
@@ -600,6 +603,77 @@ HostObject MidiState::snapshot() const {
 
 HostObject MidiState::dumpState() const {
     return stateJson(true);
+}
+
+const MidiState* MidiState::getPortState(const Value& name, const Value& id) const {
+    if (!jsv::truthy(name) && !jsv::truthy(id)) return this;
+    // this._ports.get(id): a Map keyed by the port id strings.
+    const auto port = [&](const JsString& key) -> const MidiState* {
+        for (const PortEntry& entry : m_ports) if (entry.id == key) return entry.connected ? entry.state.get() : nullptr;
+        return nullptr;
+    };
+    if (jsv::truthy(id)) return id.is_string() ? port(id.as_string()) : nullptr;
+    if (!name.is_string()) return nullptr;
+    // An inventory or name index entry with an empty id is a name two ports share.
+    const auto& names = m_portInventory ? *m_portInventory : m_portsByName;
+    for (const auto& [n, portId] : names) {
+        if (n == name.as_string()) return portId.empty() ? nullptr : port(portId);
+    }
+    return nullptr;
+}
+
+std::optional<MidiState::ZoneVoice> MidiState::getZoneVoice(const Value& zone, const Value& members) const {
+    const bool lower = zone.is_number() && zone.as_number() == 0;
+    if (!lower && !(zone.is_number() && zone.as_number() == 1)) return std::nullopt;
+    if (!members.is_undefined()) {
+        if (!members.is_number() || std::trunc(members.as_number()) != members.as_number() || members.as_number() < 1 ||
+            members.as_number() > 15) {
+            return std::nullopt;
+        }
+    }
+    std::optional<ZoneVoice> newest;
+    if (m_registry) {
+        // The unscoped state, then each connected port's, the newest note winning.
+        std::vector<const MidiState*> scopes{m_unscoped.get()};
+        for (const PortEntry& entry : m_ports) if (entry.connected) scopes.push_back(entry.state.get());
+        for (const MidiState* scope : scopes) {
+            std::optional<ZoneVoice> voice = scope->getZoneVoice(zone, members);
+            if (voice && (!newest || voice->note.order > newest->note.order)) newest = voice;
+        }
+        return newest;
+    }
+    const std::optional<int>& zoneCount = lower ? m_mpeLower : m_mpeUpper;
+    const int count = !members.is_undefined() ? static_cast<int>(members.as_number()) : zoneCount.value_or(15);
+    const int first = lower ? 2 : 16 - count;
+    const int last = lower ? 1 + count : 15;
+    for (int index = first; index <= last; ++index) {
+        const Channel& channel = m_channels[static_cast<size_t>(index - 1)];
+        for (const HeldNote& note : channel.heldNotes) {
+            if (!newest || note.order > newest->note.order) newest = ZoneVoice{note, &channel, index};
+        }
+    }
+    return newest;
+}
+
+const MidiState::Channel& MidiState::getChannel(const Value& number) const {
+    const JsString key = jsv::to_property_key(number);
+    for (int index = 1; index <= 16; ++index) {
+        if (key == utf8_to_js(std::to_string(index))) return m_channels[static_cast<size_t>(index - 1)];
+    }
+    return m_channels[0];
+}
+
+std::vector<float> MidiState::noteGrid() const {
+    std::vector<float> grid(128 * 16 * 4, 0.0f);
+    for (size_t ch = 0; ch < 16; ++ch) {
+        for (size_t k = 0; k < 128; ++k) {
+            const int v = m_channels[ch].keys[k];
+            const size_t offset = (ch * 128 + k) * 4;
+            grid[offset] = v > 0 ? static_cast<float>(v / 127.0) : 0.0f;
+            grid[offset + 1] = v > 0 ? 1.0f : 0.0f;
+        }
+    }
+    return grid;
 }
 
 } // namespace libnoisemaker

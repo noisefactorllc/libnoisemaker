@@ -12,9 +12,10 @@
 // global uniforms, automation values, conditions, repeats, viewports, the
 // within-frame ping-pong of surfaces, mip regeneration and the swap), and
 // the parameter paths (setUniform with palette expansion, scoped variants,
-// aliases and texture resizing, and broadcastChainScopedParam). Not ported
-// yet: the MIDI and audio states, dispose, renderCubemap, preflight and
-// getAudioInputRequirements.
+// aliases and texture resizing, and broadcastChainScopedParam), the host's
+// MIDI and audio states (automation values, the note grid, the clock, the
+// waveform and spectrum) and getAudioInputRequirements. Not ported yet:
+// dispose, renderCubemap and preflight.
 //
 // The graph is the compiler's graph as JSON: passes, programs, textures and
 // allocations, with the two Maps as objects (their keys are texture ids, never
@@ -34,13 +35,15 @@
 // tileOffset or fullResolution that is truthy and not an array or object (the
 // reference writes its elements); pass uniforms other than objects where a
 // parameter is written into them; the asyncInit regeneration setUniform
-// triggers (the overlays are host inputs, above); and MIDI and audio states
-// (automation.h).
+// triggers (the overlays are host inputs, above); and a MIDI channel that
+// names an Object.prototype member (the reference reads that member).
 
+#include "gpu/backend/automation.h"
 #include "gpu/backend/backend.h"
 
 #include <array>
 #include <cstdint>
+#include <functional>
 
 #include <optional>
 #include <unordered_map>
@@ -122,6 +125,20 @@ public:
     // paths write a pass's value before they broadcast it.
     void setPassUniform(size_t pass, const JsString& name, Value value);
     static bool dimensionReferencesParam(const Value& spec, const JsString& paramName);
+
+    // setMidiState and setAudioState: the host's states automation and the
+    // frame read, or none. The caller keeps them alive. Each frame copies the
+    // audio waveform and spectrum into the global uniforms; the reference's
+    // globals alias the state's arrays, so between frames they show its
+    // newest values, which no pass reads before the next frame copies them.
+    void setMidiState(const MidiState* midi) { external_.midi = midi; }
+    void setAudioState(const AudioState* audio) { external_.audio = audio; }
+    // Date.now() for MIDI falloff: epoch milliseconds, read once per
+    // automation value per pass, as the reference reads it.
+    void setWallClock(std::function<double()> clock) { wallClock_ = std::move(clock); }
+    // { needsLegacy, needsLegacyRaw, selected: [{ id, name, channel, needsRaw }] }:
+    // the audio captures the graph's audio() values and audio effects need.
+    Value getAudioInputRequirements() const;
     static bool dimensionReferencesScopedParam(const Value& spec, const JsString& paramName);
     // The frame state, refreshed in place as the reference reuses its object.
     const FrameState& getFrameState();
@@ -238,6 +255,8 @@ private:
     // into; the two uniforms objects swap each time the proxy is used, and
     // keep the keys earlier passes resolved, as undefined.
     Value oscillatorPassProxy_;
+    ExternalState external_;
+    std::function<double()> wallClock_;
     Value resolvedUniforms_ = Value(Object{});
 };
 

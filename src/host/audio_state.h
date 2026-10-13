@@ -81,6 +81,11 @@ public:
                           double high = std::numeric_limits<double>::quiet_NaN(), double vol = std::numeric_limits<double>::quiet_NaN(), double raw = std::numeric_limits<double>::quiet_NaN());
     void setDeviceRawUnavailable(const JsString& id);
     AudioState* deviceChannelState(const JsString& id, int channel);
+    // getDeviceChannelState(selector), as pipeline.js evaluateAudio reads it:
+    // this state without a name, id or channel; otherwise a channel (1..32)
+    // of the default input, or of the connected device the id or name names
+    // (through the inventory when there is one); nullptr when none.
+    const AudioState* getDeviceChannelState(const Value& name, const Value& id, const Value& channel) const;
     void disconnectDevice(const JsString& id);
     std::vector<AudioDevice> devices() const;
 

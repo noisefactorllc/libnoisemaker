@@ -1,5 +1,7 @@
 #include "audio_state.h"
 
+#include "core/edit/jsv.h"
+
 
 #include <algorithm>
 #include <limits>
@@ -210,6 +212,46 @@ AudioState* AudioState::deviceChannelState(const JsString& id, int channel) {
     if (!entry || !entry->connected) return nullptr;
     auto it = findKey(entry->channels, channel);
     return it == entry->channels.end() ? nullptr : it->second.get();
+}
+
+const AudioState* AudioState::getDeviceChannelState(const Value& name, const Value& id, const Value& channel) const {
+    const auto truthy = [](const Value& v) { return jsv::truthy(v); };
+    if (!truthy(name) && !truthy(id) && channel.is_undefined()) return this;
+    if (!channel.is_number() || std::trunc(channel.as_number()) != channel.as_number() || channel.as_number() < 1 ||
+        channel.as_number() > 32) {
+        return nullptr;
+    }
+    const int number = static_cast<int>(channel.as_number());
+    if (!truthy(name) && !truthy(id)) {
+        // getDefaultChannelState(channel)
+        if (!m_defaultConnected) return nullptr;
+        for (const auto& [index, state] : m_defaultChannels) if (index == number) return state.get();
+        return nullptr;
+    }
+    // this._devices.get(id), a Map keyed by the device id strings.
+    const auto device = [&](const Value& key) -> const DeviceEntry* {
+        if (!m_registry || !key.is_string()) return nullptr;
+        for (const DeviceEntry& entry : m_devices) if (entry.id == key.as_string()) return &entry;
+        return nullptr;
+    };
+    const DeviceEntry* entry = nullptr;
+    if (truthy(id)) {
+        entry = device(id);
+    } else if (m_deviceInventory) {
+        // The inventory maps a name to its device id, or to none when two share it.
+        if (name.is_string()) {
+            for (const auto& [n, deviceId] : *m_deviceInventory) {
+                if (n == name.as_string() && !deviceId.empty()) entry = device(Value(deviceId));
+            }
+        }
+    } else if (name.is_string()) {
+        for (const auto& [n, deviceId] : m_devicesByName) {
+            if (n == name.as_string() && !deviceId.empty()) entry = device(Value(deviceId));
+        }
+    }
+    if (!entry || !entry->connected) return nullptr;
+    for (const auto& [index, state] : entry->channels) if (index == number) return state.get();
+    return nullptr;
 }
 
 void AudioState::disconnectDevice(const JsString& id) {

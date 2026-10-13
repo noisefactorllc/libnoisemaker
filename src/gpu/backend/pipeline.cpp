@@ -8,8 +8,12 @@
 #include "core/value/js_math.h"
 #include "core/value/js_number.h"
 #include "core/value/json.h"
+#include "host/audio_state.h"
+#include "host/midi_state.h"
 
 #include <algorithm>
+#include <chrono>
+#include <functional>
 #include <cmath>
 #include <unordered_map>
 #include <utility>
@@ -76,6 +80,7 @@ double mrtFormatBytes(const Value& format) {
 struct EffectHooks {
     JsString id;  // namespace/effect
     std::vector<JsString> hooks;
+    std::vector<JsString> tags;
 };
 const std::unordered_map<JsString, EffectHooks>& effectHooks() {
     static const std::unordered_map<JsString, EffectHooks> index = [] {
@@ -96,9 +101,13 @@ const std::unordered_map<JsString, EffectHooks>& effectHooks() {
             for (const Value& hook : jsv::values(jsv::member(definition, u"jsHooks"))) {
                 if (hook.is_string()) hooks.push_back(hook.as_string());
             }
+            std::vector<JsString> tags;
+            for (const Value& tag : jsv::values(jsv::member(definition, u"tags"))) {
+                if (tag.is_string()) tags.push_back(tag.as_string());
+            }
             const JsString func = jsv::to_string(jsv::member(definition, u"func"));
             for (const JsString& key : {func, ns + u"." + func, ns + u"/" + name, ns + u"." + name}) {
-                out[key] = EffectHooks{ns + u"/" + name, hooks};
+                out[key] = EffectHooks{ns + u"/" + name, hooks, tags};
             }
         }
         return out;
@@ -117,6 +126,10 @@ bool hasLifecycleHook(const std::vector<JsString>& hooks, const char16_t* hook) 
 
 Pipeline::Pipeline(Value graph, WebGPUBackend& backend, Options options)
     : graph_(std::move(graph)), backend_(backend), texturePooling_(options.texturePooling) {
+    wallClock_ = [] {
+        const auto now = std::chrono::system_clock::now().time_since_epoch();
+        return static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
+    };
     Object proxy;
     proxy.set(u"uniforms", Value(Object{}));
     oscillatorPassProxy_ = Value(std::move(proxy));
@@ -1012,8 +1025,17 @@ void Pipeline::updateGlobalUniforms(double time, double deltaTime) {
     // this._renderScale || 1.0
     g.set(u"renderScale", Value(renderScale_ && *renderScale_ != 0 && !std::isnan(*renderScale_) ? *renderScale_ : 1.0));
 
-    // No MIDI state: the note grid, when a pass reads it, is empty.
-    if (needsMidiNoteGrid_.value_or(false)) {
+    // Audio: the 128 waveform and spectrum values.
+    if (external_.audio) {
+        g.set(u"audioWaveform", Value::float32_array(std::vector<float>(external_.audio->waveform.begin(), external_.audio->waveform.end())));
+        g.set(u"audioSpectrum", Value::float32_array(std::vector<float>(external_.audio->spectrum.begin(), external_.audio->spectrum.end())));
+    }
+    // MIDI: the note grid (128x16 RGBA float) and the clock; without a state
+    // the grid, when a pass reads it, is empty.
+    if (external_.midi) {
+        backend_.uploadDataTexture(u"midiNoteGrid", external_.midi->noteGrid(), Value(128.0), Value(16.0));
+        g.set(u"midiClockCount", Value(external_.midi->clockCount()));
+    } else if (needsMidiNoteGrid_.value_or(false)) {
         static const std::vector<float> emptyNoteGrid(128 * 16 * 4, 0.0f);
         backend_.uploadDataTexture(u"midiNoteGrid", emptyNoteGrid, Value(128.0), Value(16.0));
     }
@@ -1052,7 +1074,7 @@ Value* Pipeline::resolvePassUniforms(Value& pass, double time) {
     for (const auto& [name, value] : jsv::entries(uniforms)) {
         const Value spec = nullish(uniformSpecs) ? Value() : jsv::get(uniformSpecs, name);
         if (isAutomationValue(value)) {
-            double result = evaluateAutomation(value, time, spec);
+            double result = evaluateAutomation(value, time, spec, external_, wallClock_());
             const bool isInt = !nullish(spec) && jsv::strict_equals(jsv::get(spec, u"type"), Value(u"int"));
             if (isInt) result = js::round(result);
             jsv::set_plain(resolved, name, Value(result));
@@ -1489,6 +1511,118 @@ void Pipeline::setPassUniform(size_t pass, const JsString& name, Value value) {
     const Value uniforms = jsv::get((*list)[pass], u"uniforms");
     if (!uniforms.is_object()) throw JsError(u"Error", u"pass uniforms other than an object are outside the port");
     jsv::set_plain((*list)[pass].as_object()[u"uniforms"].as_object(), name, std::move(value));
+}
+
+// The audio captures the graph needs.
+
+namespace {
+// The audio() selector fields as the reference reads them.
+Value member(const Value& value, const char16_t* key) { return jsv::member(value, key); }
+bool isAudioConfig(const Value& value) {
+    if (jsv::strict_equals(member(value, u"type"), Value(u"Audio"))) return true;
+    const Value ast = member(value, u"_ast");
+    return !ast.is_undefined() && !ast.is_null() && jsv::strict_equals(member(ast, u"type"), Value(u"Audio"));
+}
+Value audioSource(const Value& config) {
+    const Value ast = member(config, u"_ast");
+    const bool fromAst = !ast.is_undefined() && !ast.is_null() && jsv::strict_equals(member(ast, u"type"), Value(u"Audio"));
+    return fromAst ? ast : config;
+}
+bool audioSelectorIntent(const Value& config) {
+    const Value source = audioSource(config);
+    for (const char16_t* field : {u"name", u"id", u"channel"}) if (!member(config, field).is_undefined()) return true;
+    for (const char16_t* field : {u"name", u"id", u"channel"}) if (!member(source, field).is_undefined()) return true;
+    return false;
+}
+bool validAudioSelector(const Value& config) {
+    const Value source = audioSource(config);
+    const Value name = member(config, u"name");
+    const Value id = member(config, u"id");
+    const Value channel = member(config, u"channel");
+    if ((!member(source, u"name").is_undefined() && name.is_undefined()) ||
+        (!member(source, u"id").is_undefined() && id.is_undefined()) ||
+        (!member(source, u"channel").is_undefined() && channel.is_undefined())) {
+        return false;
+    }
+    if (!name.is_undefined() && (!name.is_string() || name.as_string().empty())) return false;
+    if (!id.is_undefined() && (!id.is_string() || id.as_string().empty() || !jsv::truthy(name))) return false;
+    return channel.is_number() && std::trunc(channel.as_number()) == channel.as_number() && channel.as_number() >= 1 &&
+           channel.as_number() <= 32;
+}
+bool isIntegerIn(const Value& value, double low, double high) {
+    return value.is_number() && std::isfinite(value.as_number()) && std::trunc(value.as_number()) == value.as_number() &&
+           value.as_number() >= low && value.as_number() <= high;
+}
+}  // namespace
+
+Value Pipeline::getAudioInputRequirements() const {
+    bool needsLegacy = false;
+    bool needsLegacyRaw = false;
+    Array selected;
+    std::vector<JsString> selectedKeys;
+    // The reference skips an object it has visited; a Value shares none, and
+    // visiting one twice adds nothing, as requirements merge by key.
+    std::function<void(const Value&)> visit = [&](const Value& value) {
+        if (!jsv::truthy(value) || !(value.is_object() || value.is_array() || value.is_float32_array())) return;
+        if (isAudioConfig(value)) {
+            const bool hasSelectorIntent = audioSelectorIntent(value);
+            const bool hasValidBand = !jsv::strict_equals(member(value, u"_invalid"), Value(true)) &&
+                                      isIntegerIn(member(value, u"band"), 0, 4);
+            if (!hasValidBand) return;
+            // The bounds may be automation with captures of their own.
+            visit(member(value, u"min"));
+            visit(member(value, u"max"));
+            const bool needsRaw = jsv::strict_equals(member(value, u"band"), Value(4.0));
+            if (hasSelectorIntent && validAudioSelector(value)) {
+                const Value id = member(value, u"id");
+                const Value name = member(value, u"name");
+                const Value channel = member(value, u"channel");
+                Object requirement;
+                requirement.set(u"id", id.is_string() && !id.as_string().empty() ? id : Value::null());
+                requirement.set(u"name", name.is_undefined() || name.is_null() ? Value::null() : name);
+                requirement.set(u"channel", channel.is_undefined() || channel.is_null() ? Value(1.0) : channel);
+                requirement.set(u"needsRaw", Value(needsRaw));
+                const JsString key = utf8_to_js(json::stringify(Value(Array{*requirement.find(u"id"), *requirement.find(u"name"), *requirement.find(u"channel")})));
+                if (contains(selectedKeys, key)) {
+                    for (Value& existing : selected) {
+                        Object& entry = existing.as_object();
+                        if (jsv::strict_equals(*entry.find(u"id"), *requirement.find(u"id")) &&
+                            jsv::strict_equals(*entry.find(u"name"), *requirement.find(u"name")) &&
+                            jsv::strict_equals(*entry.find(u"channel"), *requirement.find(u"channel"))) {
+                            if (needsRaw) entry.set(u"needsRaw", Value(true));
+                            break;
+                        }
+                    }
+                } else {
+                    selectedKeys.push_back(key);
+                    selected.emplace_back(std::move(requirement));
+                }
+            } else if (!hasSelectorIntent) {
+                needsLegacy = true;
+                if (needsRaw) needsLegacyRaw = true;
+            }
+            return;
+        }
+        if (value.is_array()) {
+            for (const Value& item : value.as_array()) visit(item);
+            return;
+        }
+        if (value.is_float32_array()) return;
+        for (const Value& item : jsv::values(value)) visit(item);
+    };
+    if (const Array* list = passes()) {
+        for (const Value& pass : *list) {
+            const Value effectKey = jsv::get(pass, u"effectKey");
+            const EffectHooks* effect = jsv::truthy(effectKey) ? getEffect(effectKey) : nullptr;
+            if (effect && contains(effect->tags, JsString(u"audio"))) needsLegacy = true;
+            visit(jsv::get(pass, u"uniforms"));
+        }
+    }
+    Object out;
+    out.set(u"needsLegacy", Value(needsLegacy));
+    out.set(u"needsLegacyRaw", Value(needsLegacyRaw));
+    out.set(u"selected", Value(std::move(selected)));
+    return Value(std::move(out));
 }
 
 // { param } or { screenDivide } naming the parameter.

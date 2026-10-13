@@ -77,7 +77,7 @@ public:
     // gate against the reference (parity/check_midi_state.mjs).
     HostObject dumpState() const;
 
-private:
+    // The state's channels and notes, which pipeline.js evaluateMidi reads.
     // Where a stored value came from: nothing, the unscoped source, or a port id.
     struct Origin {
         enum Kind { None, Unscoped, Port } kind = None;
@@ -130,6 +130,28 @@ private:
         void noteOff(int key);
         void reset();
     };
+
+    // getPortState(selector): this state without a name or id; otherwise a
+    // connected port's state, by id or by name (through the inventory when
+    // there is one); nullptr when none.
+    const MidiState* getPortState(const Value& name, const Value& id) const;
+    // getZoneVoice({ zone, members }): the newest held note of an MPE zone
+    // (0 lower, 1 upper) on its member channels, across the unscoped state
+    // and the connected ports with a registry; none for an invalid zone or
+    // member count.
+    struct ZoneVoice {
+        HeldNote note;
+        const Channel* channel = nullptr;
+        int channelNumber = 0;
+    };
+    std::optional<ZoneVoice> getZoneVoice(const Value& zone, const Value& members) const;
+    // getChannel(n): channels[n], channel 1 for a key that names none (1..16).
+    const Channel& getChannel(const Value& number) const;
+    // noteGrid after updateNoteGrid(): 128 keys x 16 channels of RGBA, R the
+    // velocity / 127 and G the gate of each held key.
+    std::vector<float> noteGrid() const;
+
+private:
     struct PortEntry {
         JsString id;
         JsString name;

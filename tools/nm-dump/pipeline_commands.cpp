@@ -5,6 +5,8 @@
 #include "core/value/json.h"
 #include "gpu/backend/pipeline.h"
 #include "gpu/backend/recording_device.h"
+#include "host/audio_state.h"
+#include "host/midi_state.h"
 
 #include <array>
 #include <cmath>
@@ -58,9 +60,17 @@ nm::Value surfaceRecord(const be::Surface& surface) {
     return nm::Value(std::move(record));
 }
 
-// JSON has no -0, NaN or Infinity: they travel as {"$number": text}, as
-// tools/reference-pipeline.mjs writes them.
+// JSON has no -0, NaN or Infinity: they travel as {"$number": text}, and a
+// Float32Array as {"$float32": [numbers]}, as tools/reference-pipeline.mjs
+// writes them.
 void tagSpecialNumbers(nm::Value& value) {
+    if (value.is_float32_array()) {
+        nm::Array numbers;
+        for (const float f : value.as_float32_array()) numbers.emplace_back(static_cast<double>(f));
+        nm::Object tag;
+        tag.set(u"$float32", nm::Value(std::move(numbers)));
+        value = nm::Value(std::move(tag));
+    }
     if (value.is_number()) {
         const double n = value.as_number();
         if (std::isfinite(n) && !(n == 0 && std::signbit(n))) return;
@@ -115,8 +125,18 @@ nm::Array strings(const std::vector<nm::JsString>& items) {
     return out;
 }
 
+// The global uniforms an op's record compares: audioWaveform and
+// audioSpectrum only after a render (tools/reference-pipeline.mjs).
+nm::Value globalsFor(const nm::Value& globals, const nm::JsString& kind) {
+    if (kind == u"render" || !globals.is_object()) return globals;
+    nm::Value out = globals;
+    out.as_object().erase(u"audioWaveform");
+    out.as_object().erase(u"audioSpectrum");
+    return out;
+}
+
 // The state tools/reference-pipeline.mjs records after each op.
-nm::Value state(const be::Pipeline& pipeline, const be::WebGPUBackend& backend) {
+nm::Value state(const be::Pipeline& pipeline, const be::WebGPUBackend& backend, const nm::JsString& kind) {
     nm::Object out;
     out.set(u"width", nm::Value(pipeline.width()));
     out.set(u"height", nm::Value(pipeline.height()));
@@ -160,7 +180,7 @@ nm::Value state(const be::Pipeline& pipeline, const be::WebGPUBackend& backend) 
     const nm::Value textureSpecs = field(graph, u"textures");
     out.set(u"textureSpecs", textureSpecs.is_undefined() ? nm::Value::null() : textureSpecs);
     out.set(u"resourcePlan", pipeline.getResourcePlan());
-    out.set(u"globalUniforms", pipeline.globalUniforms());
+    out.set(u"globalUniforms", globalsFor(pipeline.globalUniforms(), kind));
     out.set(u"frameIndex", nm::Value(pipeline.frameIndex()));
     out.set(u"lastTime", nm::Value(pipeline.lastTime()));
     out.set(u"lastPassCount", nm::Value(pipeline.lastPassCount()));
@@ -199,22 +219,54 @@ nm::Value error_record(const nm::JsString& name, const nm::JsString& message) {
 // as tools/reference-pipeline.mjs replays them on the reference Pipeline.
 // Writes {key, calls, state}, with result where the op returns a value and
 // error when it throws, for each op.
+// The MIDI message bytes and the port of a midi op.
+std::vector<uint8_t> bytes(const nm::Value& values) {
+    std::vector<uint8_t> out;
+    for (const nm::Value& v : values.as_array()) out.push_back(static_cast<uint8_t>(v.as_number()));
+    return out;
+}
+nm::MidiPort midiPort(const nm::Value& port) {
+    nm::MidiPort out;
+    out.id = field(port, u"id").as_string();
+    out.name = field(port, u"name").as_string();
+    const nm::Value connected = field(port, u"connected");
+    out.connected = !connected.is_bool() || connected.as_bool();
+    return out;
+}
+nm::AudioDevice audioDevice(const nm::Value& device) {
+    nm::AudioDevice out;
+    out.id = field(device, u"id").as_string();
+    out.name = field(device, u"name").as_string();
+    const nm::Value count = field(device, u"channelCount");
+    out.channelCount = count.is_number() ? static_cast<int>(count.as_number()) : 1;
+    const nm::Value connected = field(device, u"connected");
+    out.connected = !connected.is_bool() || connected.as_bool();
+    return out;
+}
+double optionalNumber(const nm::Value& value) { return value.is_number() ? value.as_number() : std::nan(""); }
+
 int pipeline(int, char**) {
     std::unique_ptr<be::RecordingDevice> device;
     std::unique_ptr<be::WebGPUBackend> backend;
     std::unique_ptr<be::Pipeline> pipeline;
+    std::unique_ptr<nm::MidiState> midi;
+    std::unique_ptr<nm::AudioState> audio;
     std::string line;
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;
         nm::Object record;
         nm::Value error;
+        nm::JsString kindOf;
         try {
             const nm::Value op = nm::json::parse(line);
             const nm::JsString kind = field(op, u"op").as_string();
+            kindOf = kind;
             record.set(u"key", field(op, u"key"));
             try {
                 if (kind == u"create") {
                     pipeline.reset();
+                    midi.reset();
+                    audio.reset();
                     backend.reset();
                     device = std::make_unique<be::RecordingDevice>();
                     backend = std::make_unique<be::WebGPUBackend>(*device);
@@ -235,7 +287,84 @@ int pipeline(int, char**) {
                     const nm::Value uniforms = field(op, u"uniforms");
                     pipeline->updateParameterTextures(uniforms.is_undefined() ? nm::Value(nm::Object{}) : uniforms);
                 } else if (kind == u"render") {
-                    pipeline->render(number(field(op, u"time"), u"time"));
+                    const double time = number(field(op, u"time"), u"time");
+                    const nm::Value wallTime = field(op, u"wallTime");
+                    if (wallTime.is_number()) {
+                        const double now = wallTime.as_number();
+                        pipeline->setWallClock([now] { return now; });
+                    }
+                    pipeline->render(time);
+                } else if (kind == u"attachMidi") {
+                    midi = std::make_unique<nm::MidiState>(!nm::jsv::strict_equals(field(op, u"registry"), nm::Value(false)));
+                    pipeline->setMidiState(midi.get());
+                } else if (kind == u"detachMidi") {
+                    pipeline->setMidiState(nullptr);
+                } else if (kind == u"midiMessage") {
+                    const std::vector<uint8_t> data = bytes(field(op, u"data"));
+                    const nm::Value portValue = field(op, u"port");
+                    const double time = number(field(op, u"time"), u"time");
+                    if (portValue.is_object()) {
+                        const nm::MidiPort port = midiPort(portValue);
+                        midi->handleMessage(data.data(), static_cast<std::ptrdiff_t>(data.size()), &port, time);
+                    } else {
+                        midi->handleMessage(data.data(), static_cast<std::ptrdiff_t>(data.size()), nullptr, time);
+                    }
+                } else if (kind == u"midiRegisterPort") {
+                    midi->registerPort(midiPort(field(op, u"port")));
+                } else if (kind == u"midiDisconnectPort") {
+                    midi->disconnectPort(field(op, u"id").as_string());
+                } else if (kind == u"midiInventory") {
+                    std::vector<nm::MidiPort> ports;
+                    // Held in a variable: a range-for over a temporary's member dangles.
+                    const nm::Value list = field(op, u"ports");
+                    for (const nm::Value& port : list.as_array()) ports.push_back(midiPort(port));
+                    midi->setPortInventory(ports);
+                } else if (kind == u"attachAudio") {
+                    audio = std::make_unique<nm::AudioState>(!nm::jsv::strict_equals(field(op, u"registry"), nm::Value(false)));
+                    pipeline->setAudioState(audio.get());
+                } else if (kind == u"detachAudio") {
+                    pipeline->setAudioState(nullptr);
+                } else if (kind == u"audioBands") {
+                    const double low = number(field(op, u"low"), u"low");
+                    const double mid = number(field(op, u"mid"), u"mid");
+                    const double high = number(field(op, u"high"), u"high");
+                    audio->setBands(low, mid, high);
+                } else if (kind == u"audioRaw") {
+                    audio->setRaw(number(field(op, u"value"), u"value"));
+                } else if (kind == u"audioRawUnavailable") {
+                    audio->setRawUnavailable();
+                } else if (kind == u"audioSpectrum") {
+                    const std::vector<uint8_t> data = bytes(field(op, u"bytes"));
+                    audio->setSpectrum(data.data(), static_cast<int>(data.size()));
+                } else if (kind == u"audioWaveform") {
+                    const std::vector<uint8_t> data = bytes(field(op, u"bytes"));
+                    audio->setWaveform(data.data(), static_cast<int>(data.size()));
+                } else if (kind == u"audioRegisterDevice") {
+                    audio->registerDevice(audioDevice(field(op, u"device")));
+                } else if (kind == u"audioChannelValues") {
+                    const nm::Value values = field(op, u"values");
+                    const nm::JsString id = field(op, u"id").as_string();
+                    const int channel = static_cast<int>(number(field(op, u"channel"), u"channel"));
+                    audio->setChannelValues(id, channel, optionalNumber(field(values, u"low")), optionalNumber(field(values, u"mid")),
+                                            optionalNumber(field(values, u"high")), optionalNumber(field(values, u"vol")),
+                                            optionalNumber(field(values, u"raw")));
+                } else if (kind == u"audioRegisterDefault") {
+                    audio->registerDefaultChannels(static_cast<int>(number(field(op, u"count"), u"count")));
+                } else if (kind == u"audioDefaultBands") {
+                    const int channel = static_cast<int>(number(field(op, u"channel"), u"channel"));
+                    const double low = number(field(op, u"low"), u"low");
+                    const double mid = number(field(op, u"mid"), u"mid");
+                    const double high = number(field(op, u"high"), u"high");
+                    if (nm::AudioState* state = audio->defaultChannelState(channel)) state->setBands(low, mid, high);
+                } else if (kind == u"audioInventory") {
+                    std::vector<nm::AudioDevice> devices;
+                    const nm::Value list = field(op, u"devices");
+                    for (const nm::Value& entry : list.as_array()) devices.push_back(audioDevice(entry));
+                    audio->setDeviceInventory(devices);
+                } else if (kind == u"audioDisconnectDevice") {
+                    audio->disconnectDevice(field(op, u"id").as_string());
+                } else if (kind == u"getAudioInputRequirements") {
+                    record.set(u"result", pipeline->getAudioInputRequirements());
                 } else if (kind == u"syncTime") {
                     pipeline->syncTime(number(field(op, u"time"), u"time"));
                 } else if (kind == u"setTileRegion") {
@@ -256,7 +385,7 @@ int pipeline(int, char**) {
                     nm::Object result;
                     result.set(u"frameIndex", nm::Value(state.frameIndex));
                     result.set(u"time", nm::Value(state.time));
-                    result.set(u"globalUniforms", state.globalUniforms);
+                    result.set(u"globalUniforms", globalsFor(state.globalUniforms, kind));
                     nm::Object surfaces;
                     for (const auto& [name, id] : state.surfaces) {
                         surfaces.set(name, nm::Value(static_cast<double>(backend->texture(id)->handle)));
@@ -307,7 +436,7 @@ int pipeline(int, char**) {
             error = error_record(u"InternalError", nm::utf8_to_js(e.what()));
         }
         record.set(u"calls", device ? nm::Value(device->takeLog()) : nm::Value(nm::Array{}));
-        record.set(u"state", pipeline ? state(*pipeline, *backend) : nm::Value::null());
+        record.set(u"state", pipeline ? state(*pipeline, *backend, kindOf) : nm::Value::null());
         if (!error.is_undefined()) record.set(u"error", error);
         std::cout << nm::json::stringify(nm::Value(std::move(record))) << '\n';
     }
