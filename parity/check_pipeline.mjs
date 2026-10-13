@@ -524,6 +524,9 @@ sequence('synthetic/params-errors', [
   { op: 'broadcastChainScopedParam', pass: 0.5, uniformName: 'a', scopedName: 'a_chain_0' },
   { op: 'broadcastChainScopedParam', pass: -1, uniformName: 'a', scopedName: 'a_chain_0' },
   { op: 'setPassUniform', pass: 0.5, name: 'a', value: 3 },
+  { op: 'setPassUniform', pass: '0', name: 'a', value: 4 },
+  { op: 'broadcastChainScopedParam', pass: '0', uniformName: 'a', scopedName: 'a_chain_0' },
+  { op: 'broadcastChainScopedParam', pass: '00', uniformName: 'a', scopedName: 'a_chain_0' },
   { op: 'setPassUniform', pass: 4, name: 'a', value: 3 },
   { op: 'create', graph: null },
   { op: 'broadcastChainScopedParam', pass: 3, uniformName: 'a', scopedName: 'a_chain_0' }
