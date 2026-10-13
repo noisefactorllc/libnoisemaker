@@ -68,6 +68,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -411,8 +412,9 @@ void deliver_midi(be::Pipeline& pipeline, const Fixture& fixture) {
         const std::string sidecar = fixture.dsl.size() > 4 && fixture.dsl.compare(fixture.dsl.size() - 4, 4, ".dsl") == 0
                                         ? fixture.dsl.substr(0, fixture.dsl.size() - 4) + ".midi.json"
                                         : std::string();
-        std::string probe;
-        if (!sidecar.empty() && read_file(sidecar, probe)) path = sidecar;
+        // existsSync, then a read that must succeed, as the minter does.
+        std::error_code error;
+        if (!sidecar.empty() && std::filesystem::exists(sidecar, error)) path = sidecar;
     }
     if (path.empty()) return;
     std::string text;
