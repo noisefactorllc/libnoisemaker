@@ -82,7 +82,7 @@ graphs.forEach(({ file, graph }) => {
     return
   }
   stepValueGraphs++
-  sequence(`corpus-params/${file}`, [
+  sequence(`corpus-step-values/${file}`, [
     { op: 'create', graph, options: {} },
     { op: 'init', width: 128, height: 96 },
     { op: 'applyStepParameterValues', values: encodeNumbers(programState.getAllStepValues()) },
@@ -790,6 +790,14 @@ dimensionOps.push({ op: 'resolveDimension', spec: 'unknown3', screenSize: 10, un
 sequence('synthetic/resolveDimension', dimensionOps)
 
 const input = ops.map(op => JSON.stringify(op).replace(/[\u2028\u2029]/g, c => `\\u${c.charCodeAt(0).toString(16)}`)).join('\n') + '\n'
+// Every op key names one op: a repeated key would hide a comparison.
+{
+  const seen = new Set()
+  for (const op of ops) {
+    if (seen.has(op.key)) throw new Error(`duplicate op key ${op.key}`)
+    seen.add(op.key)
+  }
+}
 const run = (command, args) => {
   const output = execFileSync(command, args, { input, encoding: 'utf8', maxBuffer: 1 << 30, env: process.env })
   return new Map(output.trim().split('\n').map(line => JSON.parse(line)).map(record => [record.key, record]))
