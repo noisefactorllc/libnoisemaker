@@ -42,8 +42,13 @@
 // control initialization, which can coerce some of them first, is not
 // ported yet.
 //
-// Not yet: MIDI sidecars, Portable effects, natively produced host inputs
-// and texture dumps.
+// A MIDI sidecar (--midi FILE, the manifest's "midi", or for a --dsl program
+// <name>.midi.json beside it: {"messages": [[status, data1, data2], ...]})
+// connects a MIDI state to the pipeline and delivers those raw messages
+// after the program loads, as the minter does through the page's renderer.
+//
+// Not yet: Portable effects, natively produced host inputs and texture
+// dumps.
 
 #include "core/graph/dsl_compiler.h"
 #include "core/lang/effect_registry.h"
@@ -55,6 +60,7 @@
 #include "gpu/backend/pipeline.h"
 #include "gpu/dawn_device.h"
 #include "gpu/device.h"
+#include "host/midi_state.h"
 #include "host/obj_parser.h"
 #include "png.h"
 
@@ -77,7 +83,8 @@ namespace {
 
 const char* kUsage =
     "usage: nm-render render (--dsl FILE | --graph FILE) --out FILE.png [--size N | --width W --height H]\n"
-    "                        [--time T] [--frames N] [--host-texture ID=PNG ...] [--obj FILE] [--allow-fallback]\n"
+    "                        [--time T] [--frames N] [--host-texture ID=PNG ...] [--obj FILE] [--midi FILE]\n"
+    "                        [--allow-fallback]\n"
     "                        [--run-seconds S --sample-every E] [--run-frames N] [--sample-every-frames K]\n"
     "                        [--sample-frames a,b,c]\n"
     "       nm-render batch MANIFEST [--allow-fallback]\n"
@@ -96,6 +103,7 @@ struct Fixture {
     int frames = 8;
     std::vector<std::pair<std::string, std::string>> hostTextures;
     std::string obj;
+    std::string midi;
     // A timed run (batch-golden.mjs isTimed and sampleSchedule).
     double runSeconds = 0;
     double sampleEvery = 5;
@@ -213,6 +221,8 @@ Fixture parse_render(int argc, char** argv, bool& allowFallback) {
             fixture.out = v;
         } else if (arg == "--obj") {
             fixture.obj = v;
+        } else if (arg == "--midi") {
+            fixture.midi = v;
         } else if (arg == "--sample-frames") {
             std::string list = v;
             size_t start = 0;
@@ -270,7 +280,7 @@ Fixture parse_entry(const nm::Value& value) {
     const nm::Object& entry = value.as_object();
     for (const auto& key : entry.keys()) {
         static const char16_t* supported[] = {u"graph", u"dsl", u"out", u"size", u"width", u"height", u"time", u"frames",
-                                              u"hostTextures", u"obj", u"runSeconds", u"sampleEvery", u"runFrames",
+                                              u"hostTextures", u"obj", u"midi", u"runSeconds", u"sampleEvery", u"runFrames",
                                               u"sampleEveryFrames", u"sampleFrames"};
         bool known = false;
         for (const char16_t* name : supported) known = known || key == name;
@@ -281,6 +291,7 @@ Fixture parse_entry(const nm::Value& value) {
     fixture.dsl = string_member(entry, u"dsl");
     fixture.out = string_member(entry, u"out");
     fixture.obj = string_member(entry, u"obj");
+    fixture.midi = string_member(entry, u"midi");
     if (const auto size = number_member(entry, u"size")) fixture.width = fixture.height = *size;
     if (const auto width = number_member(entry, u"width")) fixture.width = *width;
     if (const auto height = number_member(entry, u"height")) fixture.height = *height;
@@ -389,6 +400,42 @@ void upload_mesh(be::WebGPUBackend& backend, const nm::JsString& meshId, const n
     const nm::PackedMeshData packed = nm::packMeshDataForTextures(mesh, 256, 256);
     backend.uploadMeshData(meshId, packed.positionData, packed.normalData, packed.uvData, nm::Value(256.0),
                            nm::Value(256.0), nm::Value(double(packed.vertexCount)));
+}
+
+// The minter's MIDI sidecar: the fixture's file, else for a DSL program its
+// <name>.midi.json; the raw messages delivered to a MIDI state the pipeline
+// reads (CanvasRenderer.setMidiState, MidiState.handleMessage).
+void deliver_midi(be::Pipeline& pipeline, const Fixture& fixture) {
+    std::string path = fixture.midi;
+    if (path.empty() && !fixture.dsl.empty()) {
+        const std::string sidecar = fixture.dsl.size() > 4 && fixture.dsl.compare(fixture.dsl.size() - 4, 4, ".dsl") == 0
+                                        ? fixture.dsl.substr(0, fixture.dsl.size() - 4) + ".midi.json"
+                                        : std::string();
+        std::string probe;
+        if (!sidecar.empty() && read_file(sidecar, probe)) path = sidecar;
+    }
+    if (path.empty()) return;
+    std::string text;
+    if (!read_file(path, text)) throw std::runtime_error("cannot read " + path);
+    const nm::Value sidecar = nm::json::parse(text);
+    const nm::Value* messages = sidecar.is_object() ? sidecar.as_object().find(u"messages") : nullptr;
+    if (!messages || !messages->is_array()) throw std::runtime_error(path + ": \"messages\" must be an array of byte arrays");
+    std::vector<std::vector<uint8_t>> raw;
+    for (const nm::Value& message : messages->as_array()) {
+        if (!message.is_array() || message.as_array().empty()) throw std::runtime_error(path + ": a message must be a non-empty byte array");
+        std::vector<uint8_t> bytes;
+        for (const nm::Value& byte : message.as_array()) {
+            if (!byte.is_number() || byte.as_number() != std::floor(byte.as_number()) || byte.as_number() < 0 || byte.as_number() > 255) {
+                throw std::runtime_error(path + ": message bytes must be whole numbers from 0 to 255");
+            }
+            bytes.push_back(uint8_t(byte.as_number()));
+        }
+        raw.push_back(std::move(bytes));
+    }
+    // new MidiState(): the page's default, with a port registry.
+    auto state = std::make_shared<nm::MidiState>();
+    pipeline.setMidiState(state);
+    for (const std::vector<uint8_t>& bytes : raw) state->handleMessage(bytes.data(), std::ptrdiff_t(bytes.size()));
 }
 
 // The minter's meshPlan and applyMeshPlan (batch-golden.mjs).
@@ -501,6 +548,7 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
             pipeline.init(fixture.width, fixture.height);
             if (!fixture.dsl.empty()) apply_demo_step_values(pipeline, dslText);
             load_meshes(graph, fixture, backend);
+            deliver_midi(pipeline, fixture);
             // The minter's captures: texture contents, uploaded with flipY false.
             std::vector<nm::JsString> keep;
             for (const auto& [id, path] : fixture.hostTextures) {
