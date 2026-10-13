@@ -103,12 +103,13 @@ namespace {
 // produce more than limit bytes.
 class Inflater {
 public:
-    Inflater(const std::vector<uint8_t>& in, size_t limit) : in_(in), limit_(limit) {}
+    Inflater(const uint8_t* data, size_t size, size_t limit) : data_(data), size_(size), limit_(limit) {}
 
     // The input offset just past the last block, byte aligned.
     size_t end() const { return pos_ + (bitPos_ != 0 ? 1 : 0); }
 
     std::vector<uint8_t> run() {
+        out_.reserve(limit_);
         bool last = false;
         while (!last) {
             last = bits(1) != 0;
@@ -137,8 +138,8 @@ private:
     };
 
     uint32_t bit() {
-        if (pos_ >= in_.size()) bad("deflate stream ends early");
-        const uint32_t b = (in_[pos_] >> bitPos_) & 1u;
+        if (pos_ >= size_) bad("deflate stream ends early");
+        const uint32_t b = (data_[pos_] >> bitPos_) & 1u;
         if (++bitPos_ == 8) {
             bitPos_ = 0;
             ++pos_;
@@ -203,14 +204,14 @@ private:
             bitPos_ = 0;
             ++pos_;
         }
-        if (pos_ + 4 > in_.size()) bad("stored block ends early");
-        const uint32_t len = in_[pos_] | (uint32_t(in_[pos_ + 1]) << 8);
-        const uint32_t nlen = in_[pos_ + 2] | (uint32_t(in_[pos_ + 3]) << 8);
+        if (pos_ + 4 > size_) bad("stored block ends early");
+        const uint32_t len = data_[pos_] | (uint32_t(data_[pos_ + 1]) << 8);
+        const uint32_t nlen = data_[pos_ + 2] | (uint32_t(data_[pos_ + 3]) << 8);
         if ((len ^ 0xFFFFu) != nlen) bad("stored block length check fails");
         pos_ += 4;
-        if (pos_ + len > in_.size()) bad("stored block ends early");
+        if (pos_ + len > size_) bad("stored block ends early");
         if (out_.size() + len > limit_) bad("more image data than the header declares");
-        out_.insert(out_.end(), in_.begin() + long(pos_), in_.begin() + long(pos_ + len));
+        out_.insert(out_.end(), data_ + pos_, data_ + pos_ + len);
         pos_ += len;
     }
 
@@ -291,7 +292,8 @@ private:
         }
     }
 
-    const std::vector<uint8_t>& in_;
+    const uint8_t* data_;
+    size_t size_;
     size_t limit_;
     size_t pos_ = 0;
     int bitPos_ = 0;
@@ -345,6 +347,15 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
             compression = data[10];
             filterMethod = data[11];
             interlace = data[12];
+            // Checked before any image data is collected. Host textures are
+            // at most 16384 pixels on a side and 4096 x 4096 in all, so the
+            // sizes below stay far from overflow.
+            if (image.width == 0 || image.height == 0 || image.width > 16384 || image.height > 16384 ||
+                uint64_t(image.width) * image.height > uint64_t(4096) * 4096) {
+                bad("image size must be 1 to 16384 pixels on a side and at most 4096 x 4096 in all");
+            }
+            if (compression != 0 || filterMethod != 0) bad("unknown compression or filter method");
+            if (depth != 8 || interlace != 0) bad("only non-interlaced 8-bit images are supported");
         } else if (!header) {
             bad("IHDR must come first");
         } else if (std::memcmp(type, "IDAT", 4) == 0) {
@@ -355,16 +366,10 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
         pos += 12 + size_t(length);
     }
     if (!header || !ended) bad("missing IHDR or IEND");
-    // Host textures are at most 16384 pixels on a side and 4096 x 4096 in
-    // all, so the sizes below stay far from overflow and decoding holds at
-    // most about 134 MB beside the file: the inflated rows (67,112,960
-    // bytes), unfiltered in place, and the RGBA copy (67,108,864).
-    if (image.width == 0 || image.height == 0 || image.width > 16384 || image.height > 16384 ||
-        uint64_t(image.width) * image.height > uint64_t(4096) * 4096) {
-        bad("image size must be 1 to 16384 pixels on a side and at most 4096 x 4096 in all");
-    }
-    if (compression != 0 || filterMethod != 0) bad("unknown compression or filter method");
-    if (depth != 8 || interlace != 0) bad("only non-interlaced 8-bit images are supported");
+    // Beside the file, decoding holds its IDAT data (no larger than the
+    // file), the inflated rows (at most 67,112,960 bytes, reserved once and
+    // unfiltered in place; the IDAT data is freed before the next copy) and
+    // the RGBA copy (at most 67,108,864 bytes).
     size_t channels = 0;
     switch (colorType) {
         case 0: channels = 1; break;
@@ -382,19 +387,17 @@ Image decode_png(const std::vector<uint8_t>& bytes) {
     }
     const size_t stride = size_t(image.width) * channels;
     const size_t expected = (stride + 1) * size_t(image.height);
-    std::vector<uint8_t> payload(idat.begin() + 2, idat.end());
-    idat = std::vector<uint8_t>();
-    Inflater inflater(payload, expected);
+    Inflater inflater(idat.data() + 2, idat.size() - 2, expected);
     std::vector<uint8_t> raw = inflater.run();
     if (raw.size() != expected) bad("image data size differs from the header");
-    if (inflater.end() + 4 > payload.size()) bad("zlib checksum missing");
+    if (2 + inflater.end() + 4 > idat.size()) bad("zlib checksum missing");
     uint32_t a = 1, b = 0;
     for (uint8_t byte : raw) {
         a = (a + byte) % 65521;
         b = (b + a) % 65521;
     }
-    if (get32(&payload[inflater.end()]) != ((b << 16) | a)) bad("zlib checksum mismatch");
-    payload = std::vector<uint8_t>();
+    if (get32(&idat[2 + inflater.end()]) != ((b << 16) | a)) bad("zlib checksum mismatch");
+    idat = std::vector<uint8_t>();
     // Unfilter in place: each row's previous and upper bytes are already
     // decoded when a byte reads them.
     for (size_t y = 0; y < image.height; ++y) {

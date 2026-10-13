@@ -177,7 +177,9 @@ int main() {
     // Larger than 4096 x 4096 in all, though each side is allowed.
     NM_CHECK(throws(png_with_deflate({}, 4097, 4096), "4096 x 4096"));
     NM_CHECK(throws(png_with_deflate({}, 16385, 1), "16384"));
-    NM_CHECK(!throws(png_with_deflate({}, 16384, 1), "pixels"));
+    const std::vector<uint8_t> wide(16384 * 4, 7);
+    NM_CHECK(nm_render::decode_png(nm_render::encode_png_rgba8(16384, 1, wide)).rgba == wide);
+    NM_CHECK(nm_render::decode_png(nm_render::encode_png_rgba8(1, 16384, wide)).rgba == wide);
     // The encoder's stored blocks, over 65535 bytes so they split.
     std::vector<uint8_t> rgba(300 * 70 * 4);
     for (size_t i = 0; i < rgba.size(); ++i) rgba[i] = uint8_t(i * 131 + (i >> 9));
