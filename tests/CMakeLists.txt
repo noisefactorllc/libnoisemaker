@@ -17,6 +17,11 @@ if(NM_BUILD_GPU)
     "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/nm_render_orientation"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/gpu/nm_render_orientation.cmake")
 
+  # A minted graph renders as its DSL does.
+  add_test(NAME nm_render_graph COMMAND "${CMAKE_COMMAND}" "-DNM_RENDER=$<TARGET_FILE:nm-render>"
+    "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}" "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/nm_render_graph"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/gpu/nm_render_graph.cmake")
+
   # nm-render with valid and malformed Portable sidecars.
   add_test(NAME nm_render_portable COMMAND "${CMAKE_COMMAND}" "-DNM_RENDER=$<TARGET_FILE:nm-render>"
     "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}" "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/nm_render_portable"

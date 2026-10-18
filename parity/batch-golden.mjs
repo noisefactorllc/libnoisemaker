@@ -42,7 +42,9 @@
 //      render surface, which returns rows top first;
 //   8. write <name>.graph.json: the graph the page rendered (Maps as objects,
 //      program specs keep their WGSL source and drop GLSL), which a candidate can
-//      render directly.
+//      render directly. It is read after step 4, so its pass uniforms carry the
+//      step values the page applied as its host inputs loaded (a media step's
+//      imageSize).
 //
 // Timed fixtures (--run-seconds N --sample-every S, --run-frames N,
 // --sample-every-frames K, --sample-frames a,b,c) skip the fresh-state reset's
@@ -805,6 +807,8 @@ async function mintOne (page, opts, dslPath, dsl, expectedPassCount, programName
     writeFileSync(join(opts.outDir, `${programName}.${id}.png`), await capture(page, id))
     hostTextures.push(id)
   }
+  // The graph as the page renders it, after its host inputs loaded (step 8).
+  const renderedGraph = await pageGraph(page)
 
   // Fresh pipeline state (see the header): clear every pipeline-written texture.
   const reset = await page.evaluate(({ keep }) => {
@@ -883,7 +887,7 @@ async function mintOne (page, opts, dslPath, dsl, expectedPassCount, programName
     await dumpState(page, opts.dumpTextures, `${base}.`)
     if (probePasses) await dumpPassSnapshots(page, `${base}.`)
   }
-  writeFileSync(join(opts.outDir, `${programName}.graph.json`), JSON.stringify(graph, null, 2) + '\n')
+  writeFileSync(join(opts.outDir, `${programName}.graph.json`), JSON.stringify(renderedGraph, null, 2) + '\n')
   return { hostTextures, reset }
 }
 

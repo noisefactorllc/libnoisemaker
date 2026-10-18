@@ -1,0 +1,162 @@
+{
+  "id": "-25y640",
+  "source": "search synth\nmedia().write(o0)\nrender(o0)",
+  "passes": [
+    {
+      "id": "node_0_pass_0",
+      "program": "node_0_mediaInput",
+      "name": "main",
+      "inputs": {
+        "imageTex": "imageTex_step_0"
+      },
+      "outputs": {
+        "fragColor": "node_0_out"
+      },
+      "uniforms": {
+        "position": 4,
+        "tiling": 0,
+        "flip": 0,
+        "scaleAmt": 100,
+        "rotation": 0,
+        "offsetX": 0,
+        "offsetY": 0,
+        "bgColor": [
+          0,
+          0,
+          0
+        ],
+        "bgAlpha": 0,
+        "imageSize": [
+          768,
+          576
+        ]
+      },
+      "effectKey": "synth.media",
+      "effectFunc": "media",
+      "effectNamespace": "synth",
+      "nodeId": "node_0",
+      "stepIndex": 0,
+      "uniformSpecs": {
+        "scaleAmt": {
+          "min": 25,
+          "max": 400
+        },
+        "rotation": {
+          "min": -180,
+          "max": 180
+        },
+        "offsetX": {
+          "min": -100,
+          "max": 100
+        },
+        "offsetY": {
+          "min": -100,
+          "max": 100
+        },
+        "bgAlpha": {
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "id": "node_1_write_blit",
+      "program": "blit",
+      "type": "render",
+      "inputs": {
+        "src": "node_0_out"
+      },
+      "outputs": {
+        "color": "global_o0"
+      },
+      "uniforms": {},
+      "nodeId": "node_1",
+      "stepIndex": 1
+    }
+  ],
+  "programs": {
+    "node_0_mediaInput": {
+      "wgsl": "/*\n * WGSL media input shader.\n * Mirrors the GLSL normalization and crop logic for camera feeds.\n */\n\nstruct Uniforms {\n    data : array<vec4<f32>, 5>,\n};\n@group(0) @binding(0) var<uniform> uniforms : Uniforms;\n@group(0) @binding(1) var samp : sampler;\n@group(0) @binding(2) var imageTex : texture_2d<f32>;\n\nvar<private> resolution : vec2<f32>;\nvar<private> time : f32;\nvar<private> posIndex : i32;\nvar<private> rotation : f32;\nvar<private> scaleAmt : f32;\nvar<private> offsetX : f32;\nvar<private> offsetY : f32;\nvar<private> tiling : i32;\nvar<private> flip : i32;\nvar<private> bgColor : vec3<f32>;\nvar<private> bgAlpha : f32;\nvar<private> imageSize : vec2<f32>;\n\nconst PI : f32 = 3.14159265359;\nconst TAU : f32 = 6.28318530718;\n\nfn map(value: f32, inMin: f32, inMax: f32, outMin: f32, outMax: f32) -> f32 {\n    return outMin + (outMax - outMin) * (value - inMin) / (inMax - inMin);\n}\n\nfn rotate2D(st: vec2<f32>) -> vec2<f32> {\n    var st2 = st;\n    let rot = map(rotation, -180.0, 180.0, 0.5, -0.5);\n    let angle = rot * TAU * -1.0;\n\n    let aspect = imageSize.x / imageSize.y;\n    st2 = st2 - vec2<f32>(0.5 * aspect, 0.5);\n    let c = cos(angle);\n    let s = sin(angle);\n    st2 = mat2x2<f32>(c, -s, s, c) * st2;\n    st2 = st2 + vec2<f32>(0.5 * aspect, 0.5);\n    return st2;\n}\n\nfn tile(st: vec2<f32>) -> vec2<f32> {\n    if (tiling == 0) {\n        return st;\n    } else if (tiling == 1) {\n        return fract(st);\n    } else if (tiling == 2) {\n        return vec2<f32>(fract(st.x), st.y);\n    } else if (tiling == 3) {\n        return vec2<f32>(st.x, fract(st.y));\n    }\n    return st;\n}\n\n// External uploads use straight alpha; filter premultiplied texels.\nfn mediaTexel(p: vec2<i32>, size: vec2<i32>) -> vec4<f32> {\n    let c = textureLoad(imageTex, clamp(p, vec2<i32>(0), size - vec2<i32>(1)), 0);\n    return vec4<f32>(c.rgb * c.a, c.a);\n}\n\nfn sampleMedia(uv: vec2<f32>) -> vec4<f32> {\n    let size = vec2<i32>(textureDimensions(imageTex));\n    let p = uv * vec2<f32>(size) - vec2<f32>(0.5);\n    let lo = vec2<i32>(floor(p));\n    let f = fract(p);\n    return mix(mix(mediaTexel(lo, size), mediaTexel(lo + vec2<i32>(1, 0), size), f.x),\n               mix(mediaTexel(lo + vec2<i32>(0, 1), size), mediaTexel(lo + vec2<i32>(1, 1), size), f.x), f.y);\n}\n\nfn getImage(pos: vec2<f32>) -> vec4<f32> {\n    var st = pos / imageSize;\n    st.y = 1.0 - st.y;\n\n    var scale = 100.0 / scaleAmt;\n    if (scale == 0.0) { scale = 1.0; }\n    st = st * scale;\n\n    if (posIndex == 0) {\n        st.y = st.y + (resolution.y / imageSize.y * scale) - (scale - (1.0 / imageSize.y * scale));\n    } else if (posIndex == 1) {\n        st.x = st.x - (resolution.x / imageSize.x * scale * 0.5) + (0.5 - (1.0 / imageSize.x * scale));\n        st.y = st.y + (resolution.y / imageSize.y * scale) - (scale - (1.0 / imageSize.y * scale));\n    } else if (posIndex == 2) {\n        st.x = st.x - (resolution.x / imageSize.x * scale) + (1.0 - (1.0 / imageSize.x * scale));\n        st.y = st.y + (resolution.y / imageSize.y * scale) - (scale - (1.0 / imageSize.y * scale));\n    } else if (posIndex == 3) {\n        st.y = st.y + (resolution.y / imageSize.y * scale * 0.5) + (0.5 - (1.0 / imageSize.y * scale)) - scale;\n    } else if (posIndex == 4) {\n        st.x = st.x - (resolution.x / imageSize.x * scale * 0.5) + (0.5 - (1.0 / imageSize.x * scale));\n        st.y = st.y + (resolution.y / imageSize.y * scale * 0.5) + (0.5 - (1.0 / imageSize.y * scale)) - scale;\n    } else if (posIndex == 5) {\n        st.x = st.x - (resolution.x / imageSize.x * scale) + (1.0 - (1.0 / imageSize.x * scale));\n        st.y = st.y + (resolution.y / imageSize.y * scale * 0.5) + (0.5 - (1.0 / imageSize.y * scale)) - scale;\n    } else if (posIndex == 6) {\n        st.y = st.y + 1.0 - (scale - (1.0 / imageSize.y * scale));\n    } else if (posIndex == 7) {\n        st.x = st.x - (resolution.x / imageSize.x * scale * 0.5) + (0.5 - (1.0 / imageSize.x * scale));\n        st.y = st.y + 1.0 - (scale - (1.0 / imageSize.y * scale));\n    } else if (posIndex == 8) {\n        st.x = st.x - (resolution.x / imageSize.x * scale) + (1.0 - (1.0 / imageSize.x * scale));\n        st.y = st.y + 1.0 - (scale - (1.0 / imageSize.y * scale));\n    }\n\n    st.x = st.x - map(offsetX, -100.0, 100.0, -resolution.x / imageSize.x * scale, resolution.x / imageSize.x * scale) * 1.5;\n    st.y = st.y - map(offsetY, -100.0, 100.0, -resolution.y / imageSize.y * scale, resolution.y / imageSize.y * scale) * 1.5;\n\n    st.x = st.x * (imageSize.x / imageSize.y);\n    // Preserve exact texture coordinates for the identity transform.\n    if (rotation != 0.0) { st = rotate2D(st); }\n    st.x = st.x / (imageSize.x / imageSize.y);\n\n    st = tile(st);\n\n    st = st + 1.0 / imageSize;\n\n    if (flip == 1) {\n        st.x = 1.0 - st.x;\n        st.y = 1.0 - st.y;\n    } else if (flip == 2) {\n        st.x = 1.0 - st.x;\n    } else if (flip == 3) {\n        st.y = 1.0 - st.y;\n    } else if (flip == 11) {\n        if (st.x > 0.5) { st.x = 1.0 - st.x; }\n    } else if (flip == 12) {\n        if (st.x < 0.5) { st.x = 1.0 - st.x; }\n    } else if (flip == 13) {\n        if (st.y > 0.5) { st.y = 1.0 - st.y; }\n    } else if (flip == 14) {\n        if (st.y < 0.5) { st.y = 1.0 - st.y; }\n    } else if (flip == 15) {\n        if (st.x > 0.5) { st.x = 1.0 - st.x; }\n        if (st.y > 0.5) { st.y = 1.0 - st.y; }\n    } else if (flip == 16) {\n        if (st.x > 0.5) { st.x = 1.0 - st.x; }\n        if (st.y < 0.5) { st.y = 1.0 - st.y; }\n    } else if (flip == 17) {\n        if (st.x < 0.5) { st.x = 1.0 - st.x; }\n        if (st.y > 0.5) { st.y = 1.0 - st.y; }\n    } else if (flip == 18) {\n        if (st.x < 0.5) { st.x = 1.0 - st.x; }\n        if (st.y < 0.5) { st.y = 1.0 - st.y; }\n    }\n\n    let text = sampleMedia(st);\n\n    if (st.x < 0.0 || st.x > 1.0 || st.y < 0.0 || st.y > 1.0) {\n        return vec4<f32>(bgColor * bgAlpha, bgAlpha);\n    }\n\n    return text;\n}\n\n@fragment\nfn main(@builtin(position) pos : vec4<f32>) -> @location(0) vec4<f32> {\n    resolution = uniforms.data[0].xy;\n    time = uniforms.data[0].z;\n    posIndex = i32(uniforms.data[1].x);\n    rotation = uniforms.data[1].y;\n    scaleAmt = uniforms.data[1].z;\n    offsetX = uniforms.data[1].w;\n\n    offsetY = uniforms.data[2].x;\n    tiling = i32(uniforms.data[2].y);\n    flip = i32(uniforms.data[2].z);\n    bgAlpha = uniforms.data[2].w;\n\n    bgColor = uniforms.data[3].xyz;\n\n    imageSize = uniforms.data[4].xy;\n\n    // Internal rows match GLSL texture rows; presentation applies the final\n    // Y conversion. Keep anchor, offset and rotation in that same space.\n    return getImage(pos.xy);\n}\n",
+      "uniformLayout": {
+        "resolution": {
+          "slot": 0,
+          "components": "xy"
+        },
+        "time": {
+          "slot": 0,
+          "components": "z"
+        },
+        "position": {
+          "slot": 1,
+          "components": "x"
+        },
+        "rotation": {
+          "slot": 1,
+          "components": "y"
+        },
+        "scaleAmt": {
+          "slot": 1,
+          "components": "z"
+        },
+        "offsetX": {
+          "slot": 1,
+          "components": "w"
+        },
+        "offsetY": {
+          "slot": 2,
+          "components": "x"
+        },
+        "tiling": {
+          "slot": 2,
+          "components": "y"
+        },
+        "flip": {
+          "slot": 2,
+          "components": "z"
+        },
+        "bgAlpha": {
+          "slot": 2,
+          "components": "w"
+        },
+        "bgColor": {
+          "slot": 3,
+          "components": "xyz"
+        },
+        "imageSize": {
+          "slot": 4,
+          "components": "xy"
+        }
+      },
+      "defines": {}
+    },
+    "blit": {
+      "wgsl": "\n            struct FragmentInput {\n                @builtin(position) position: vec4<f32>,\n                @location(0) uv: vec2<f32>,\n            }\n\n            @group(0) @binding(0) var src: texture_2d<f32>;\n            @group(0) @binding(1) var srcSampler: sampler;\n\n            @fragment\n            fn main(in: FragmentInput) -> @location(0) vec4<f32> {\n                let uv = vec2<f32>(in.uv.x, 1.0 - in.uv.y);\n                return textureSample(src, srcSampler, uv);\n            }\n        ",
+      "fragmentEntryPoint": "main"
+    }
+  },
+  "allocations": {
+    "node_0_out": "phys_0"
+  },
+  "textures": {
+    "node_0_out": {
+      "width": "screen",
+      "height": "screen",
+      "format": "rgba16f",
+      "usage": [
+        "render",
+        "sample",
+        "copySrc",
+        "copyDst"
+      ]
+    }
+  },
+  "renderSurface": "o0",
+  "mediaSteps": [
+    {
+      "textureId": "imageTex_step_0",
+      "uniform": "imageTex",
+      "stepIndex": 0,
+      "effect": "synth.media"
+    }
+  ]
+}
