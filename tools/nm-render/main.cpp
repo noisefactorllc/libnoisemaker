@@ -8,7 +8,9 @@
 // read and write textures, frame index and clock zeroed, global uniforms
 // emptied), render FRAMES frames at the normalized TIME, and write the
 // render surface's read texture as the backend's readPixels() converts it,
-// in texture row order (row 0 first).
+// as the page presents it: the reference's present() blit puts texture row
+// 0 at the bottom of the canvas, so the PNG's top row is the texture's last
+// row.
 //
 // `--host-texture ID=PNG` uploads a texture's contents (the minter saves
 // each host input it binds, media, text and the asyncInit overlays, as
@@ -110,7 +112,7 @@ const char* kUsage =
     "       nm-render batch MANIFEST [--allow-fallback]\n"
     "\n"
     "Renders programs with the golden protocol of parity/batch-golden.mjs (defaults: size 256,\n"
-    "time 0.25, 8 frames) and writes the render surface in texture row order.\n"
+    "time 0.25, 8 frames) and writes the render surface as the page presents it, top row first.\n"
     "Exit status: 0 on success, 1 when a program fails to compile or render, 2 for usage errors.\n";
 
 struct Fixture {
@@ -1112,7 +1114,8 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
                 backend.updateTextureFromPixels(keep.back(), image.width, image.height, image.rgba, false);
             }
             reset_to_fresh_state(pipeline, backend, keep);
-            // The capture: the render surface's read texture, as readPixels converts it.
+            // The capture: the render surface's read texture, as readPixels
+            // converts it, in the page's presented order (rows reversed).
             const auto capture = [&]() {
                 const nm::Value* surfaceName = graph.is_object() ? graph.as_object().find(u"renderSurface") : nullptr;
                 const nm::JsString surface = surfaceName && surfaceName->is_string() && !surfaceName->as_string().empty()
@@ -1126,7 +1129,13 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
                 const be::Pixels pixels = backend.readPixels(*readId);
                 const auto width = uint32_t(nm::jsv::to_number(pixels.width));
                 const auto height = uint32_t(nm::jsv::to_number(pixels.height));
-                return nm_render::encode_png_rgba8(width, height, pixels.data);
+                std::vector<uint8_t> presented(pixels.data.size());
+                const size_t rowBytes = size_t(width) * 4;
+                for (uint32_t y = 0; y < height && rowBytes * height <= pixels.data.size(); ++y) {
+                    std::copy_n(pixels.data.begin() + std::ptrdiff_t(rowBytes * (height - 1 - y)), rowBytes,
+                                presented.begin() + std::ptrdiff_t(rowBytes * y));
+                }
+                return nm_render::encode_png_rgba8(width, height, presented);
             };
             if (fixture.timed()) {
                 int frame = 0;

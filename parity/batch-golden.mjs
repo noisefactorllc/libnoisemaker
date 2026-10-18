@@ -34,9 +34,12 @@
 //      contents), double-buffered surfaces back to their read/write orientation,
 //      frame index and clock zeroed, global uniforms emptied;
 //   6. render FRAMES frames at the pinned normalized TIME with pipeline.render();
-//   7. read back the presented surface with the backend's own readPixels()
-//      (rgba16float -> round(v * 255) clamped, the reference conversion; WebGPU
-//      textures are top-down, so no flip) and write <name>.golden.png;
+//   7. read back the frame as the page presents it, top row first, and write
+//      <name>.golden.png: on WebGPU, the canvas texture that the last frame's
+//      present() (CanvasSink) blit wrote, copied in that call (the blit
+//      samples the render surface at texel centres, its texture row 0 at the
+//      bottom of the canvas); on WebGL2, the backend's own readPixels() of the
+//      render surface, which returns rows top first;
 //   8. write <name>.graph.json: the graph the page rendered (Maps as objects,
 //      program specs keep their WGSL source and drop GLSL), which a candidate can
 //      render directly.
@@ -152,6 +155,111 @@ async function installCaptureRoute (page) {
   })
 }
 
+// The canvas texture of the next presented frame (step 7): the page's WebGPU
+// canvas is configured with COPY_SRC as well (format and alphaMode kept), and
+// the backend's present() copies the canvas texture it just wrote while
+// window.__nmPresentArmed is set.
+async function preparePresentedCapture (page) {
+  const result = await page.evaluate(() => {
+    const b = window.__noisemakerRenderingPipeline?.backend
+    if (!b) return { error: 'no pipeline backend' }
+    if (b.getName?.() !== 'WebGPU') return {}
+    const format = b.canvasFormat || navigator.gpu.getPreferredCanvasFormat()
+    if (!['bgra8unorm', 'rgba8unorm'].includes(format)) return { error: `unsupported canvas format ${format}` }
+    if (!b.context) return { error: 'the WebGPU backend has no canvas context' }
+    const config = b.context.getConfiguration?.()
+    if (!config || !(config.usage & GPUTextureUsage.COPY_SRC)) {
+      b.context.configure({
+        device: b.device,
+        format,
+        usage: (config?.usage ?? (GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST)) | GPUTextureUsage.COPY_SRC,
+        alphaMode: config?.alphaMode ?? 'premultiplied'
+      })
+    }
+    if (!Object.prototype.hasOwnProperty.call(b, 'present')) {
+      const present = b.present
+      b.present = function (textureId) {
+        const result = present.call(this, textureId)
+        if (window.__nmPresentArmed) {
+          window.__nmPresentArmed = false
+          const texture = this.context.getCurrentTexture()
+          const rowBytes = Math.ceil((texture.width * 4) / 256) * 256
+          const buffer = this.device.createBuffer({ size: rowBytes * texture.height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+          const encoder = this.device.createCommandEncoder()
+          encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: rowBytes },
+            { width: texture.width, height: texture.height, depthOrArrayLayers: 1 })
+          this.device.queue.submit([encoder.finish()])
+          window.__nmPresented = { buffer, rowBytes, width: texture.width, height: texture.height, format: texture.format, textureId }
+        }
+        return result
+      }
+    }
+    return {}
+  })
+  if (result.error) throw new Error(`presented capture: ${result.error}`)
+}
+
+// The frame the page presented, as a PNG, rows top first (step 7).
+async function capturePresented (page) {
+  const token = String(++captureCounter)
+  const result = await page.evaluate(async ({ token }) => {
+    const p = window.__noisemakerRenderingPipeline
+    const backend = p?.backend
+    if (!backend) return { error: 'no pipeline backend' }
+    let rows
+    let width
+    let height
+    if (backend.getName?.() === 'WebGL2') {
+      const name = p.graph?.renderSurface || 'o0'
+      const surface = p.surfaces?.get(name)
+      if (!surface) return { error: `no render surface ${name}` }
+      const px = backend.readPixels(surface.read)
+      rows = px.data
+      width = px.width
+      height = px.height
+    } else {
+      const copy = window.__nmPresented
+      window.__nmPresented = null
+      if (!copy) return { error: 'the frame was not presented' }
+      const name = p.graph?.renderSurface || 'o0'
+      const presented = p.frameReadTextures?.get(name) ?? p.surfaces?.get(name)?.read
+      if (copy.textureId !== presented) return { error: `the presented texture ${copy.textureId} is not the render surface ${presented}` }
+      await copy.buffer.mapAsync(GPUMapMode.READ)
+      const mapped = new Uint8Array(copy.buffer.getMappedRange())
+      width = copy.width
+      height = copy.height
+      rows = new Uint8Array(width * height * 4)
+      const bgra = copy.format.startsWith('bgra')
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const s = y * copy.rowBytes + x * 4
+          const d = (y * width + x) * 4
+          rows[d] = mapped[s + (bgra ? 2 : 0)]
+          rows[d + 1] = mapped[s + 1]
+          rows[d + 2] = mapped[s + (bgra ? 0 : 2)]
+          rows[d + 3] = mapped[s + 3]
+        }
+      }
+      copy.buffer.unmap()
+      copy.buffer.destroy()
+    }
+    const upload = await fetch(`/__nm_capture/${token}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: new Blob([rows])
+    })
+    if (upload.status !== 204) return { error: `capture upload failed (${upload.status})` }
+    return { width, height }
+  }, { token })
+  if (result.error) throw new Error(`readback failed: ${result.error}`)
+  const pixels = captureUploads.get(token)
+  captureUploads.delete(token)
+  if (!pixels || pixels.length !== result.width * result.height * 4) {
+    throw new Error(`readback failed: received ${pixels ? pixels.length : 0} bytes for ${result.width}x${result.height}`)
+  }
+  return encodePng(result.width, result.height, pixels)
+}
+
 async function capture (page, textureId = null) {
   const token = String(++captureCounter)
   const result = await page.evaluate(async ({ textureId, token }) => {
@@ -168,9 +276,10 @@ async function capture (page, textureId = null) {
     const tex = backend.textures?.get(id)
     if (!tex) return { error: `no texture ${id}` }
     if (backend.getName?.() === 'WebGL2') {
-      // The WebGL2 backend's readPixels flips GL's rows. The protocol
-      // compares texture rows, which on WebGL2 are GL's rows (the same
-      // order as the WebGPU backend's texture rows), so undo the flip.
+      // The WebGL2 backend's readPixels flips GL's rows. A texture capture
+      // (a host input, which a candidate uploads as it is) keeps texture
+      // rows, which on WebGL2 are GL's rows (the same order as the WebGPU
+      // backend's texture rows), so undo the flip.
       const px = backend.readPixels(id)
       const rowBytes = px.width * 4
       const rows = new Uint8Array(px.data.length)
@@ -729,6 +838,7 @@ async function mintOne (page, opts, dslPath, dsl, expectedPassCount, programName
 
   const probePasses = opts.dumpPasses && opts.dumpTextures.length > 0
   if (opts.dumpTextures.length) await installProbeHelpers(page)
+  await preparePresentedCapture(page)
   const base = join(opts.outDir, `${programName}.golden`)
   if (isTimed(opts)) {
     let frame = 0
@@ -738,6 +848,7 @@ async function mintOne (page, opts, dslPath, dsl, expectedPassCount, programName
         for (let f = from; f < to; f++) {
           const armed = probe && f + 1 === to
           if (armed) window.__nmProbeSnaps = window.__nmProbe.arm(p, ids)
+          window.__nmPresentArmed = f + 1 === to
           try {
             p.render(((f + 1) / 600) % 1.0)
           } finally {
@@ -746,7 +857,7 @@ async function mintOne (page, opts, dslPath, dsl, expectedPassCount, programName
         }
       }, { from: frame, to: sample.frame, probe: probePasses, ids: opts.dumpTextures })
       frame = sample.frame
-      const png = await capture(page)
+      const png = await capturePresented(page)
       for (const label of sample.labels) {
         writeFileSync(`${base}.${label}.png`, png)
         await dumpState(page, opts.dumpTextures, `${base}.${label}.`)
@@ -760,6 +871,7 @@ async function mintOne (page, opts, dslPath, dsl, expectedPassCount, programName
       for (let i = 0; i < frames; i++) {
         const armed = probe && i + 1 === frames
         if (armed) window.__nmProbeSnaps = window.__nmProbe.arm(p, ids)
+        window.__nmPresentArmed = i + 1 === frames
         try {
           p.render(time)
         } finally {
@@ -767,7 +879,7 @@ async function mintOne (page, opts, dslPath, dsl, expectedPassCount, programName
         }
       }
     }, { time: opts.time, frames: opts.frames, probe: probePasses, ids: opts.dumpTextures })
-    writeFileSync(`${base}.png`, await capture(page))
+    writeFileSync(`${base}.png`, await capturePresented(page))
     await dumpState(page, opts.dumpTextures, `${base}.`)
     if (probePasses) await dumpPassSnapshots(page, `${base}.`)
   }

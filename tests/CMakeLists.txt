@@ -9,6 +9,14 @@ if(NM_BUILD_GPU)
   target_include_directories(test_png PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/tools/nm-render)
   add_test(NAME test_png COMMAND test_png)
 
+  # nm-render writes the frame as the reference page presents it.
+  add_executable(png_layout gpu/png_layout.cpp ${PROJECT_SOURCE_DIR}/tools/nm-render/png.cpp)
+  target_include_directories(png_layout PRIVATE ${PROJECT_SOURCE_DIR}/tools/nm-render)
+  add_test(NAME nm_render_orientation COMMAND "${CMAKE_COMMAND}" "-DNM_RENDER=$<TARGET_FILE:nm-render>"
+    "-DPNG_LAYOUT=$<TARGET_FILE:png_layout>" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
+    "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/nm_render_orientation"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/gpu/nm_render_orientation.cmake")
+
   # nm-render with valid and malformed Portable sidecars.
   add_test(NAME nm_render_portable COMMAND "${CMAKE_COMMAND}" "-DNM_RENDER=$<TARGET_FILE:nm-render>"
     "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}" "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/nm_render_portable"
