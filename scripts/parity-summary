@@ -34,7 +34,7 @@
 #              evidence, listed on stderr. A failure on such a golden is a fail.
 # executed = exact + strict + near + fail + uninformative. Without case-id
 # arguments the summary also counts the catalog effects and those with
-# informative exact or strict evidence of their own (effects_evidenced; the
+# informative exact, strict or near evidence of their own (effects_evidenced; the
 # others are listed on stderr). Exit 0 iff no case is near, failing, skipped or
 # missing and (without case-id arguments) every catalog effect is evidenced; 1
 # otherwise; 2 on an infrastructure failure (every case in skip).

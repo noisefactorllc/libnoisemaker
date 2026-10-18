@@ -83,6 +83,7 @@
 #include "host/midi_state.h"
 #include "host/obj_parser.h"
 #include "host/stroke_canvas.h"
+#include "host/text_canvas.h"
 #include "png.h"
 
 #include <algorithm>
@@ -366,6 +367,21 @@ nm::EffectRegistry& registry() {
     static const bool loaded = (instance.loadEmbedded(), true);
     (void)loaded;
     return instance;
+}
+
+// The demo page's Nunito: its web font is the variable font of the
+// reference's demo/font/Nunito, read from $NM_REFERENCE_ROOT once.
+nm::TrueTypeFont& nunito_font() {
+    static std::optional<nm::TrueTypeFont> font;
+    if (!font) {
+        const std::string path = environment("NM_REFERENCE_ROOT") + "/demo/font/Nunito/Nunito-VariableFont_wght.ttf";
+        try {
+            font = nm::TrueTypeFont::parse(nm_render::read_file(path));
+        } catch (const std::runtime_error&) {
+            throw std::runtime_error("cannot read " + path);
+        }
+    }
+    return *font;
 }
 
 // The whitespace String.prototype.trim removes.
@@ -853,6 +869,70 @@ std::vector<nm::JsString> apply_demo_step_values(be::Pipeline& pipeline, be::Web
         }
     }
     if (!media.empty()) apply();
+    // Text steps (externalTexture textTex): the page builds each one's hidden
+    // text canvas from the step's values (_initTextCanvas), draws its text
+    // (_renderTextToCanvas, host/text_canvas.h) on a canvas of the
+    // pipeline's width by its width, uploads it with flipY true, sets the
+    // step's textSize to its size and applies the step values again. A host
+    // texture given for the step's texture replaces the canvas; a font the
+    // port does not draw leaves the texture unset.
+    const size_t mediaCount = media.size();
+    std::vector<double> textSteps;
+    if (passes && passes->is_array()) {
+        for (const nm::Value& pass : passes->as_array()) {
+            const nm::Value key = pass.is_object() ? nm::jsv::member(pass, u"effectKey") : nm::Value();
+            const nm::Value step = pass.is_object() ? nm::jsv::member(pass, u"stepIndex") : nm::Value();
+            if (!key.is_string() || !step.is_number()) continue;
+            if (std::find(textSteps.begin(), textSteps.end(), step.as_number()) != textSteps.end()) continue;
+            const nm::Value def = registry().getEffectValue(key.as_string());
+            if (!nm::jsv::strict_equals(nm::jsv::member(def, u"externalTexture"), nm::Value(u"textTex"))) continue;
+            textSteps.push_back(step.as_number());
+            const nm::JsString stepKey = u"step_" + nm::jsv::to_string(step);
+            const nm::JsString texId = u"textTex_" + stepKey;
+            if (std::any_of(fixture.hostTextures.begin(), fixture.hostTextures.end(),
+                            [&](const auto& host) { return nm::utf8_to_js(host.first) == texId; })) {
+                continue;
+            }
+            const nm::Object values = state.get_step_values(stepKey);
+            const auto value = [&](const char16_t* name) {
+                const nm::Value* v = values.find(name);
+                return v ? *v : nm::Value();
+            };
+            nm::TextCanvasParams params;
+            params.text = nm::jsv::truthy(value(u"text")) ? nm::jsv::to_string(value(u"text")) : nm::JsString();
+            params.font = nm::jsv::to_string(value(u"font"));
+            params.size = nm::jsv::to_number(value(u"size"));
+            params.posX = nm::jsv::to_number(value(u"posX"));
+            params.posY = nm::jsv::to_number(value(u"posY"));
+            params.rotation = nm::jsv::to_number(value(u"rotation"));
+            params.justify = nm::jsv::to_string(value(u"justify"));
+            // _hexToRgb: an array's first three components, a #rrggbb string, else white.
+            const nm::Value color = value(u"color");
+            if (color.is_array()) {
+                for (size_t i = 0; i < 3; ++i) {
+                    params.color[i] = i < color.as_array().size() ? nm::jsv::to_number(color.as_array()[i]) : NAN;
+                }
+            } else if (color.is_string()) {
+                const nm::JsString hex = color.as_string().size() == 7 && color.as_string()[0] == u'#' ? color.as_string().substr(1)
+                                                                                                         : color.as_string();
+                const bool valid = hex.size() == 6 && std::all_of(hex.begin(), hex.end(), [](char16_t c) {
+                                       return (c >= u'0' && c <= u'9') || (c >= u'a' && c <= u'f') || (c >= u'A' && c <= u'F');
+                                   });
+                for (size_t i = 0; i < 3 && valid; ++i) {
+                    params.color[i] = std::stoi(nm::js_to_utf8(hex.substr(2 * i, 2)), nullptr, 16) / 255.0;
+                }
+            }
+            if (!nm::textCanvasDrawsFamily(params.font)) continue;
+            const int resolution = int(pipeline.width());
+            const std::vector<uint8_t> rgba = nm::drawTextCanvas(nunito_font(), resolution, params);
+            const nm::Value size = backend.updateTextureFromPixels(texId, resolution, resolution, rgba, true);
+            const double width = nm::jsv::to_number(nm::jsv::member(size, u"width"));
+            const double height = nm::jsv::to_number(nm::jsv::member(size, u"height"));
+            if (width > 0 && height > 0) state.set_value(stepKey, u"textSize", nm::Value(nm::Array{nm::Value(width), nm::Value(height)}));
+            media.push_back(texId);
+        }
+    }
+    if (media.size() != mediaCount) apply();
     // The asyncInit overlays. The page's resize draws each node's overlay
     // (initAsyncEffects, _startAsyncInit) from the global uniforms, with
     // automated values at their defaults, and records the scalar values it

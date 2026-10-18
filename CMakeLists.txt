@@ -140,6 +140,7 @@ add_library(noisemaker_host STATIC
   src/host/worm_tracer.cpp
   src/host/stroke_canvas.cpp
   src/host/stroke_fill.cpp
+  src/host/text_canvas.cpp
   src/host/audio_analyzer.cpp
   src/host/audio_state.cpp
   src/host/midi_state.cpp

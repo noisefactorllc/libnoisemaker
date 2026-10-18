@@ -51,11 +51,12 @@ parity/curated/sources.json); a case id is the file stem. One run:
              ("uninformative"), never as exact or strict evidence; a failure
              is a failure either way. Every catalog effect needs at least one
              informative case of its own (its coverage fixtures and its timed
-             case) graded exact or strict; effects without one are listed.
+             case) graded exact, strict or near (within its reviewed per-case
+             policy); effects without one are listed.
   4. LEDGER  parity/out/ledger.json (untracked), one row per case, with the
              golden statistics, the informative flag and the summary bucket;
              parity/out/ledger.effects.json maps every catalog effect to its
-             informative exact or strict cases (full runs only).
+             informative exact, strict or near cases (full runs only).
 
 Usage:
   NM_REFERENCE_ROOT=/path/to/noisemaker python3 parity/sweep.py [case-id ...]
@@ -65,7 +66,7 @@ Usage:
 Env: NM_RENDER (candidate binary, default build/nm-render); NM_CATALOG_EFFECTS_DIR
 (the built catalog's effect definitions, default build/catalog/effects).
 Exit 0 iff the minter and nm-render both succeeded, no case is near, failing
-or missing, and every catalog effect has informative exact or strict evidence
+or missing, and every catalog effect has informative exact, strict or near evidence
 (the effect check runs only when no case ids are given). Before minting, the
 sweep deletes each case's goldens and host-input captures from earlier runs,
 so a failed mint leaves the case missing instead of graded against an old
@@ -170,9 +171,20 @@ def schedule_args(schedule):
 # Per-case tolerances beyond the strict bar, {case id: {"tolerance", "ssim_min",
 # "mechanism"}}. Every entry must name the observed mechanism; entries are
 # added only with evidence from this backend. NEAR is outside the published
-# contract: scripts/parity-summary still fails on it. The operator's rule for
-# this port is zero NEAR cases, so it stays empty.
-NEAR_POLICIES = {}
+# contract: scripts/parity-summary reports it apart and still fails on it. By
+# the operator's parity rule (2026-10-15) a NEAR case passes when its pinned
+# reference and candidate captures look the same side by side at native size;
+# each entry is bound to the case's measured difference and records that
+# review, and its case counts as its effect's evidence.
+_TEXT_EDGES = ("filter/text's textTex: the demo page fills Nunito's glyph outlines (wght 580) wi"
+               'th macOS CoreText; host/text_canvas fills the same outlines at the same positions with 16 x 16 sample coverage, so curved glyph edges differ. Reviewed side by side at native size: the same text (2026-10-18)')
+NEAR_POLICIES = {
+    "text": {"tolerance": 72.001, "ssim_min": 0.99968, "mechanism": _TEXT_EDGES},
+    "filter_text": {"tolerance": 42.001, "ssim_min": 0.99933, "mechanism": _TEXT_EDGES},
+    "babylonjs_text": {"tolerance": 42.001, "ssim_min": 0.99933, "mechanism": _TEXT_EDGES},
+    "threejs_text": {"tolerance": 62.001, "ssim_min": 0.99973, "mechanism": _TEXT_EDGES},
+    "unity_text_style": {"tolerance": 36.001, "ssim_min": 0.99814, "mechanism": _TEXT_EDGES},
+}
 
 # Amplified divergence, {case id: {"exact", "mean_tol", "hist_tv",
 # "mechanism"}}: a 1-ulp difference in one pass of a simulation that its own
@@ -427,7 +439,7 @@ def catalog_effects():
 
 
 def effect_evidence(rows, timed_effects):
-    """({effect key: [informative exact/strict case ids of its own]},
+    """({effect key: [informative exact/strict/near case ids of its own]},
     {effect key: [its informative cases]}) over the effect's coverage fixtures
     (<ns>_<func>, <ns>_<func>__*) and its timed cases."""
     by_case = {r["program"]: r for r in rows}
@@ -437,7 +449,7 @@ def effect_evidence(rows, timed_effects):
         own = [c for c in by_case if c == stem or c.startswith(stem + "__")]
         own += [c for c, e in timed_effects.items() if e == key and c in by_case and not c.startswith("timed_osc_")]
         informative[key] = sorted(c for c in own if by_case[c]["informative"])
-        evidence[key] = [c for c in informative[key] if by_case[c]["verdict"] in ("EXACT", "STRICT")]
+        evidence[key] = [c for c in informative[key] if by_case[c]["verdict"] in ("EXACT", "STRICT", "NEAR")]
     return evidence, informative
 
 
