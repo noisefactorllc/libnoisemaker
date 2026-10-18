@@ -37,10 +37,9 @@
 // frame count, the minter's sample schedule.
 //
 // A --dsl program gets the demo page's step values after it compiles: the
-// reference ProgramState's values for it, applied with the renderer's
-// applyStepParameterValues, with a fresh page's enum tree. The page's
-// control initialization, which can coerce some of them first, is not
-// ported yet.
+// reference ProgramState's values for it, coerced as the page's control
+// initialization sets them, applied with the renderer's
+// applyStepParameterValues, with a fresh page's enum tree.
 //
 // A MIDI sidecar (--midi FILE, the manifest's "midi", or for a --dsl program
 // <name>.midi.json beside it: {"messages": [[status, data1, data2], ...]})
@@ -369,20 +368,145 @@ nm::Value load_graph(const Fixture& fixture, std::string& dslText) {
     return nm::Value(nm::compileGraphJson(nm::utf8_to_js(text), registry()));
 }
 
+// "Oscillator", "Midi" or "Audio": the type of an automation config.
+bool automation_kind(const nm::Value& type) {
+    return type.is_string() && (type.as_string() == u"Oscillator" || type.as_string() == u"Midi" || type.as_string() == u"Audio");
+}
+
+// An automation config: value.type or value._ast.type is an automation kind.
+bool automation_type(const nm::Value& value) {
+    return automation_kind(nm::jsv::member(value, u"type")) ||
+           automation_kind(nm::jsv::member(nm::jsv::member(value, u"_ast"), u"type"));
+}
+
+// value && typeof value === "object"
+bool object_value(const nm::Value& value) { return nm::jsv::is_object_like(value); }
+
+// The parameter values the demo page writes when it builds a program's
+// controls (DemoUI.createEffectControlsFromState): for each effect step with
+// globals, each control's _createControlGroup takes the state's value, else
+// the step's argument, else the default; it leaves an automated parameter
+// (an oscillator, MIDI or audio binding) as it is, binding a variable
+// reference as { _varRef }, and sets every other value through ProgramState's
+// setValue, which coerces it to the parameter's type (a function or state
+// value of a numeric parameter becomes its default). A member control then
+// stores the enum path that matches the value, or its first choice.
+void initialize_demo_controls(nm::ProgramState<>& state, const nm::Value& enums) {
+    const nm::Value structure = state.get_structure();
+    if (!structure.is_array() || structure.as_array().empty()) return;
+    if (!nm::jsv::truthy(nm::jsv::member(state.get_compiled(), u"plans"))) return;
+    for (const nm::Value& info : structure.as_array()) {
+        const nm::Value effectKey = nm::jsv::member(info, u"effectKey");
+        const nm::Value name = nm::jsv::member(info, u"name");
+        const nm::Value ns = nm::jsv::member(info, u"namespace");
+        if (effectKey.is_string() && (effectKey.as_string() == u"_write" || effectKey.as_string() == u"_read" ||
+                                      effectKey.as_string() == u"_read3d" || effectKey.as_string() == u"_write3d")) {
+            continue;
+        }
+        // getEffect(effectKey), then getEffect(`${namespace}.${name}`), then getEffect(name).
+        const auto lookup = [](const nm::Value& key) {
+            return nm::jsv::truthy(key) ? registry().getEffectValue(nm::jsv::to_string(key)) : nm::Value();
+        };
+        nm::Value def = lookup(effectKey);
+        if (!nm::jsv::truthy(def) && nm::jsv::truthy(ns)) {
+            def = lookup(nm::Value(nm::jsv::to_string(ns) + u"." + nm::jsv::to_string(name)));
+        }
+        if (!nm::jsv::truthy(def)) def = lookup(name);
+        const nm::Value globals = nm::jsv::member(def, u"globals");
+        if (!nm::jsv::truthy(def) || !nm::jsv::truthy(globals)) continue;
+        const nm::JsString stepKey = u"step_" + nm::jsv::to_string(nm::jsv::member(info, u"stepIndex"));
+        const nm::Value args = nm::jsv::member(info, u"args");
+        const nm::Value rawKwargs = nm::jsv::member(info, u"rawKwargs");
+        // groupGlobalsByCategory skips the hidden controls; each value is set
+        // on its own, so the category order does not change the result.
+        for (const auto& [key, spec] : nm::jsv::entries(globals)) {
+            const nm::Value ui = nm::jsv::member(spec, u"ui");
+            const nm::Value control = nm::jsv::member(ui, u"control");
+            if ((control.is_bool() && !control.as_bool()) || nm::jsv::strict_equals(nm::jsv::member(ui, u"hidden"), nm::Value(true))) {
+                continue;
+            }
+            nm::Value value = state.get_value(stepKey, key);
+            if (value.is_undefined()) value = nm::jsv::member(args, key);
+            if (value.is_undefined()) value = nm::jsv::member(spec, u"default");
+            const nm::Value rawKwarg = nm::jsv::member(rawKwargs, key);
+            const nm::Value automationValue = object_value(value) ? value : nm::jsv::member(args, key);
+            const bool automated = (object_value(automationValue) &&
+                                    (nm::jsv::truthy(nm::jsv::member(automationValue, u"_varRef")) || automation_type(automationValue))) ||
+                                   (object_value(rawKwarg) && automation_kind(nm::jsv::member(rawKwarg, u"type")));
+            if (automated) {
+                const nm::Value rawType = nm::jsv::member(rawKwarg, u"type");
+                if (object_value(rawKwarg) && rawType.is_string() && rawType.as_string() == u"Ident") {
+                    nm::Object ref;
+                    ref.set(u"_varRef", nm::jsv::member(rawKwarg, u"name"));
+                    state.set_value(stepKey, key, nm::Value(std::move(ref)));
+                }
+                continue;
+            }
+            state.set_value(stepKey, key, value);
+            // The control _createControlGroup picks; only a member control
+            // writes the state again when it is built.
+            const nm::Value type = nm::jsv::member(spec, u"type");
+            const auto is = [](const nm::Value& v, const char16_t* text) { return v.is_string() && v.as_string() == text; };
+            if (is(control, u"button") || is(control, u"checkbox") || is(type, u"boolean") || is(control, u"color") ||
+                is(type, u"vec4") || is(type, u"vec2") || is(type, u"vec3") || nm::jsv::truthy(nm::jsv::member(spec, u"choices")) ||
+                (nm::jsv::truthy(nm::jsv::member(spec, u"enum")) && is(type, u"int")) || !is(type, u"member")) {
+                continue;
+            }
+            // _createMemberControl
+            nm::Value enumPath = nm::jsv::member(spec, u"enum");
+            if (!nm::jsv::truthy(enumPath)) enumPath = nm::jsv::member(spec, u"enumPath");
+            const nm::Value fallback = nm::jsv::member(spec, u"default");
+            if (!nm::jsv::truthy(enumPath) && fallback.is_string()) {
+                const nm::JsString& text = fallback.as_string();
+                const size_t dot = text.rfind(u'.');
+                if (dot != nm::JsString::npos) enumPath = nm::Value(text.substr(0, dot));
+            }
+            if (!nm::jsv::truthy(enumPath)) continue;
+            const nm::JsString path = nm::jsv::to_string(enumPath);
+            nm::Value node = enums;
+            size_t start = 0;
+            while (true) {
+                const size_t dot = path.find(u'.', start);
+                const nm::JsString part = path.substr(start, dot == nm::JsString::npos ? nm::JsString::npos : dot - start);
+                const nm::Value next = nm::jsv::truthy(node) ? nm::jsv::member(node, part) : nm::Value();
+                if (!nm::jsv::truthy(next)) {
+                    node = nm::Value::null();
+                    break;
+                }
+                node = next;
+                if (dot == nm::JsString::npos) break;
+                start = dot + 1;
+            }
+            if (!nm::jsv::truthy(node)) continue;
+            nm::Value initialValue;
+            bool first = true;
+            for (const nm::JsString& entry : nm::jsv::keys(node)) {
+                const nm::Value fullPath(path + u"." + entry);
+                const nm::Value enumEntry = nm::jsv::member(node, entry);
+                const nm::Value numericValue = object_value(enumEntry) && nm::jsv::has_property(enumEntry, u"value")
+                                                   ? nm::jsv::member(enumEntry, u"value")
+                                                   : enumEntry;
+                if (first) initialValue = fullPath;
+                first = false;
+                if (nm::jsv::strict_equals(numericValue, value) || nm::jsv::strict_equals(fullPath, value)) {
+                    initialValue = fullPath;
+                    break;
+                }
+            }
+            state.set_value(stepKey, key, initialValue);
+        }
+    }
+}
+
 // Part of what the demo page does after compiling a program
-// (rebuildPipelineFromDsl): the UI loads it into ProgramState (fromDsl) and
-// the renderer applies the state's step values to the pipeline
-// (applyStepParameterValues). The UI's control initialization between the
-// two, which can coerce some values, is not ported; the enum tree is a fresh
-// page's, with the program's effects' choices (renderer_enum_tree).
+// (rebuildPipelineFromDsl): the UI loads it into ProgramState (fromDsl),
+// builds its controls (initialize_demo_controls) and the renderer applies
+// the state's step values to the pipeline (applyStepParameterValues). The
+// enum tree is a fresh page's, with the program's effects' choices
+// (renderer_enum_tree).
 // Returns the media textures it uploaded, which the fresh-state reset keeps.
 std::vector<nm::JsString> apply_demo_step_values(be::Pipeline& pipeline, be::WebGPUBackend& backend, const Fixture& fixture,
                                                  const std::string& dslText) {
-    nm::ProgramState<> state(registry());
-    state.from_dsl(nm::utf8_to_js(dslText));
-    // The global uniforms when the page's resize draws the asyncInit
-    // overlays (initAsyncEffects), before any step values are applied.
-    const nm::Value initialGlobals = pipeline.globalUniforms();
     // A fresh page's enum tree: the standard enums and the choices of the
     // program's effects, which the page loads before it compiles. A minting
     // session's page may also hold the choices of programs it loaded before.
@@ -397,6 +521,12 @@ std::vector<nm::JsString> apply_demo_step_values(be::Pipeline& pipeline, be::Web
         }
     }
     const nm::Value enums = nm::renderer_enum_tree(registry(), &effects);
+    nm::ProgramState<> state(registry());
+    state.from_dsl(nm::utf8_to_js(dslText));
+    initialize_demo_controls(state, enums);
+    // The global uniforms when the page's resize draws the asyncInit
+    // overlays (initAsyncEffects), before any step values are applied.
+    const nm::Value initialGlobals = pipeline.globalUniforms();
     const auto apply = [&]() {
         pipeline.applyStepParameterValues(
             nm::Value(state.get_all_step_values()), [](const nm::JsString& key) { return registry().getEffectValue(key); },

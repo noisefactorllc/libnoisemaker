@@ -20,7 +20,7 @@ parity/curated/sources.json); a case id is the file stem. One run:
              overlays).
   2. RENDER  candidates with nm-render in one batch process. By default the
              candidate runs the DSL through libnoisemaker's compiler and applies
-             ProgramState's step values as the page does, without the UI's
+             ProgramState's step values as the page does, after the UI's
              control initialization. nm-render loads mesh and MIDI sidecars,
              runs timed schedules and draws the media and asyncInit overlay
              host inputs natively. It does not support Portable effects or
