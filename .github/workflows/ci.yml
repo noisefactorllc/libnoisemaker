@@ -17,11 +17,11 @@ concurrency:
 
 jobs:
   gates:
-    name: scripts/test in the Worker Elves toolchain
+    name: scripts/test in the automation toolchain
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    # Emulates the toolchain of scaffold's apps/scaffold-cloud/Dockerfile.agent, where the
-    # Worker Elves supervisor runs scripts/test: its base image digest, and from its packages
+    # Emulates the toolchain of the automation's check image, where the
+    # automated review runs scripts/test: its base image digest, and from its packages
     # the compiler, CMake and Python (GCC 12, CMake 3.25, Python 3.11 as python3 and a
     # uv-managed Python 3.13). It runs as root; the check image runs as node.
     container: node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73
