@@ -127,8 +127,13 @@ cmake/, third_party/  Dawn build integration and its lock
 
 ## License
 
-MIT (see [LICENSE](LICENSE)). Dawn and its dependencies carry their own licenses (BSD-3-Clause,
-Apache-2.0, MIT). Use of the Noisemaker and Noise Factor names in derivative products is subject to
-the [Trademark Policy](TRADEMARK.md).
+MIT (see [LICENSE](LICENSE)). The JavaScript syntax checks are a port of acorn, whose MIT notice is
+in [src/core/js/acorn-LICENSE.txt](src/core/js/acorn-LICENSE.txt). The embedded effect catalog
+contains code from other works, whose notices are in
+[src/core/catalog/catalog-NOTICES.txt](src/core/catalog/catalog-NOTICES.txt). Each release archive
+holds these three files in `share/doc/noisemaker`. The overlay canvas in `src/host` is a port of
+Skia (BSD-3-Clause, notice in `stroke_canvas.cpp`), which no release archive contains. Dawn and its
+dependencies carry their own licenses (BSD-3-Clause, Apache-2.0, MIT). Use of the Noisemaker and
+Noise Factor names in derivative products is subject to the [Trademark Policy](TRADEMARK.md).
 
 Copyright © 2026 Noise Factor LLC

@@ -4,7 +4,8 @@
 The archive is libnoisemaker-<version>-<target>.tar.gz (a .zip on Windows)
 holding one directory of that name: include/noisemaker, the shared library
 and, on Windows, its import library, lib/cmake/noisemaker, share/noisemaker
-(ENGINE, TOOLCHAIN) and share/doc/noisemaker (LICENSE, acorn-LICENSE.txt).
+(ENGINE, TOOLCHAIN) and share/doc/noisemaker (LICENSE, acorn-LICENSE.txt and
+catalog-NOTICES.txt, the notices of the works in the embedded catalog).
 """
 
 import argparse
@@ -26,6 +27,7 @@ REQUIRED = [
     "share/noisemaker/TOOLCHAIN",
     "share/doc/noisemaker/LICENSE",
     "share/doc/noisemaker/acorn-LICENSE.txt",
+    "share/doc/noisemaker/catalog-NOTICES.txt",
 ]
 SHARED = {
     "linux": ["lib/libnoisemaker_core.so"],

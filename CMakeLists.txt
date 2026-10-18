@@ -192,7 +192,8 @@ install(TARGETS noisemaker_core EXPORT noisemakerTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES include/noisemaker/core.h include/noisemaker/core.hpp include/noisemaker/value.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/noisemaker)
-install(FILES LICENSE src/core/js/acorn-LICENSE.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/noisemaker)
+install(FILES LICENSE src/core/js/acorn-LICENSE.txt src/core/catalog/catalog-NOTICES.txt
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/noisemaker)
 # ENGINE names the Noisemaker release the catalog and the parity gates come
 # from; TOOLCHAIN names the build a C++ consumer must match (see README).
 file(READ "${PROJECT_SOURCE_DIR}/parity/reference.json" _nm_reference)

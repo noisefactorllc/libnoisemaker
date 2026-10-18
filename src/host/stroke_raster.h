@@ -7,7 +7,7 @@
 //
 // A port of Skia (https://skia.org) at commit
 // 9d07e5bad9e3e21da2426946e589daa647218271; the license notice is in
-// stroke_canvas.cpp and skia-LICENSE.txt.
+// stroke_canvas.cpp.
 
 #include <cmath>
 #include <cstddef>
