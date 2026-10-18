@@ -64,8 +64,9 @@ Usage:
 
 Env: NM_RENDER (candidate binary, default build/nm-render); NM_CATALOG_EFFECTS_DIR
 (the built catalog's effect definitions, default build/catalog/effects).
-Exit 0 iff the minter and nm-render both succeeded, no case is near, failing
-or missing, and every catalog effect has informative exact, strict or near evidence
+Exit 0 iff the minter and nm-render both succeeded, no case is failing or
+missing, every near case lies within its reviewed per-case policy, and every
+catalog effect has informative exact, strict or near evidence
 (the effect check runs only when no case ids are given). Before minting, the
 sweep deletes each case's goldens and host-input captures from earlier runs,
 so a failed mint leaves the case missing instead of graded against an old
@@ -170,13 +171,15 @@ def schedule_args(schedule):
 # Per-case tolerances beyond the strict bar, {case id: {"tolerance", "ssim_min",
 # "mechanism"}}. Every entry must name the observed mechanism; entries are
 # added only with evidence from this backend. NEAR is outside the published
-# contract: scripts/parity-summary reports it apart and still fails on it. By
-# the operator's parity rule (2026-10-15) a NEAR case passes when its pinned
+# contract: scripts/parity-summary reports it apart. By the operator's parity
+# rule (2026-10-15) a NEAR case passes when its pinned
 # reference and candidate captures look the same side by side at native size;
 # each entry is bound to the case's measured difference and records that
 # review, and its case counts as its effect's evidence.
-_TEXT_EDGES = ("filter/text's textTex: the demo page fills Nunito's glyph outlines (wght 580) wi"
-               'th macOS CoreText; host/text_canvas fills the same outlines at the same positions with 16 x 16 sample coverage, so curved glyph edges differ. Reviewed side by side at native size: the same text (2026-10-18)')
+_TEXT_EDGES = ("filter/text's textTex: the demo page fills Nunito's glyph outlines (wght 580) "
+               "with macOS CoreText; host/text_canvas fills the same outlines at the same "
+               "positions with 16 x 16 sample coverage, so curved glyph edges differ. Reviewed "
+               "side by side at native size: the same text (2026-10-18)")
 NEAR_POLICIES = {
     "text": {"tolerance": 72.001, "ssim_min": 0.99968, "mechanism": _TEXT_EDGES},
     "filter_text": {"tolerance": 42.001, "ssim_min": 0.99933, "mechanism": _TEXT_EDGES},
@@ -564,7 +567,8 @@ def main():
                                              "missing": len(missing_effects),
                                              "uninformed": sum(1 for k in missing_effects if not informative_cases[k])},
                                             sort_keys=True))
-    ok = all(r["verdict"] in ("EXACT", "STRICT") for r in rows) and not missing_effects and mint_rc == 0 and render_rc == 0
+    ok = all(r["verdict"] in ("EXACT", "STRICT") or (r["verdict"] == "NEAR" and r.get("mechanism")) for r in rows) \
+        and not missing_effects and mint_rc == 0 and render_rc == 0
     return 0 if ok else 1
 
 

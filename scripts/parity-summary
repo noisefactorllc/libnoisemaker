@@ -34,8 +34,10 @@
 # executed = exact + strict + near + fail + uninformative. Without case-id
 # arguments the summary also counts the catalog effects and those with
 # informative exact, strict or near evidence of their own (effects_evidenced; the
-# others are listed on stderr). Exit 0 iff no case is near, failing, skipped or
-# missing and (without case-id arguments) every catalog effect is evidenced; 1
+# others are listed on stderr). Exit 0 iff no case fails, is deferred, skipped or
+# missing, every near case lies within its reviewed per-case policy (a reviewed
+# NEAR passes under the operator's parity rule of 2026-10-15; parity/summarize.py)
+# and (without case-id arguments) every catalog effect is evidenced; 1
 # otherwise; 2 on an infrastructure failure (every case in skip).
 #
 # Environment:
@@ -101,46 +103,4 @@ trap 'rm -f "$LEDGER" "$LEDGER.effects.json"' EXIT
 SWEEP_RC=$?
 # The sweep fails when a tool fails even if every PNG it left grades exact.
 [ -s "$LEDGER" ] || fail_infra "the sweep wrote no ledger (exit $SWEEP_RC)"
-"$PY" - "$LEDGER" "$SWEEP_RC" ${CASE_ARGS[@]+"${CASE_ARGS[@]}"} <<'EOF'
-import json, os, sys
-rows = json.load(open(sys.argv[1]))
-sweep_rc = int(sys.argv[2])
-only = set(sys.argv[3:])
-rows = [r for r in rows if not only or r["program"] in only]
-c = dict(expected=len(rows), executed=0, exact=0, strict=0, near=0, defer=0, skip=0, fail=0, missing=0,
-         uninformative=0)
-outside = []
-uninformative = []
-for r in rows:
-    b = r.get("bucket", r["verdict"])
-    if b == "MISSING":
-        c["missing"] += 1; outside.append(r["program"]); continue
-    c["executed"] += 1
-    if b == "EXACT": c["exact"] += 1
-    elif b == "STRICT": c["strict"] += 1
-    elif b == "UNINFORMATIVE": c["uninformative"] += 1; uninformative.append(r["program"])
-    elif b == "NEAR": c["near"] += 1; outside.append(r["program"])
-    else: c["fail"] += 1; outside.append(r["program"])
-missing_effects = []
-effects_file = sys.argv[1] + ".effects.json"
-if not only and os.path.exists(effects_file):
-    evidence = json.load(open(effects_file))
-    missing_effects = sorted(k for k, v in evidence.items() if not v)
-    c["effects"] = len(evidence)
-    c["effects_evidenced"] = len(evidence) - len(missing_effects)
-print("PARITY-SUMMARY " + json.dumps(c, separators=(",", ":")))
-if outside:
-    print("parity-summary: cases outside the published contract: " + " ".join(outside), file=sys.stderr)
-if uninformative:
-    print("parity-summary: passes on uninformative goldens (not evidence): " + " ".join(uninformative),
-          file=sys.stderr)
-if missing_effects:
-    print("parity-summary: effects without informative exact or strict evidence: " + " ".join(missing_effects),
-          file=sys.stderr)
-if sweep_rc != 0:
-    print(f"parity-summary: the sweep exited {sweep_rc} (the minter or nm-render failed, or a case is outside the contract)",
-          file=sys.stderr)
-ok = c["executed"] == c["expected"] and c["near"] + c["fail"] + c["missing"] + c["skip"] == 0 \
-    and not missing_effects and sweep_rc == 0
-sys.exit(0 if ok else 1)
-EOF
+"$PY" "$ROOT/parity/summarize.py" "$LEDGER" "$SWEEP_RC" ${CASE_ARGS[@]+"${CASE_ARGS[@]}"}
