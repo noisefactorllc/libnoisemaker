@@ -66,7 +66,12 @@
 // compiles, as the minter does through registerPortableEffect. A sidecar
 // that fails that method's checks registers nothing.
 //
-// Not yet: text produced natively, and texture dumps.
+// A --dsl program's text steps (filter/text) get the page's text canvas,
+// drawn natively (host/text_canvas.h) from the step's values and uploaded
+// as its textTex; a host texture given for textTex_step_<n> is used
+// instead. Text in a font other than the page's Nunito is not drawn.
+//
+// Not yet: texture dumps.
 
 #include "core/graph/dsl_compiler.h"
 #include "core/lang/effect_registry.h"

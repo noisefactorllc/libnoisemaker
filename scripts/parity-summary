@@ -15,9 +15,8 @@
 #
 # The work is the canonical sweep, parity/sweep.py, run fresh (goldens minted in
 # this run, candidates rendered by nm-render from the DSL with libnoisemaker's
-# compiler, every case graded). nm-render does not produce text natively yet
-# (tools/nm-render/main.cpp): it renders a text case without its text, which
-# grades as fail. The ledger goes to a temporary file.
+# compiler and natively produced host inputs, every case graded). The ledger
+# goes to a temporary file.
 #
 # Buckets (each case in exactly one):
 #   exact   -- candidate pixels identical to an informative golden
