@@ -32,6 +32,13 @@ the version locked in `parity/reference.json`.
 CMake 3.22 or later (4.2 or later for the Visual Studio 2026 generator), a C++20 compiler, Python
 3.12 or later, Node.js 26, Git and Ninja (or Visual Studio 2026 on Windows).
 
+The build needs network access. `tools/fetch_dawn.py` clones Dawn and its dependencies into
+`.cache/dawn`. Unless `NM_CATALOG_CACHE_DIR` names a filled catalog cache, `cmake --build`
+downloads the effect catalog that `parity/reference.json` locks from `shaders.noisedeck.app` into
+`.cache/catalog`, again for each new build directory. When that cache does not yet hold the locked
+shader source, it also clones Noisemaker from GitHub into `.cache/reference`, or reads the checkout
+that `NM_REFERENCE_ROOT` names. These `.cache` directories are in the source tree.
+
 ## Building
 
 ```sh
@@ -43,6 +50,16 @@ ctest --test-dir build --output-on-failure
 
 To build only the GPU-free compiler core and host helpers, with no Dawn tree, configure with
 `-DNM_BUILD_GPU=OFF` and skip `fetch_dawn.py`.
+
+To build with no network access, fill a catalog cache once with network access, then configure with
+its absolute path. The catalog step then reads only that cache. A GPU build also needs the Dawn tree
+of `fetch_dawn.py` or a Dawn install (`NM_DAWN_PREBUILT_DIR`, below).
+
+```sh
+node tools/catalog/fetch-catalog.mjs --cache /path/to/catalog-cache
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNM_BUILD_GPU=OFF -DNM_CATALOG_CACHE_DIR=/path/to/catalog-cache
+cmake --build build
+```
 
 To build Dawn once and reuse it in any number of build directories, install it with
 `tools/build_dawn.py` and configure with `NM_DAWN_PREBUILT_DIR`. CI caches one such install per
