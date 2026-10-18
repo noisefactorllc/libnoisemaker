@@ -247,24 +247,6 @@ int main() {
     }
 
     // ==================================================================
-    // paramAliases: non-empty maps only (empty maps are inert)
-    // ==================================================================
-    {
-        libnoisemaker::JsObject kwargs;
-        kwargs.insert(libnoisemaker::JsText(u"noiseType"), 3.0);
-        const libnoisemaker::JsList warnings = reg.resolveParamAliases(libnoisemaker::JsText(u"synth.noise"), kwargs);
-        check(warnings.size() == 1, "resolveParamAliases produces one warning for one deprecated kwarg");
-        check(!kwargs.contains(libnoisemaker::JsText(u"noiseType")) && kwargs.contains(libnoisemaker::JsText(u"type"))
-                  && kwargs.value(libnoisemaker::JsText(u"type")).toDouble() == 3.0,
-              "resolveParamAliases renames noiseType -> type in place, preserving the value");
-
-        libnoisemaker::JsObject emptyAliasKwargs;
-        emptyAliasKwargs.insert(libnoisemaker::JsText(u"brightness"), 1.0);
-        const libnoisemaker::JsList noWarnings = reg.resolveParamAliases(libnoisemaker::JsText(u"filter.adjust"), emptyAliasKwargs);
-        check(noWarnings.isEmpty(), "an effect with an EMPTY paramAliases map ({}) produces no warnings");
-    }
-
-    // ==================================================================
     // effect aliases: hidden + deprecatedBy
     // ==================================================================
     {
@@ -291,9 +273,9 @@ int main() {
     {
         const libnoisemaker::JsObject dump = reg.dumpSummary();
         check(dump.contains(libnoisemaker::JsText(u"ops")) && dump.contains(libnoisemaker::JsText(u"enums"))
-                  && dump.contains(libnoisemaker::JsText(u"paramAliases")) && dump.contains(libnoisemaker::JsText(u"effectAliases"))
-                  && dump.contains(libnoisemaker::JsText(u"effectKeys")),
-              "dumpSummary() has exactly the five gate keys");
+                  && dump.contains(libnoisemaker::JsText(u"effectAliases"))
+                  && dump.contains(libnoisemaker::JsText(u"effectKeys")) && dump.size() == 4,
+              "dumpSummary() has exactly the four gate keys");
         check(dump.value(libnoisemaker::JsText(u"ops")).toObject().size() == 210, "dumpSummary().ops has 210 entries");
         const libnoisemaker::JsObject remapArg = dump.value(libnoisemaker::JsText(u"ops")).toObject().value(libnoisemaker::JsText(u"synth.remap"))
                                           .toObject();

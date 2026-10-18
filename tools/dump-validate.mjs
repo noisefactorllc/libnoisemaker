@@ -6,7 +6,7 @@
 //   NM_REFERENCE_ROOT=<reference-checkout> node tools/dump-validate.mjs <effectsDir> <file...>
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
 if (!process.env.NM_REFERENCE_ROOT) { console.error('NM_REFERENCE_ROOT is not set'); process.exit(3) }
 const REF = resolve(process.env.NM_REFERENCE_ROOT)
@@ -16,7 +16,11 @@ const { validate, registerStarterOps } = await import(pathToFileURL(resolve(REF,
 const { registerEffect } = await import(pathToFileURL(resolve(REF, 'shaders/src/runtime/registry.js')).href)
 const { registerOp } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/ops.js')).href)
 const { mergeIntoEnums } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/enums.js')).href)
-const { registerParamAliases } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/paramAliases.js')).href)
+// Noisemaker 1.0.289 retired the parameter aliases and lang/paramAliases.js.
+const paramAliasesPath = resolve(REF, 'shaders/src/lang/paramAliases.js')
+const registerParamAliases = existsSync(paramAliasesPath)
+    ? (await import(pathToFileURL(paramAliasesPath).href)).registerParamAliases
+    : null
 const { registerEffectAlias } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/effectAliases.js')).href)
 
 function isValidIdentifier(n) { return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(n) }
@@ -65,7 +69,7 @@ for (const rel of rels) {
     })
     registerOp(`${namespace}.${inst.func}`, { name: inst.func, args })
     if (Object.keys(choicesToRegister).length) await mergeIntoEnums(choicesToRegister)
-    if (inst.paramAliases && Object.keys(inst.paramAliases).length) registerParamAliases(`${namespace}.${inst.func}`, inst.paramAliases)
+    if (registerParamAliases && inst.paramAliases && Object.keys(inst.paramAliases).length) registerParamAliases(`${namespace}.${inst.func}`, inst.paramAliases)
     if (inst.hidden && inst.deprecatedBy) registerEffectAlias(`${namespace}.${inst.func}`, inst.deprecatedBy)
     if (isStarterDef(inst)) starterNames.push(`${namespace}.${inst.func}`)
 }

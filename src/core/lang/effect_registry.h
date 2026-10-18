@@ -53,7 +53,6 @@ public:
     bool hasEffect(const JsText& key) const;
     bool isStarterOp(const JsText& name) const;
     JsText checkEffectAlias(const JsText& opName) const;
-    JsList resolveParamAliases(const JsText& opName, JsObject& kwargs) const;
     Enums& enums() { return enums_; }
     const Enums& enums() const { return enums_; }
     const JsObject& defineMap() const { return defineMap_; }
@@ -70,7 +69,6 @@ private:
     JsMap<JsText, OpSpec> ops_;
     JsList opOrder_;
     JsSet<JsText> starterOps_;
-    JsMap<JsText, JsObject> paramAliases_;
     JsMap<JsText, JsText> effectAliases_;
     JsObject defineMap_;
     Enums enums_;

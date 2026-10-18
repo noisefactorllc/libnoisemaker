@@ -61,7 +61,6 @@ libnoisemaker::JsObject validDefinition() {
     "uniformLayouts": {
         "alt": { "amount": { "slot": 0, "components": "x" } }
     },
-    "paramAliases": { "amt": "amount" },
     "textures": {
         "scratch": { "width": 64, "height": "100%", "format": "rgba16f" },
         "scaled": { "width": { "param": "volumeSize", "power": 2, "default": 1024 }, "height": { "screenDivide": "zoom", "default": 8 } }
@@ -629,16 +628,14 @@ int main() {
         }
     }
     {
-        // The reference emits paramAliases['<alias>'] with BOTH quotes.
+        // Noisemaker 1.0.289 retired paramAliases: it is an unknown field,
+        // even when every alias names a declared global.
         libnoisemaker::JsObject def = validDefinition();
-        libnoisemaker::JsObject a; a.insert("amt", "nosuchglobal"); def.insert("paramAliases", a);
-        const std::string want = "paramAliases['amt'] references unknown global 'nosuchglobal'";
+        libnoisemaker::JsObject a; a.insert("amt", "amount"); def.insert("paramAliases", a);
+        const std::vector<std::string> want = {"Unknown definition field 'paramAliases'"};
         const std::vector<std::string> errors = validate(def);
-        bool ok = false;
-        for (const std::string& e : errors) {
-            if (e == want) ok = true;
-        }
-        std::printf("%s: paramAliases unknown-global message is exact\n", ok ? "PASS" : "FAIL");
+        const bool ok = errors == want;
+        std::printf("%s: paramAliases is an unknown definition field\n", ok ? "PASS" : "FAIL");
         if (!ok) {
             for (const std::string& e : errors) std::printf("  [%s]\n", e.c_str());
             ++g_failures;

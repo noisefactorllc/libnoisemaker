@@ -25,7 +25,6 @@ const std::unordered_map<JsString, DiagnosticInfo>& table() {
         {u"S004", {"Cannot assign null or undefined", "error", "semantic"}},
         {u"S005", {"Illegal chain structure", "error", "semantic"}},
         {u"S006", {"Starter chain missing write() call", "error", "semantic"}},
-        {u"S007", {"Deprecated parameter alias", "warning", "semantic"}},
         {u"S008", {"Deprecated effect", "warning", "semantic"}},
         {u"R001", {"Runtime error", "error", "runtime"}},
     };

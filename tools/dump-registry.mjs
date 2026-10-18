@@ -1,8 +1,9 @@
 // dump-registry.mjs — ORACLE for the EffectRegistry parity gate. Builds the reference's load-time
 // registry from the SAME effect JSONs the GDScript candidate loads, using the REAL reference stores
-// (runtime/registry.js, lang/ops.js, lang/enums.js, lang/paramAliases.js, lang/effectAliases.js)
+// (runtime/registry.js, lang/ops.js, lang/enums.js, lang/effectAliases.js)
 // and mirroring renderer/canvas.js registerEffectWithRuntime() line-for-line. Dumps
-// {ops, enums, paramAliases, effectAliases, effectKeys} as JSON for deep comparison.
+// {ops, enums, effectAliases, effectKeys} as JSON for deep comparison. (Noisemaker 1.0.289 retired
+// the parameter aliases and lang/paramAliases.js; an earlier reference still registers them.)
 //
 //   NM_REFERENCE_ROOT=<reference-checkout> node tools/dump-registry.mjs <effectsDir>
 //
@@ -12,7 +13,7 @@
 // from canvas.js. Feeding both oracle and candidate the same JSONs isolates the registration LOGIC.
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
 if (!process.env.NM_REFERENCE_ROOT) {
     console.error('NM_REFERENCE_ROOT is not set (point it at a noisemaker reference checkout).')
@@ -22,7 +23,10 @@ const REF = resolve(process.env.NM_REFERENCE_ROOT)
 const { registerEffect, getAllEffects } = await import(pathToFileURL(resolve(REF, 'shaders/src/runtime/registry.js')).href)
 const { ops, registerOp } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/ops.js')).href)
 const { mergeIntoEnums } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/enums.js')).href)
-const { registerParamAliases } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/paramAliases.js')).href)
+const paramAliasesPath = resolve(REF, 'shaders/src/lang/paramAliases.js')
+const registerParamAliases = existsSync(paramAliasesPath)
+    ? (await import(pathToFileURL(paramAliasesPath).href)).registerParamAliases
+    : null
 const { registerEffectAlias } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/effectAliases.js')).href)
 
 // verbatim from renderer/canvas.js
@@ -47,7 +51,6 @@ for (const ns of readdirSync(effectsDir, { withFileTypes: true })) {
 rels.sort()
 
 let mergedEnums = null
-const paramAliasesOut = {}
 const effectAliasesOut = {}
 
 for (const rel of rels) {
@@ -96,10 +99,8 @@ for (const rel of rels) {
         if (Object.keys(choicesToRegister).length > 0) {
             mergedEnums = await mergeIntoEnums(choicesToRegister)
         }
-        // Non-empty param-alias maps only (empty maps are inert; the candidate skips them too).
-        if (instance.paramAliases && Object.keys(instance.paramAliases).length > 0) {
+        if (registerParamAliases && instance.paramAliases && Object.keys(instance.paramAliases).length > 0) {
             registerParamAliases(`${namespace}.${instance.func}`, instance.paramAliases)
-            paramAliasesOut[`${namespace}.${instance.func}`] = instance.paramAliases
         }
         if (instance.hidden && instance.deprecatedBy) {
             registerEffectAlias(`${namespace}.${instance.func}`, instance.deprecatedBy)
@@ -119,7 +120,6 @@ for (const [k, inst] of getAllEffects()) {
 const out = JSON.parse(JSON.stringify({
     ops,
     enums: mergedEnums || {},
-    paramAliases: paramAliasesOut,
     effectAliases: effectAliasesOut,
     effectKeys
 }))

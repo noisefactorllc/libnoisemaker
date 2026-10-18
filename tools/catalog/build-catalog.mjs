@@ -137,7 +137,6 @@ function convertEffect (instance, namespace, name) {
   def.starter = !!(mentry && mentry.starter)
   if (instance.tags) def.tags = instance.tags
   if (instance.description) def.description = instance.description
-  def.paramAliases = instance.paramAliases || {}
   def.globals = projectGlobals(instance.globals)
   def.passes = (instance.passes || []).map(projectPass)
   def.textures = projectTextures(instance.textures, false) || {}

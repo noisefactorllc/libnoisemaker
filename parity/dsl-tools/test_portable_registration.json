@@ -119,9 +119,6 @@
      "main": {
       "glsl": "#version 300 es\nvoid main() {}"
      }
-    },
-    "paramAliases": {
-     "oldMode": "mode"
     }
    }
   },

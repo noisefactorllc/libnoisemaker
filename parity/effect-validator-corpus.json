@@ -1,7 +1,7 @@
 {
  "provenance": {
   "reference": "noisefactorllc/noisemaker",
-  "referenceCommit": "3f5775c64d55c31906eab114087e09827cb2a1cc",
+  "referenceCommit": "13eb5fb69c582bcbf5344c3dd3824da51a449b74",
   "generator": "parity/gen-effect-validator-corpus.mjs",
   "note": "referenceErrors are the reference validateEffectDefinition() output at referenceCommit, verbatim. Consumers compare SORTED error lists (port emits sorted key order; see effect_validator.h deviation note)."
  },
@@ -39,9 +39,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -362,9 +359,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -580,9 +574,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -800,9 +791,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -1018,9 +1006,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -1238,9 +1223,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -1322,8 +1304,7 @@
     "Pass 0: countUniform 'mode' does not reference a declared global",
     "Pass 0.conditions.runIf: uniform 'mode' does not reference a declared global",
     "Pass 0.conditions.skipIf: uniform 'flag' does not reference a declared global",
-    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'",
-    "paramAliases['amt'] references unknown global 'amount'"
+    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'"
    ]
   },
   {
@@ -1359,9 +1340,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -1442,8 +1420,7 @@
     "Pass 0: countUniform 'mode' does not reference a declared global",
     "Pass 0.conditions.runIf: uniform 'mode' does not reference a declared global",
     "Pass 0.conditions.skipIf: uniform 'flag' does not reference a declared global",
-    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'",
-    "paramAliases['amt'] references unknown global 'amount'"
+    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'"
    ]
   },
   {
@@ -1479,9 +1456,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -1564,8 +1538,7 @@
     "Pass 0: countUniform 'mode' does not reference a declared global",
     "Pass 0.conditions.runIf: uniform 'mode' does not reference a declared global",
     "Pass 0.conditions.skipIf: uniform 'flag' does not reference a declared global",
-    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'",
-    "paramAliases['amt'] references unknown global 'amount'"
+    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'"
    ]
   },
   {
@@ -1601,9 +1574,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -1686,8 +1656,7 @@
     "Pass 0: countUniform 'mode' does not reference a declared global",
     "Pass 0.conditions.runIf: uniform 'mode' does not reference a declared global",
     "Pass 0.conditions.skipIf: uniform 'flag' does not reference a declared global",
-    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'",
-    "paramAliases['amt'] references unknown global 'amount'"
+    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'"
    ]
   },
   {
@@ -1723,9 +1692,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -1947,9 +1913,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -2114,9 +2077,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -2280,9 +2240,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -2451,9 +2408,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -2620,9 +2574,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -2791,9 +2742,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -2960,9 +2908,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -3134,9 +3079,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -3312,9 +3254,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -3487,9 +3426,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": [
      "x"
@@ -3692,9 +3628,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "t": "big"
     },
@@ -3895,9 +3828,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "t": {
@@ -4101,9 +4031,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "t": {
@@ -4309,9 +4236,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "t": {
@@ -4519,9 +4443,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "t": {
       "width": -4
@@ -4724,9 +4645,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "t": {
@@ -4931,9 +4849,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "t": {
       "format": 1
@@ -5137,9 +5052,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "t": {
       "format": "r16float"
@@ -5341,9 +5253,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "t": {
@@ -5547,9 +5456,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "t": {
       "filter": "linear"
@@ -5752,9 +5658,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -5977,9 +5880,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -6201,9 +6101,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -6422,9 +6319,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -6647,9 +6541,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "t": {
       "mipmaps": 1
@@ -6853,9 +6744,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "t": {
       "mipmaps": false
@@ -7057,9 +6945,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -7282,9 +7167,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "t": {
       "persistent": "yes"
@@ -7488,9 +7370,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "t": {
       "persistent": true
@@ -7688,9 +7567,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -7903,9 +7779,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -8117,9 +7990,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -8330,9 +8200,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -8553,9 +8420,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -8765,9 +8629,6 @@
     },
     "uniformLayouts": {
      "p": "layout"
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -8984,7 +8845,6 @@
       }
      }
     },
-    "paramAliases": "aliases",
     "textures": {
      "scratch": {
       "width": 64,
@@ -9160,10 +9020,11 @@
        "fragColor": "outputTex"
       }
      }
-    ]
+    ],
+    "paramAliases": "aliases"
    },
    "referenceErrors": [
-    "\"paramAliases\" must be an object mapping aliases to global names"
+    "Unknown definition field 'paramAliases'"
    ]
   },
   {
@@ -9200,9 +9061,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "nosuchglobal"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -9378,10 +9236,13 @@
        "fragColor": "outputTex"
       }
      }
-    ]
+    ],
+    "paramAliases": {
+     "amt": "nosuchglobal"
+    }
    },
    "referenceErrors": [
-    "paramAliases['amt'] references unknown global 'nosuchglobal'"
+    "Unknown definition field 'paramAliases'"
    ]
   },
   {
@@ -9414,9 +9275,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -9632,9 +9490,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -9848,9 +9703,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -10067,9 +9919,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -10284,9 +10133,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -10504,9 +10350,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -10722,9 +10565,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -10942,9 +10782,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -11161,9 +10998,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -11379,9 +11213,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -11601,9 +11432,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -11819,9 +11647,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -12039,9 +11864,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -12257,9 +12079,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -12474,9 +12293,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -12694,9 +12510,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -12912,9 +12725,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -13132,9 +12942,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -13350,9 +13157,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -13572,9 +13376,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -13789,9 +13590,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -14008,9 +13806,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -14225,9 +14020,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -14444,9 +14236,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -14661,9 +14450,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -14880,9 +14666,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -15097,9 +14880,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -15316,9 +15096,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -15530,9 +15307,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -15747,9 +15521,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -15967,9 +15738,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -16183,9 +15951,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -16405,9 +16170,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -16626,9 +16388,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -16845,9 +16604,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -17059,9 +16815,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -17270,9 +17023,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -17490,9 +17240,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -17708,9 +17455,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -17922,9 +17666,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -18140,9 +17881,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -18356,9 +18094,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -18575,9 +18310,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -18793,9 +18525,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -19009,9 +18738,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -19228,9 +18954,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -19446,9 +19169,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -19662,9 +19382,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -19882,9 +19599,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -20099,9 +19813,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -20318,9 +20029,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -20535,9 +20243,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -20755,9 +20460,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -20972,9 +20674,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -21191,9 +20890,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -21407,9 +21103,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -21626,9 +21319,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -21842,9 +21532,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -22061,9 +21748,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -22278,9 +21962,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -22491,9 +22172,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -22710,9 +22388,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -22927,9 +22602,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -23146,9 +22818,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -23364,9 +23033,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -23581,9 +23247,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -23796,9 +23459,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -24015,9 +23675,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -24232,9 +23889,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -24451,9 +24105,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -24669,9 +24320,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -24886,9 +24534,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -25115,9 +24760,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -25340,9 +24982,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -25563,9 +25202,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -25780,9 +25416,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -25999,9 +25632,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -26214,9 +25844,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -26431,9 +26058,6 @@
        "components": "x"
       }
      }
-    },
-    "paramAliases": {
-     "amt": "amount"
     },
     "textures": {
      "scratch": {
@@ -26662,9 +26286,6 @@
       }
      }
     },
-    "paramAliases": {
-     "amt": "amount"
-    },
     "textures": {
      "scratch": {
       "width": 64,
@@ -26754,8 +26375,7 @@
     "Pass 0: countUniform 'mode' does not reference a declared global",
     "Pass 0.conditions.runIf: uniform 'mode' does not reference a declared global",
     "Pass 0.conditions.skipIf: uniform 'flag' does not reference a declared global",
-    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'",
-    "paramAliases['amt'] references unknown global 'amount'"
+    "Pass 0: inputs['paramTex'] references unsupported texture 'surfaceIn'"
    ]
   }
  ]

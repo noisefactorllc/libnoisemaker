@@ -2,7 +2,7 @@
 // registry (candidate, via `nm-dump-registry`) against the
 // reference registration logic (oracle, via tools/dump-registry.mjs), both
 // fed the SAME embedded catalog effect JSONs. Deep value-compare
-// per surface (ops / enums / paramAliases / effectAliases / effectKeys);
+// per surface (ops / enums / effectAliases / effectKeys);
 // report PASS or the first divergence.
 //
 //   NM_REFERENCE_ROOT=<reference-checkout> NM_REGISTRY_DUMP=build/nm-dump-registry \
@@ -73,7 +73,7 @@ function firstDiff(a, b, path) {
     return `${path}: (object differs)`
 }
 
-const sections = ['ops', 'enums', 'paramAliases', 'effectAliases', 'effectKeys']
+const sections = ['ops', 'enums', 'effectAliases', 'effectKeys']
 let allPass = true
 console.log('REGISTRY PARITY:')
 for (const s of sections) {
