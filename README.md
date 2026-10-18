@@ -29,8 +29,8 @@ the version locked in `parity/reference.json`.
 
 ## Requirements
 
-CMake 3.22 or later, a C++20 compiler, Python 3.12 or later, Node.js 26, Git and Ninja (or Visual
-Studio 2026 on Windows).
+CMake 3.22 or later (4.2 or later for the Visual Studio 2026 generator), a C++20 compiler, Python
+3.12 or later, Node.js 26, Git and Ninja (or Visual Studio 2026 on Windows).
 
 ## Building
 
