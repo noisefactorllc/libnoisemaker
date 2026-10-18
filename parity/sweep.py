@@ -21,10 +21,12 @@ parity/curated/sources.json); a case id is the file stem. One run:
   2. RENDER  candidates with nm-render in one batch process. By default the
              candidate runs the DSL through libnoisemaker's compiler and applies
              ProgramState's step values as the page does, without the UI's
-             control initialization or natively produced host inputs; and
-             nm-render refuses a fixture
-             whose manifest entry needs one it lacks (a mesh, a Portable
-             effect, a timed schedule), which grades as missing.
+             control initialization. nm-render loads mesh and MIDI sidecars,
+             runs timed schedules and draws the media and asyncInit overlay
+             host inputs natively. It does not support Portable effects or
+             text produced natively yet (tools/nm-render/main.cpp): it refuses
+             a fixture with a Portable effect, which grades as missing, and
+             renders a text case without its text, which grades as fail.
              --captured-host-inputs grades with the minter's saved host-input PNGs
              in place of the natively produced ones (isolates the renderer from
              the host-input ports); --from-graph renders the reference graph the
@@ -500,7 +502,7 @@ def main():
             print(f"[sweep] the minter exited {mint_rc}", file=sys.stderr)
     if not args.skip_render:
         label = {"graph": "graph + captured host inputs", "captured": "dsl + captured host inputs",
-                 "native": "dsl, no host inputs"}[mode]
+                 "native": "dsl + native host inputs"}[mode]
         print(f"[sweep] rendering {len(cases)} candidates ({label})", file=sys.stderr)
         render_rc = render(cases, nm_render, mode, golden_dir, schedules)
         if render_rc:

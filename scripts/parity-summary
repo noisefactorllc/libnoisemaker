@@ -15,8 +15,10 @@
 #
 # The work is the canonical sweep, parity/sweep.py, run fresh (goldens minted in
 # this run, candidates rendered by nm-render from the DSL with libnoisemaker's
-# compiler, every case graded). nm-render has no demo host yet, so cases that
-# need one grade as missing. The ledger goes to a temporary file.
+# compiler, every case graded). nm-render does not support Portable effects or
+# text produced natively yet (tools/nm-render/main.cpp): it refuses a Portable
+# case, which grades as missing, and renders a text case without its text,
+# which grades as fail. The ledger goes to a temporary file.
 #
 # Buckets (each case in exactly one):
 #   exact   -- candidate pixels identical to an informative golden
