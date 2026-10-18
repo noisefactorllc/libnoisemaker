@@ -9,6 +9,11 @@ if(NM_BUILD_GPU)
   target_include_directories(test_png PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/tools/nm-render)
   add_test(NAME test_png COMMAND test_png)
 
+  # nm-render with valid and malformed Portable sidecars.
+  add_test(NAME nm_render_portable COMMAND "${CMAKE_COMMAND}" "-DNM_RENDER=$<TARGET_FILE:nm-render>"
+    "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}" "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/nm_render_portable"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/gpu/nm_render_portable.cmake")
+
   add_executable(test_context capi/test_context.c)
   target_link_libraries(test_context PRIVATE noisemaker)
   add_test(NAME test_context COMMAND test_context)

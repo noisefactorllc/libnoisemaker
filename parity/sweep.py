@@ -5,7 +5,7 @@ Cases are parity/programs/*.dsl (the shared fixture pool), parity/coverage/*.dsl
 (the generated effect x mode corpus), parity/portable/*.dsl (user-defined
 Portable effects: each registers its <id>.portable.json sidecar, WGSL in
 <id>.<program>.wgsl and GLSL in <id>.<program>.glsl, before its program runs,
-in the golden page; libnoisemaker's nm-render does not load them yet),
+in the golden page; libnoisemaker's nm-render registers them too),
 parity/timed/*.dsl (the timed tier, generated with the coverage
 corpus: every effect that evolves across frames, every oscillator kind and every
 shared or curated program running a stateful, particle or simulation effect,
@@ -21,12 +21,11 @@ parity/curated/sources.json); a case id is the file stem. One run:
   2. RENDER  candidates with nm-render in one batch process. By default the
              candidate runs the DSL through libnoisemaker's compiler and applies
              ProgramState's step values as the page does, after the UI's
-             control initialization. nm-render loads mesh and MIDI sidecars,
-             runs timed schedules and draws the media and asyncInit overlay
-             host inputs natively. It does not support Portable effects or
-             text produced natively yet (tools/nm-render/main.cpp): it refuses
-             a fixture with a Portable effect, which grades as missing, and
-             renders a text case without its text, which grades as fail.
+             control initialization. nm-render loads mesh, MIDI and Portable
+             sidecars, runs timed schedules and draws the media and asyncInit
+             overlay host inputs natively. It does not produce text natively
+             yet (tools/nm-render/main.cpp): it renders a text case without
+             its text, which grades as fail.
              --captured-host-inputs grades with the minter's saved host-input PNGs
              in place of the natively produced ones (isolates the renderer from
              the host-input ports); --from-graph renders the reference graph the

@@ -16,9 +16,9 @@
 // `batch MANIFEST` renders a JSON array of fixtures in one process and
 // device, a fresh pipeline each: {"graph" | "dsl", "out", "size" or
 // "width" and "height", "time", "frames", "hostTextures": {id: png}}, the
-// names of rust-gpu's nm-render manifest, "obj", and the timed members
-// below; a fixture with any other member fails, as nm-render does not
-// support it yet.
+// names of rust-gpu's nm-render manifest, "obj", "midi", "portable", and
+// the timed members below; a fixture with any other member fails, as
+// nm-render does not support it yet.
 //
 // Meshes follow the minter's plan: when a pass reads a mesh texture or the
 // fixture has an OBJ (--obj, "obj"), each externalMesh effect's first
@@ -58,7 +58,13 @@
 // parameters the page's last draw has; a host texture given for
 // <nodeId>_overlayTex is used instead, with no trace.
 //
-// Not yet: Portable effects, text produced natively, and texture dumps.
+// A Portable sidecar (the manifest's "portable", or for a --dsl program
+// <name>.portable.json beside it), with its shaders loaded by the rule of
+// tools/portable.mjs, registers its user effect before the program
+// compiles, as the minter does through registerPortableEffect. A sidecar
+// that fails that method's checks registers nothing.
+//
+// Not yet: text produced natively, and texture dumps.
 
 #include "core/graph/dsl_compiler.h"
 #include "core/lang/effect_registry.h"
@@ -118,6 +124,7 @@ struct Fixture {
     std::vector<std::pair<std::string, std::string>> hostTextures;
     std::string obj;
     std::string midi;
+    std::string portable;
     // A timed run (batch-golden.mjs isTimed and sampleSchedule).
     double runSeconds = 0;
     double sampleEvery = 5;
@@ -294,8 +301,8 @@ Fixture parse_entry(const nm::Value& value) {
     const nm::Object& entry = value.as_object();
     for (const auto& key : entry.keys()) {
         static const char16_t* supported[] = {u"graph", u"dsl", u"out", u"size", u"width", u"height", u"time", u"frames",
-                                              u"hostTextures", u"obj", u"midi", u"runSeconds", u"sampleEvery", u"runFrames",
-                                              u"sampleEveryFrames", u"sampleFrames"};
+                                              u"hostTextures", u"obj", u"midi", u"portable", u"runSeconds", u"sampleEvery",
+                                              u"runFrames", u"sampleEveryFrames", u"sampleFrames"};
         bool known = false;
         for (const char16_t* name : supported) known = known || key == name;
         if (!known) throw Usage("unsupported member " + nm::js_to_utf8(key));
@@ -306,6 +313,7 @@ Fixture parse_entry(const nm::Value& value) {
     fixture.out = string_member(entry, u"out");
     fixture.obj = string_member(entry, u"obj");
     fixture.midi = string_member(entry, u"midi");
+    fixture.portable = string_member(entry, u"portable");
     if (const auto size = number_member(entry, u"size")) fixture.width = fixture.height = *size;
     if (const auto width = number_member(entry, u"width")) fixture.width = *width;
     if (const auto height = number_member(entry, u"height")) fixture.height = *height;
@@ -356,6 +364,278 @@ nm::EffectRegistry& registry() {
     static const bool loaded = (instance.loadEmbedded(), true);
     (void)loaded;
     return instance;
+}
+
+// The whitespace String.prototype.trim removes.
+bool js_space(char16_t c) {
+    return c == u' ' || (c >= u'\t' && c <= u'\r') || c == 0x00A0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200A) ||
+           c == 0x2028 || c == 0x2029 || c == 0x202F || c == 0x205F || c == 0x3000 || c == 0xFEFF;
+}
+
+// typeof source === 'string' && source.trim().length > 0
+bool has_source(const nm::Value& source) {
+    return source.is_string() && std::any_of(source.as_string().begin(), source.as_string().end(), [](char16_t c) { return !js_space(c); });
+}
+
+// /^[a-zA-Z_][a-zA-Z0-9_]*$/
+bool valid_identifier(const nm::JsString& name) {
+    const auto word = [](char16_t c) { return c == u'_' || (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z'); };
+    if (name.empty() || !word(name[0])) return false;
+    return std::all_of(name.begin(), name.end(), [&](char16_t c) { return word(c) || (c >= u'0' && c <= u'9'); });
+}
+
+// canvas.js sanitizeEnumName: the letter after each whitespace run upper
+// cased, whitespace and other non-identifier characters dropped; empty when
+// the result is not an identifier.
+nm::JsString sanitize_enum_name(const nm::JsString& name) {
+    nm::JsString joined;
+    for (size_t i = 0; i < name.size(); ++i) {
+        if (!js_space(name[i])) {
+            joined += name[i];
+            continue;
+        }
+        while (i < name.size() && js_space(name[i])) ++i;
+        if (i < name.size()) joined += name[i] >= u'a' && name[i] <= u'z' ? char16_t(name[i] - 32) : name[i];
+    }
+    nm::JsString out;
+    for (const char16_t c : joined) {
+        if (c == u'_' || (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z') || (c >= u'0' && c <= u'9')) out += c;
+    }
+    return valid_identifier(out) ? out : nm::JsString();
+}
+
+// tools/portable.mjs loadPortableDefinition: the sidecar <name>.portable.json
+// with each pass program P's <name>.P.wgsl and <name>.P.glsl beside it
+// attached as shaders[P].wgsl and shaders[P].glsl, unless the definition
+// carries that source.
+nm::Value load_portable_definition(const std::string& path) {
+    std::string text;
+    if (!read_file(path, text)) throw std::runtime_error("cannot read " + path);
+    nm::Value def = nm::json::parse(text);
+    const std::filesystem::path file(path);
+    std::string name = file.filename().string();
+    const std::string suffix = ".portable.json";
+    if (name.size() >= suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        name.resize(name.size() - suffix.size());
+    }
+    if (!def.is_object()) return def;
+    const nm::Value* passes = def.as_object().find(u"passes");
+    if (!passes || !passes->is_array()) return def;
+    std::vector<nm::JsString> programs;
+    for (const nm::Value& pass : passes->as_array()) {
+        const nm::Value program = nm::jsv::member(pass, u"program");
+        if (program.is_string()) programs.push_back(program.as_string());
+    }
+    for (const nm::JsString& program : programs) {
+        for (const char16_t* language : {u"wgsl", u"glsl"}) {
+            const std::filesystem::path source = file.parent_path() / (name + "." + nm::js_to_utf8(program) + "." + nm::js_to_utf8(language));
+            std::error_code error;
+            if (!std::filesystem::exists(source, error)) continue;
+            nm::Object& object = def.as_object();
+            nm::Value& shaders = object[u"shaders"];
+            if (!shaders.is_object() && !shaders.is_array()) shaders = nm::Value(nm::Object{});
+            if (!shaders.is_object()) continue;
+            nm::Value& entry = shaders.as_object()[program];
+            if (!entry.is_object() && !entry.is_array()) entry = nm::Value(nm::Object{});
+            if (!entry.is_object() || entry.as_object().find(language)) continue;
+            std::string bytes;
+            if (!read_file(source.string(), bytes)) throw std::runtime_error("cannot read " + source.string());
+            entry.as_object().set(language, nm::Value(nm::utf8_to_js(bytes)));
+        }
+    }
+    return def;
+}
+
+// The checks of CanvasRenderer.registerPortableEffect, without its error
+// messages: a definition that fails one is not registered, and a program
+// that calls its effect fails to compile.
+bool portable_valid(const nm::Value& def, const nm::JsString& func) {
+    if (!def.is_object() || !valid_identifier(func)) return false;
+    // Object.getOwnPropertyNames(Object.prototype) and 'prototype'.
+    static const char16_t* reserved[] = {u"constructor", u"__defineGetter__", u"__defineSetter__", u"hasOwnProperty",
+                                         u"__lookupGetter__", u"__lookupSetter__", u"isPrototypeOf", u"propertyIsEnumerable",
+                                         u"toString", u"valueOf", u"__proto__", u"toLocaleString", u"prototype"};
+    const auto is_reserved = [&](const nm::JsString& key) {
+        return std::any_of(std::begin(reserved), std::end(reserved), [&](const char16_t* word) { return key == word; });
+    };
+    if (is_reserved(func)) return false;
+    std::vector<const nm::Value*> pending{&def};
+    while (!pending.empty()) {
+        const nm::Value* value = pending.back();
+        pending.pop_back();
+        if (value->is_object()) {
+            for (const nm::JsString& key : value->as_object().keys()) {
+                if (is_reserved(key)) return false;
+                pending.push_back(value->as_object().find(key));
+            }
+        } else if (value->is_array()) {
+            for (const nm::Value& child : value->as_array()) pending.push_back(&child);
+        }
+    }
+    const nm::Object& object = def.as_object();
+    const auto field = [&](const char16_t* key) { const nm::Value* v = object.find(key); return v ? *v : nm::Value(); };
+    const nm::Value ns = field(u"namespace");
+    if (!ns.is_undefined() && !nm::jsv::strict_equals(ns, nm::Value(u"user"))) return false;
+    const nm::Value starter = field(u"starter");
+    if (!starter.is_undefined() && !starter.is_bool()) return false;
+    const nm::Value passes = field(u"passes");
+    if (!passes.is_array() || passes.as_array().empty()) return false;
+    const nm::Value shaders = field(u"shaders");
+    if (!shaders.is_object()) return false;
+    for (const nm::Value& pass : passes.as_array()) {
+        if (!pass.is_object()) return false;
+        const nm::Value program = nm::jsv::member(pass, u"program");
+        if (!program.is_string() || program.as_string().empty()) return false;
+        for (const char16_t* key : {u"inputs", u"outputs"}) {
+            const nm::Value textures = nm::jsv::member(pass, key);
+            if (textures.is_undefined()) continue;
+            if (!textures.is_object()) return false;
+            for (const auto& [name, reference] : nm::jsv::entries(textures)) {
+                if (!has_source(reference)) return false;
+            }
+        }
+        const nm::Value source = nm::jsv::member(shaders, program.as_string());
+        if (!source.is_object() || !(has_source(nm::jsv::member(source, u"glsl")) || has_source(nm::jsv::member(source, u"wgsl")))) {
+            return false;
+        }
+    }
+    for (const char16_t* language : {u"glsl", u"wgsl"}) {
+        const auto present = [&](const nm::Value& pass) {
+            return has_source(nm::jsv::member(nm::jsv::member(shaders, nm::jsv::member(pass, u"program").as_string()), language));
+        };
+        if (std::any_of(passes.as_array().begin(), passes.as_array().end(), present) &&
+            !std::all_of(passes.as_array().begin(), passes.as_array().end(), present)) {
+            return false;
+        }
+    }
+    const nm::Value globals = field(u"globals");
+    if (!globals.is_undefined()) {
+        if (!globals.is_object()) return false;
+        for (const auto& [key, spec] : nm::jsv::entries(globals)) {
+            if (!spec.is_object()) return false;
+            const nm::Value choices = nm::jsv::member(spec, u"choices");
+            if (choices.is_undefined()) continue;
+            if (!choices.is_object()) return false;
+            const bool strings = nm::jsv::strict_equals(nm::jsv::member(spec, u"type"), nm::Value(u"string"));
+            for (const auto& [name, value] : nm::jsv::entries(choices)) {
+                if (value.is_null()) continue;
+                if (strings ? !value.is_string() : !nm::jsv::is_finite_number(value)) return false;
+            }
+        }
+    }
+    if (object.find(u"paramAliases")) return false;
+    return !registry().hasEffect(nm::JsText(u"user." + func)) && !registry().hasEffect(nm::JsText(u"user/" + func));
+}
+
+// CanvasRenderer.registerPortableEffect, as the minter calls it once per
+// session: an effect already registered as user/<func> is kept. The
+// Effect instance takes the definition's fields, in namespace user, and is
+// registered under user.<func> and user/<func> (registerEffectWithRuntime
+// also registers the bare name, then restores the bare lookup it found),
+// with its operator, its choices as enums and, for a starter, the starter
+// op user.<func>.
+void register_portable_effect(const nm::Value& definition) {
+    nm::Value funcValue = nm::jsv::member(definition, u"func");
+    if (funcValue.is_undefined() || funcValue.is_null()) funcValue = nm::jsv::member(definition, u"name");
+    const nm::JsString func = funcValue.is_string() ? funcValue.as_string() : nm::JsString();
+    if (definition.is_object() && valid_identifier(func) && registry().hasEffect(nm::JsText(u"user/" + func))) return;
+    if (!portable_valid(definition, func)) return;
+    const nm::Object& source = definition.as_object();
+    nm::Object instance;
+    const auto copy = [&](const char16_t* key) {
+        const nm::Value* value = source.find(key);
+        if (value && nm::jsv::truthy(*value)) instance.set(key, *value);
+    };
+    copy(u"name");
+    instance.set(u"namespace", nm::Value(u"user"));
+    instance.set(u"func", nm::Value(func));
+    for (const char16_t* key : {u"description", u"tags", u"globals", u"passes", u"textures", u"textures3d", u"externalTexture",
+                                u"externalMesh", u"builtinMeshes", u"outputTex3d", u"outputGeo", u"uniformLayout", u"uniformLayouts",
+                                u"openCategories", u"defaultProgram"}) {
+        copy(key);
+    }
+    if (const nm::Value* hidden = source.find(u"hidden"); hidden && nm::jsv::truthy(*hidden)) instance.set(u"hidden", nm::Value(true));
+    copy(u"deprecatedBy");
+    instance.set(u"shaders", *source.find(u"shaders"));
+    static const char16_t* pipelineInputs[] = {u"inputTex", u"inputTex3d", u"inputGeo", u"inputXyz", u"inputVel", u"inputRgba", u"src",
+                                               u"o0", u"o1", u"o2", u"o3", u"o4", u"o5", u"o6", u"o7"};
+    bool starter = true;
+    if (const nm::Value* given = source.find(u"starter")) {
+        starter = given->as_bool();
+    } else {
+        for (const nm::Value& pass : source.find(u"passes")->as_array()) {
+            for (const auto& [name, input] : nm::jsv::entries(nm::jsv::member(pass, u"inputs"))) {
+                for (const char16_t* id : pipelineInputs) starter = starter && !(input.is_string() && input.as_string() == id);
+            }
+        }
+    }
+    instance.set(u"starter", nm::Value(starter));
+    const nm::Value effect(std::move(instance));
+    const nm::JsString opName = u"user." + func;
+    const auto setup = [](std::initializer_list<std::pair<const char16_t*, nm::Value>> fields) {
+        nm::Object action;
+        for (const auto& [key, value] : fields) action.set(key, value);
+        registry().applySetup(nm::Value(std::move(action)));
+    };
+    setup({{u"op", nm::Value(u"registerEffect")}, {u"name", nm::Value(opName)}, {u"definition", effect}});
+    setup({{u"op", nm::Value(u"registerEffect")}, {u"name", nm::Value(u"user/" + func)}, {u"definition", effect}});
+    // The operator's arguments, and the choices of those without an enum.
+    nm::Array args;
+    nm::Object choices;
+    for (const auto& [key, spec] : nm::jsv::entries(nm::jsv::member(effect, u"globals"))) {
+        nm::Value enumPath = nm::jsv::member(spec, u"enum");
+        if (!nm::jsv::truthy(enumPath)) enumPath = nm::jsv::member(spec, u"enumPath");
+        const nm::Value specChoices = nm::jsv::member(spec, u"choices");
+        if (nm::jsv::truthy(specChoices) && !nm::jsv::truthy(enumPath)) {
+            enumPath = nm::Value(opName + u"." + key);
+            nm::Object entries;
+            for (const auto& [name, value] : nm::jsv::entries(specChoices)) {
+                if (!name.empty() && name.back() == u':') continue;
+                nm::Object leaf;
+                leaf.set(u"type", nm::Value(u"Number"));
+                leaf.set(u"value", value);
+                entries.set(name, nm::Value(leaf));
+                const nm::JsString sanitized = sanitize_enum_name(name);
+                if (!sanitized.empty() && sanitized != name) entries.set(sanitized, nm::Value(leaf));
+            }
+            nm::Value& table = choices[u"user"];
+            if (!table.is_object()) table = nm::Value(nm::Object{});
+            nm::Value& funcTable = table.as_object()[func];
+            if (!funcTable.is_object()) funcTable = nm::Value(nm::Object{});
+            funcTable.as_object().set(key, nm::Value(std::move(entries)));
+        }
+        nm::Object arg;
+        arg.set(u"name", nm::Value(key));
+        const nm::Value type = nm::jsv::member(spec, u"type");
+        if (!type.is_undefined()) arg.set(u"type", nm::jsv::strict_equals(type, nm::Value(u"vec4")) ? nm::Value(u"color") : type);
+        for (const auto& [name, value] : {std::pair<const char16_t*, nm::Value>{u"default", nm::jsv::member(spec, u"default")},
+                                          {u"enum", enumPath}, {u"enumPath", enumPath}, {u"min", nm::jsv::member(spec, u"min")},
+                                          {u"max", nm::jsv::member(spec, u"max")}, {u"uniform", nm::jsv::member(spec, u"uniform")},
+                                          {u"choices", specChoices}}) {
+            if (!value.is_undefined()) arg.set(name, value);
+        }
+        args.push_back(nm::Value(std::move(arg)));
+    }
+    nm::Object opSpec;
+    opSpec.set(u"name", nm::Value(func));
+    opSpec.set(u"args", nm::Value(std::move(args)));
+    setup({{u"op", nm::Value(u"registerOp")}, {u"name", nm::Value(opName)}, {u"spec", nm::Value(std::move(opSpec))}});
+    if (nm::jsv::truthy(nm::jsv::member(effect, u"hidden")) && nm::jsv::truthy(nm::jsv::member(effect, u"deprecatedBy"))) {
+        setup({{u"op", nm::Value(u"registerEffectAlias")}, {u"opName", nm::Value(opName)}, {u"newName", nm::jsv::member(effect, u"deprecatedBy")}});
+    }
+    setup({{u"op", nm::Value(u"mergeIntoEnums")}, {u"source", nm::Value(std::move(choices))}});
+    if (starter) setup({{u"op", nm::Value(u"registerStarterOps")}, {u"names", nm::Value(nm::Array{nm::Value(opName)})}});
+}
+
+// The fixture's Portable sidecar: its "portable" member, else for a DSL
+// program its <name>.portable.json, as the minter finds it (portableSidecar).
+std::string portable_sidecar(const Fixture& fixture) {
+    if (!fixture.portable.empty() || fixture.dsl.empty()) return fixture.portable;
+    const std::string& dsl = fixture.dsl;
+    if (dsl.size() <= 4 || dsl.compare(dsl.size() - 4, 4, ".dsl") != 0) return {};
+    const std::string sidecar = dsl.substr(0, dsl.size() - 4) + ".portable.json";
+    std::error_code error;
+    return std::filesystem::exists(sidecar, error) ? sidecar : std::string();
 }
 
 // The fixture's graph, and its DSL text when it has one.
@@ -814,6 +1094,10 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
         be::WebGPUBackend backend(dawn);
         try {
             std::string dslText;
+            // The minter registers a fixture's Portable effect before its DSL loads.
+            if (const std::string sidecar = portable_sidecar(fixture); !sidecar.empty()) {
+                register_portable_effect(load_portable_definition(sidecar));
+            }
             const nm::Value graph = load_graph(fixture, dslText);
             be::Pipeline pipeline(graph, backend, {});
             pipeline.init(fixture.width, fixture.height);

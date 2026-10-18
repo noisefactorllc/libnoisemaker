@@ -7,7 +7,7 @@
 // source inline). The minter (parity/batch-golden.mjs), the
 // reference oracle (noisemaker-for-rust-gpu's tools/reference-api.mjs) and
 // its candidate load sidecars with this rule, then hand the definition to
-// registerPortableEffect. libnoisemaker's nm-render does not load them yet.
+// registerPortableEffect. libnoisemaker's nm-render loads them with the same rule.
 
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
