@@ -43,7 +43,16 @@ typedef struct nm_diagnostics nm_diagnostics;
 
 NM_API uint32_t nm_abi_version(void);
 NM_API const char* nm_engine_version(void);
-/* Source is UTF-8. Diagnostic positions count UTF-16 code units. */
+/* Source is UTF-8. Diagnostic positions count UTF-16 code units.
+ * Each diagnostic is a JSON object with code, message, severity, stage,
+ * location and span members (nm_diagnostics_json).
+ * NM_OK: *diagnostics holds the program's warnings (severity "warning"), the
+ * warnings that the reference compileGraph logs, in its order. It is NULL
+ * when the program has no warnings.
+ * NM_ERR_COMPILE: *diagnostics holds the diagnostics of the failed compile:
+ * the syntax error, the validator's errors and warnings, or the expander's
+ * errors. Any other status: *diagnostics is NULL.
+ * Release *diagnostics with nm_diagnostics_destroy, which accepts NULL. */
 NM_API nm_status nm_compile(const char* source, size_t length,
                             nm_compiled** out, nm_diagnostics** diagnostics);
 NM_API void nm_compiled_destroy(nm_compiled* compiled);

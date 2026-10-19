@@ -80,13 +80,23 @@ static nm_status compile_impl(const char* source, size_t length,
     }
     try {
         const libnoisemaker::JsString text = libnoisemaker::utf8_to_js(std::string_view(source, length));
-        const libnoisemaker::Object graph = libnoisemaker::compileGraphJson(text, registry());
+        libnoisemaker::JsArray warnings;
+        const libnoisemaker::Object graph = libnoisemaker::compileGraphJson(text, registry(), {}, &warnings);
         auto compiled = std::make_unique<nm_compiled>();
         compiled->graph_json = libnoisemaker::json::stringify(libnoisemaker::Value(graph));
         compiled->normalized_json = libnoisemaker::json::stringify(
             libnoisemaker::normalizeGraphJson(libnoisemaker::Value(graph), registry().defineMap().raw()));
         compiled->source = text;
+        // compiler.js compileGraph logs each validator warning before it
+        // returns the graph; the caller reads them here.
+        std::unique_ptr<nm_diagnostics> output;
+        if (!warnings.isEmpty()) {
+            output = std::make_unique<nm_diagnostics>();
+            for (const auto& item : warnings)
+                append(*output, item.raw(), u"compiler", u"");
+        }
         *out = compiled.release();
+        *diagnostics = output.release();
         return NM_OK;
     } catch (const libnoisemaker::CompilationError& error) {
         auto output = std::make_unique<nm_diagnostics>();

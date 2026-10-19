@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
+#include <utility>
 
 namespace libnoisemaker {
 
@@ -202,16 +203,19 @@ JsString hashSource(const JsString& source) {
 }
 
 Object compileGraphJson(const JsString& source, const EffectRegistry& registry,
-                        const Object& options) {
+                        const Object& options, JsArray* warnings) {
     const auto tokens = libnoisemaker::lexTokens(source);
     const JsObject ast(libnoisemaker::parse(tokens, Value(options)));
     const JsObject validated = libnoisemaker::validate(ast, registry);
 
     const JsArray diagnostics = validated.value(JsText(u"diagnostics")).toArray();
+    JsArray validatorWarnings;
     for (const JsValue& dv : diagnostics) {
-        if (dv.toObject().value(JsText(u"severity")).toString() == JsText(u"error")) {
+        const JsText severity = dv.toObject().value(JsText(u"severity")).toString();
+        if (severity == JsText(u"error")) {
             throw CompilationError(JsText(u"ERR_COMPILATION_FAILED"), diagnostics, JsArray());
         }
+        if (severity == JsText(u"warning")) validatorWarnings.append(dv);
     }
 
     ExpandResult expanded = libnoisemaker::expand(validated, registry, JsObject(Value(options)));
@@ -238,8 +242,10 @@ Object compileGraphJson(const JsString& source, const EffectRegistry& registry,
     const JsObject textures = extractTextureSpecs(expanded.passes, expanded.textureSpecs);
     const JsText id = hashSource(source);
 
-    return normalizeGraph(id, JsText(source), expanded.renderSurface, expanded.passes, allocations, textures,
-                          expanded.programs, expanded.mediaSteps).raw().as_object();
+    Object graph = normalizeGraph(id, JsText(source), expanded.renderSurface, expanded.passes, allocations,
+                                  textures, expanded.programs, expanded.mediaSteps).raw().as_object();
+    if (warnings) *warnings = std::move(validatorWarnings);
+    return graph;
 }
 
 libnoisemaker::Graph compileGraph(const JsString& source, const EffectRegistry& registry,

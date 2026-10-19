@@ -56,9 +56,12 @@ JsString hashSource(const JsString& source);
 // ERR_COMPILATION_FAILED (a validate() diagnostic with severity:"error")
 // / ERR_EXPANSION_FAILED (expand() returned errors); libnoisemaker::DslSyntaxError /
 // libnoisemaker::UnsupportedDsl propagate unchanged from the lex/parse/validate/
-// expand stages.
+// expand stages. When the compile returns and `warnings` is not null,
+// *warnings holds each validate() diagnostic with severity "warning", in
+// validate() order: the diagnostics compiler.js compileGraph logs with
+// console.warn. A compile that throws leaves *warnings unchanged.
 Object compileGraphJson(const JsString& source, const EffectRegistry& registry,
-                        const Object& options = {});
+                        const Object& options = {}, JsArray* warnings = nullptr);
 
 // compileGraphJson() then libnoisemaker::Graph::fromJson() on the serialized bytes —
 // see file header for why this guarantees --dsl/--graph byte-identity.
