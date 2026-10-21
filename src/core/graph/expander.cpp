@@ -330,11 +330,21 @@ private:
     }
 
     void expandPlan(const JsObject& plan, int planIndex) {
-        // The reference iterates `plan.chain` with for...of. Branch, Break,
-        // Continue and Return plans (control flow) have no chain, so the
-        // reference raises this TypeError and expands nothing.
+        // Branch, Break, Continue and Return plans have no chain. The parser
+        // and validator accept them, but the runtime does not execute them:
+        // the reference records this error and skips the plan.
         if (!plan.value(JsText(u"chain")).isArray()) {
-            throw std::runtime_error("plan.chain is not iterable");
+            static const std::unordered_map<JsString, JsString> keywords = {
+                {JsText(u"Branch"), JsText(u"if")},   {JsText(u"Break"), JsText(u"break")},
+                {JsText(u"Continue"), JsText(u"continue")}, {JsText(u"Return"), JsText(u"return")},
+            };
+            const JsText type = plan.value(JsText(u"type")).toString();
+            const auto keyword = keywords.find(type);
+            JsObject err;
+            err.insert(JsText(u"message"), JsText(u"The runtime does not yet execute control flow ('%1')")
+                                              .arg(keyword != keywords.end() ? keyword->second : type));
+            errors_.append(err);
+            return;
         }
         currentInput_.clear();
         currentInput3d_.clear();

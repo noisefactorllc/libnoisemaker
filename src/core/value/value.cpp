@@ -107,5 +107,11 @@ void Object::define_hidden(const JsString& key, Value value) {
     erase(key);
     hidden_.insert_or_assign(key, std::move(value));
 }
+std::vector<JsString> Object::hidden_keys() const {
+    std::vector<JsString> keys;
+    keys.reserve(hidden_.size());
+    for (const auto& entry : hidden_) keys.push_back(entry.first);
+    return keys;
+}
 size_t Object::size() const { return entries_.size() + hidden_.size(); }
 }  // namespace libnoisemaker

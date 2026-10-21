@@ -153,8 +153,8 @@ struct ExpandResult {
 // choices/project tree; by the time a DSL value reaches here the validator
 // has already resolved any dynamic choice to its integer), and declaration-ordered global and pass definitions.
 //
-// Throws std::runtime_error("plan.chain is not iterable") for a plan with
-// no chain (control flow), as expander.js's for...of does.
+// Records "The runtime does not yet execute control flow ('if')" in errors
+// for a plan with no chain (control flow), as expander.js does.
 ExpandResult expand(const JsObject& validated, const EffectRegistry& registry,
                     const JsObject& options = {});
 

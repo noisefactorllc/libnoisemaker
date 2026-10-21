@@ -12,8 +12,11 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <limits>
 #include <optional>
+#include <set>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace libnoisemaker {
 
@@ -320,6 +323,10 @@ JsText funcSnippet(const JsText& src) { return src.isEmpty() ? JsText(u"unknown"
 
 JsText nodeType(const JsValue& node) { return node.isObject() ? node.toObject().value(JsText(u"type")).toString() : JsText(); }
 
+// Identity of an object node for the reads-before-let dedup (defined with
+// declareVar below).
+std::optional<size_t> objectIdentity(const JsValue& nodeVal);
+
 // ---------------------------------------------------------------- Validator
 
 class Validator {
@@ -335,6 +342,10 @@ private:
     JsSet<JsText> reportedAutomationCycles_;
     JsList programSearchOrder_;
     int tempIndex_ = 0;
+    // Identifier nodes that already have their S003 for a read before the let
+    std::unordered_set<size_t> readsBeforeLet_;
+    // The names of the top-level lets that come after the current statement
+    std::set<JsText> pendingLets_;
 
     // -------------------------------------------------- diagnostics
     void pushDiag(const JsText& code, const JsValue& node, const JsText& message = JsText());
@@ -348,7 +359,8 @@ private:
     JsValue getStarterInfo(const JsValue& node);
     bool isStarterChain(const JsValue& node);
     JsValue substitute(const JsValue& node, const JsList& resolving = {});
-    void bindVar(const JsObject& v);
+    void declareVar(const JsObject& v);
+    void reportReadsBeforeLet(const JsValue& node);
     static JsValue buildNamespaceSnapshot(const JsValue& callNamespace);
 
     // -------------------------------------------------- control flow
@@ -443,6 +455,10 @@ JsValue Validator::extractIdentifierName(const JsValue& nodeVal) {
 }
 
 void Validator::pushDiag(const JsText& code, const JsValue& nodeVal, const JsText& message) {
+    // An identifier node that already has its S003 for a read before the let
+    // gets no other diagnostic.
+    const auto identity = objectIdentity(nodeVal);
+    if (identity && readsBeforeLet_.contains(*identity)) return;
     const JsText msg = message.isEmpty() ? JsText(diagDefaultMessage(code)) : message;
     const JsValue identName = extractIdentifierName(nodeVal);
     const JsText identText = identName.isUndefined() ? JsText() : identName.toVariant();
@@ -706,7 +722,32 @@ JsValue Validator::substitute(const JsValue& nodeVal, const JsList& resolving) {
     return nodeVal;
 }
 
-void Validator::bindVar(const JsObject& v) {
+// Validation owns these IDs. Value copies retain hidden fields; deliberate
+// JSON clones discard them, just as a reference clone has a new identity.
+constexpr char16_t nodeIdentityKey[] = u"_validatorNodeIdentity";
+Value assignNodeIdentities(const Value& value, size_t& next) {
+    if (value.is_array()) {
+        Array out;
+        for (const Value& item : value.as_array()) out.push_back(assignNodeIdentities(item, next));
+        return Value(std::move(out));
+    }
+    if (!value.is_object()) return value;
+    Object out;
+    for (const JsString& key : value.as_object().keys())
+        out.set(key, assignNodeIdentities(*value.as_object().find(key), next));
+    for (const JsString& key : value.as_object().hidden_keys())
+        if (key != nodeIdentityKey) out.define_hidden(key, *value.as_object().find(key));
+    if (next >= 9007199254740991ULL) throw std::length_error("AST node count exceeds the exact identity range");
+    out.define_hidden(nodeIdentityKey, Value(static_cast<double>(++next)));
+    return Value(std::move(out));
+}
+std::optional<size_t> objectIdentity(const JsValue& nodeVal) {
+    if (!nodeVal.isObject()) return std::nullopt;
+    const Value* id = nodeVal.raw().as_object().find(nodeIdentityKey);
+    return id && id->is_number() ? std::optional<size_t>(static_cast<size_t>(id->as_number())) : std::nullopt;
+}
+
+void Validator::declareVar(const JsObject& v) {
     const JsText name = v.value(JsText(u"name")).toString();
     const JsValue expr = substitute(cloneJson(v.value(JsText(u"expr"))), {name});
     if (isStarterChain(expr)) {
@@ -743,6 +784,41 @@ void Validator::bindVar(const JsObject& v) {
     } else {
         symbols_.insert(name, expr);
     }
+}
+
+// A statement that reads a variable before any let assigns it gets
+// S003 "Variable used before assignment" at the identifier. Other
+// diagnostics for that identifier node are not added.
+void Validator::reportReadsBeforeLet(const JsValue& nodeVal) {
+    if (pendingLets_.empty() || (!nodeVal.isObject() && !nodeVal.isArray())) return;
+    if (nodeVal.isArray()) {
+        for (const JsValue& item : nodeVal.toArray()) reportReadsBeforeLet(item);
+        return;
+    }
+    const JsObject node = nodeVal.toObject();
+    if (node.value(JsText(u"type")).toString() == NodeKind::Ident) {
+        const JsText name = node.value(JsText(u"name")).toString();
+        if (pendingLets_.contains(name) && !symbols_.contains(name)) {
+            const auto identity = objectIdentity(nodeVal);
+            if (identity && !readsBeforeLet_.contains(*identity)) {
+                const JsValue position = node.value(JsText(u"position"));
+                JsObject synthetic;
+                synthetic.insert(JsText(u"type"), NodeKind::Ident);
+                synthetic.insert(JsText(u"name"), name);
+                if (position.isObject()) {
+                    const JsObject pos = position.toObject();
+                    JsObject loc;
+                    loc.insert(JsText(u"line"), pos.value(JsText(u"line")));
+                    loc.insert(JsText(u"column"), pos.value(JsText(u"column")));
+                    synthetic.insert(JsText(u"loc"), loc.raw());
+                }
+                pushDiag(JsText(u"S003"), synthetic.raw());
+                readsBeforeLet_.insert(*identity);
+            }
+            return;
+        }
+    }
+    for (const JsText& key : node.keys()) reportReadsBeforeLet(node.value(key));
 }
 
 JsValue Validator::buildNamespaceSnapshot(const JsValue& callNamespaceVal) {
@@ -906,26 +982,51 @@ JsValue Validator::evalCondition(const JsValue& node) {
 
 JsArray Validator::compileBlock(const JsValue& body) {
     JsArray result;
-    for (const JsValue& s : body.toArray()) {
-        const JsValue compiled = compileStmt(s.toObject());
+    // A `let` inside a block applies to the rest of that block only, so a
+    // block cannot change how statements outside it compile.
+    std::vector<std::pair<JsText, JsValue>> shadowed;
+    std::set<JsText> shadowedNames;
+    for (const JsValue& sVal : body.toArray()) {
+        const JsObject s = sVal.toObject();
+        if (s.value(JsText(u"type")).toString() == NodeKind::VarAssign) {
+            const JsText name = s.value(JsText(u"name")).toString();
+            if (!shadowedNames.contains(name)) {
+                shadowedNames.insert(name);
+                shadowed.emplace_back(name, symbols_.contains(name) ? symbols_.value(name)
+                                                                    : JsValue(JsValue::Undefined));
+            }
+            declareVar(s);
+            // Kept as the parser node, like the top-level `vars` entries
+            result.append(sVal);
+            continue;
+        }
+        const JsValue compiled = compileStmt(s);
         if (!compiled.isUndefined()) result.append(compiled);
+    }
+    for (const auto& [name, previous] : shadowed) {
+        if (!previous.isUndefined()) symbols_.insert(name, previous);
+        else symbols_.erase(name);
     }
     return result;
 }
 
 // ---------------------------------------------------------------- statement compilation
 
+JsObject withSource(JsObject plan, const JsObject& stmt);
+
 // Reference compileStmt. Nothing downstream executes Branch, Break,
-// Continue or Return plans: the reference expander iterates `plan.chain`
-// and fails on them, and libnoisemaker::expand does the same.
+// Continue or Return plans: the expander records an error for each and
+// skips the plan.
 JsValue Validator::compileStmt(const JsObject& stmt) {
     const JsText t = stmt.value(JsText(u"type")).toString();
     if (t == NodeKind::IfStmt) {
+        reportReadsBeforeLet(stmt.value(JsText(u"condition")));
         const JsValue cond = evalCondition(stmt.value(JsText(u"condition")));
         const JsArray thenBranch = compileBlock(stmt.value(JsText(u"then")));
         JsArray elif;
         for (const JsValue& e : stmt.value(JsText(u"elif")).toArray()) {
             const JsObject eo = e.toObject();
+            reportReadsBeforeLet(eo.value(JsText(u"condition")));
             JsObject entry;
             entry.insert(JsText(u"cond"), evalCondition(eo.value(JsText(u"condition"))));
             entry.insert(JsText(u"then"), compileBlock(eo.value(JsText(u"then"))));
@@ -938,24 +1039,26 @@ JsValue Validator::compileStmt(const JsObject& stmt) {
         branch.insert(JsText(u"then"), thenBranch);
         branch.insert(JsText(u"elif"), elif);
         branch.insert(JsText(u"else"), elseBranch);
-        return branch;
+        return withSource(std::move(branch), stmt);
     }
     if (t == NodeKind::Break || t == NodeKind::Continue) {
         JsObject node;
         node.insert(JsText(u"type"), t);
-        return node;
+        return withSource(std::move(node), stmt);
     }
     if (t == NodeKind::Return) {
         JsObject node;
         node.insert(JsText(u"type"), NodeKind::Return);
         if (isTruthy(stmt.value(JsText(u"value")))) {
+            reportReadsBeforeLet(stmt.value(JsText(u"value")));
             node.insert(JsText(u"value"), evalExpr(stmt.value(JsText(u"value"))));
         }
-        return node;
+        return withSource(std::move(node), stmt);
     }
-    // Any other statement goes to compileChainStatement. Only a block can
-    // hold a statement with no chain (`let` inside if/elif/else); the
-    // reference then reads `stmt.chain[0]` and raises this TypeError.
+    // Any other statement goes to compileChainStatement. Only a hand-built
+    // AST can hold a statement with no chain here (block `let`s compile
+    // through compileBlock); the reference then reads `stmt.chain[0]` and
+    // raises this TypeError.
     if (!stmt.value(JsText(u"chain")).isArray()) {
         throw JsError(u"TypeError", u"Cannot read properties of undefined (reading '0')");
     }
@@ -967,8 +1070,17 @@ JsValue Validator::compileStmt(const JsObject& stmt) {
     return compiled.isEmpty() ? JsValue(JsValue::Undefined) : JsValue(compiled);
 }
 
+// Control-flow plans keep their parser statement as a hidden `source`, so
+// the unparser can write conditions and return values as written. The
+// public compiled plan shape is unchanged.
+JsObject withSource(JsObject plan, const JsObject& stmt) {
+    plan.define_hidden(JsText(u"source"), stmt.raw());
+    return plan;
+}
+
 JsObject Validator::compileChainStatement(const JsObject& stmt) {
     JsArray chain;
+    reportReadsBeforeLet(stmt.value(JsText(u"chain")));
     const JsArray stmtChain = stmt.value(JsText(u"chain")).toArray();
 
     JsObject chainNode;
@@ -1393,7 +1505,39 @@ JsValue Validator::resolveArgs(JsArray& chain, const OpSpec& spec, const JsObjec
         }
 
         const JsText ty = def.type;
-        if (ty == JsText(u"surface")) {
+        // vec2(x, y) on a vec2 parameter, and vec4(x, y, z, w) on a
+        // vec4 parameter. The loader registers vec4 parameters as
+        // `color`; their default keeps its four components. Any
+        // other form, including a wrong component count, takes
+        // the branches below.
+        bool vecComponents = false;
+        if ((ty == JsText(u"vec2") || ty == JsText(u"color")) && nodeType(node) == NodeKind::Call) {
+            const JsObject ctorNode = node.toObject();
+            const JsText ctor = ctorNode.value(JsText(u"name")).toString();
+            const JsValue ctorArgsVal = ctorNode.value(JsText(u"args"));
+            const int want = ctor == JsText(u"vec2") ? 2 : 4;
+            if (ctorArgsVal.isArray() && std::ssize(ctorArgsVal.toArray()) == want) {
+                if (ty == JsText(u"vec2") && ctor == JsText(u"vec2")) {
+                    vecComponents = true;
+                } else if (ty == JsText(u"color") && ctor == JsText(u"vec4")) {
+                    vecComponents = def.defaultValue.isArray() && std::ssize(def.defaultValue.toArray()) == 4;
+                }
+            }
+        }
+        if (vecComponents) {
+            JsArray components;
+            for (const JsValue& arg : node.toObject().value(JsText(u"args")).toArray()) {
+                if (nodeType(arg) == NodeKind::Number) {
+                    components.append(arg.toObject().value(JsText(u"value")));
+                } else {
+                    pushDiag(JsText(u"S002"), arg,
+                             JsText(u"Argument out of range for '%1' in %2()")
+                                 .arg(def.name, call.value(JsText(u"name")).toString()));
+                    components.append(0);
+                }
+            }
+            args.insert(argKey, components.raw());
+        } else if (ty == JsText(u"surface")) {
             resolveSurfaceArg(chain, def, node, call, args, argKey, writeName);
             if (hasKw && kw.contains(def.name)) {
                 kw.insert(def.name, mirrorNestedMemberPaths(kw.value(def.name)));
@@ -1717,7 +1861,11 @@ void Validator::resolveBooleanArg(const ParamDef& def, const JsValue& node, cons
     if (t == NodeKind::Func) {
         const JsText src = node.toObject().value(JsText(u"src")).toString();
         if (funcCompiles(src)) {
-            args.insert(argKey, JsObject{{JsText(u"fn"), Value::function(src)}});
+            // _ast keeps the source text for the unparser.
+            Object value;
+            value.set(u"fn", Value::function(src));
+            value.set(u"_ast", node.raw());
+            args.insert(argKey, Value(std::move(value)));
         } else {
             pushDiag(JsText(u"S001"), node,
                      JsText(u"Invalid function for '%1': '%2'").arg(def.name, funcSnippet(src)));
@@ -1956,10 +2104,12 @@ void Validator::resolveNumericArg(const ParamDef& def, const JsValue& node, cons
     if (t == NodeKind::Func) {
         const JsText src = node.toObject().value(JsText(u"src")).toString();
         if (funcCompiles(src)) {
+            // _ast keeps the source text for the unparser.
             Object value;
             value.set(u"fn", Value::function(src));
             value.set(u"min", def.minValue.raw());
             value.set(u"max", def.maxValue.raw());
+            value.set(u"_ast", node.raw());
             args.insert(argKey, Value(std::move(value)));
         } else {
             pushDiag(JsText(u"S001"), node,
@@ -2344,7 +2494,9 @@ JsValue Validator::compileAutomationDescriptor(const JsObject& node, int depth) 
 
 // ---------------------------------------------------------------- entry point
 
-JsObject Validator::run(const JsObject& ast) {
+JsObject Validator::run(const JsObject& input) {
+    size_t next_identity = 0;
+    const JsObject ast(assignNodeIdentities(input.raw(), next_identity));
     const JsValue renderVal = ast.value(JsText(u"render"));
     const JsValue render = renderVal.isObject() ? renderVal.toObject().value(JsText(u"name")) : JsValue(JsValue::Null);
 
@@ -2365,16 +2517,41 @@ JsObject Validator::run(const JsObject& ast) {
             "to specify namespace search order.");
     }
 
-    for (const JsValue& v : ast.value(JsText(u"vars")).toArray()) bindVar(v.toObject());
+    // Top-level lets are declared in statement order: a chain sees only
+    // the lets written before it. Each let knows the number of plans
+    // written before it as its hidden planIndex.
+    const JsValue varsVal = ast.value(JsText(u"vars"));
+    const JsArray topLevelVars = varsVal.isArray() ? varsVal.toArray() : JsArray();
+    size_t nextVar = 0;
+    auto declareVarsBefore = [&](double planIndex) {
+        while (nextVar < topLevelVars.size()
+               && (topLevelVars[nextVar].isObject()
+                       ? topLevelVars[nextVar].toObject().value(JsText(u"planIndex")).toDouble()
+                       : 0.0)
+                   <= planIndex) {
+            declareVar(topLevelVars[nextVar++].toObject());
+        }
+        pendingLets_.clear();
+        for (size_t i = nextVar; i < topLevelVars.size(); ++i) {
+            if (topLevelVars[i].isObject()) {
+                pendingLets_.insert(topLevelVars[i].toObject().value(JsText(u"name")).toString());
+            }
+        }
+    };
 
     JsArray plans;
-    for (const JsValue& stmtVal : ast.value(JsText(u"plans")).toArray()) {
-        const JsValue compiled = compileStmt(stmtVal.toObject());
+    const JsArray statements = ast.value(JsText(u"plans")).toArray();
+    for (size_t index = 0; index < statements.size(); ++index) {
+        declareVarsBefore(static_cast<double>(index));
+        const JsValue compiled = compileStmt(statements[index].toObject());
         if (!compiled.isUndefined()) plans.append(compiled);
     }
+    declareVarsBefore(std::numeric_limits<double>::infinity());
 
     JsObject result;
     result.insert(JsText(u"plans"), plans);
+    // Hidden source-order plan list for the statement-order unparser
+    result.define_hidden(JsText(u"planOrder"), JsValue(plans));
     result.insert(JsText(u"diagnostics"), diagnostics_);
     result.insert(JsText(u"render"), render);
     result.insert(JsText(u"vars"), ast.value(JsText(u"vars")).isArray() ? ast.value(JsText(u"vars")) : JsValue(JsArray()));

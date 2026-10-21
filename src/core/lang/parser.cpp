@@ -279,7 +279,7 @@ private:
     JsonObject parseRenderDirective();
     void parseSearchDirective();
     void validateNamespace(const Token& token);
-    JsonArray parseBlock();
+    JsonArray parseBlock(JsonArray* trailing = nullptr);
     JsonObject parseStatement();
     JsonArray parseChain(const LangString& context);
     JsonObject parseWriteCall();
@@ -381,6 +381,9 @@ JsonObject Parser::parseProgram() {
             stmt.insert(LangString(u"leadingComments"), leadingComments);
         }
         if (stmt.value(LangString(u"type")).toString() == NodeKind::VarAssign) {
+            // Statement order: the number of plans written before this let.
+            // Hidden, so the AST shape is unchanged.
+            stmt.define_hidden(LangString(u"planIndex"), JsonValue(static_cast<double>(plans.size())));
             vars.append(stmt);
         } else {
             plans.append(stmt);
@@ -471,11 +474,24 @@ void Parser::validateNamespace(const Token& token) {
     }
 }
 
-JsonArray Parser::parseBlock() {
+JsonArray Parser::parseBlock(JsonArray* trailing) {
     expect(TokenType::LBRACE, LangString(u"Expect '{'"));
     JsonArray body;
-    while (peek().type != TokenType::RBRACE) {
-        body.append(parseStatement());
+    while (true) {
+        // Comments attach to the next statement, as at top level
+        const JsonArray leadingComments = collectComments();
+        if (peek().type == TokenType::RBRACE) {
+            // Comments before '}' have no statement. The reference keeps
+            // them non-enumerably on the block array; here the caller's
+            // statement carries them as a hidden key.
+            if (trailing && !leadingComments.isEmpty()) *trailing = leadingComments;
+            break;
+        }
+        JsonObject stmt = parseStatement();
+        if (!leadingComments.isEmpty()) {
+            stmt.insert(LangString(u"leadingComments"), leadingComments);
+        }
+        body.append(stmt);
         while (peek().type == TokenType::SEMICOLON) advance();
     }
     expect(TokenType::RBRACE, LangString(u"Expect '}'"));
@@ -510,30 +526,42 @@ JsonObject Parser::parseStatement() {
         expect(TokenType::LPAREN, LangString(u"Expect '('"));
         const JsonObject condition = parseAdditive();
         expect(TokenType::RPAREN, LangString(u"Expect ')'"));
-        const JsonArray thenBlock = parseBlock();
+        JsonArray thenTrailing;
+        const JsonArray thenBlock = parseBlock(&thenTrailing);
         JsonArray elifList;
         while (peek().type == TokenType::ELIF) {
             advance();
             expect(TokenType::LPAREN, LangString(u"Expect '('"));
             const JsonObject ec = parseAdditive();
             expect(TokenType::RPAREN, LangString(u"Expect ')'"));
-            const JsonArray body = parseBlock();
+            JsonArray elifTrailing;
+            const JsonArray body = parseBlock(&elifTrailing);
             JsonObject elifEntry;
             elifEntry.insert(LangString(u"condition"), ec);
             elifEntry.insert(LangString(u"then"), body);
+            if (!elifTrailing.isEmpty()) {
+                elifEntry.define_hidden(LangString(u"_trailingComments"), JsonValue(elifTrailing));
+            }
             elifList.append(elifEntry);
         }
         JsonValue elseBranch = JsonValue(JsonValue::Null);
+        JsonArray elseTrailing;
         if (peek().type == TokenType::ELSE) {
             advance();
-            elseBranch = parseBlock();
+            elseBranch = parseBlock(&elseTrailing);
         }
         JsonObject node;
         node.insert(LangString(u"type"), NodeKind::IfStmt);
         node.insert(LangString(u"condition"), condition);
         node.insert(LangString(u"then"), thenBlock);
+        if (!thenTrailing.isEmpty()) {
+            node.define_hidden(LangString(u"_thenTrailingComments"), JsonValue(thenTrailing));
+        }
         node.insert(LangString(u"elif"), elifList);
         node.insert(LangString(u"else"), elseBranch);
+        if (!elseTrailing.isEmpty()) {
+            node.define_hidden(LangString(u"_elseTrailingComments"), JsonValue(elseTrailing));
+        }
         return node;
     }
     if (tt == TokenType::BREAK) {
@@ -1543,6 +1571,16 @@ JsonObject Parser::parsePrimary() {
         JsonObject node;
         node.insert(LangString(u"type"), NodeKind::Ident);
         node.insert(LangString(u"name"), path.first());
+        // Private source position for structured diagnostics; the
+        // public AST shape is unchanged (hidden key).
+        if (token.hasPosition) {
+            JsonObject pos;
+            pos.insert(LangString(u"line"), token.posLine);
+            pos.insert(LangString(u"column"), token.posColumn);
+            pos.insert(LangString(u"start"), token.posStart);
+            pos.insert(LangString(u"end"), token.posEnd);
+            node.define_hidden(LangString(u"position"), JsonValue(pos));
+        }
         return node;
     }
     if (tt == TokenType::OUTPUT_REF) {

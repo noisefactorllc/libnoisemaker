@@ -105,16 +105,17 @@ int main() {
               "top-level write reflects the LAST write in the chain, not the first");
     }
     {
-        // Comments are legal around chain dots (leadingComments), but NOT
-        // inside a block before a statement (parser has no collectComments
-        // call there) -- verified against the oracle: this throws.
-        bool threw = false;
-        try {
+        // Comments are legal around chain dots and inside blocks: the
+        // reference parseBlock collects comments there too, so a comment
+        // immediately before a statement inside a block attaches to that
+        // statement as leadingComments (upstream 8e62508b).
+        const JsonObject prog =
             parseSrc(LangString(u"search synth\nif (1) {\n  // comment\n  solid(0.1,0.2,0.3).write(o0)\n}\nrender(o0)\n"));
-        } catch (const libnoisemaker::DslSyntaxError&) {
-            threw = true;
-        }
-        check(threw, "a comment immediately before a statement INSIDE a block is a syntax error (not collected there)");
+        const JsonArray then = prog.value(LangString(u"plans")).toArray().at(0).toObject().value(LangString(u"then")).toArray();
+        check(then.size() == 1, "a block comment before a statement parses (collected in parseBlock)");
+        check(then.at(0).toObject().value(LangString(u"leadingComments")).toArray().at(0).toString()
+                      == LangString(u"// comment"),
+              "a comment immediately before a statement INSIDE a block attaches as leadingComments");
     }
     {
         const JsonObject prog = parseSrc(LangString(

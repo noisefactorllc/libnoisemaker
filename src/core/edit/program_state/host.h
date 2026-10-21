@@ -31,6 +31,10 @@ class ProgramHost {
 public:
     virtual ~ProgramHost() = default;
     virtual JsString dsl() const = 0;
+    // The renderer's currentDsl verbatim: the reference stores whatever a
+    // deserialize() gave it, so it can hold a non-string program.
+    virtual Value dsl_value() const = 0;
+    virtual void set_dsl_value(const Value& value) = 0;
     virtual Value enum_tree() const = 0;
     virtual bool has_converter() const = 0;
     virtual Value convert_parameter_for_uniform(const Value& value, const Value& spec) const = 0;
@@ -48,12 +52,15 @@ public:
 // A data-only renderer used by the parity runner and CPU consumers.
 class MockHost final : public ProgramHost {
 public:
-    JsString current_dsl;
+    // The mock renderer starts with an empty currentDsl string.
+    Value current_dsl_value = Value(JsString());
     Value enums;
     MockConvert convert = MockConvert::Canvas;
     std::optional<MockPipeline> pipeline;
 
-    JsString dsl() const override { return current_dsl; }
+    JsString dsl() const override { return current_dsl_value.is_string() ? current_dsl_value.as_string() : JsString(); }
+    Value dsl_value() const override { return current_dsl_value; }
+    void set_dsl_value(const Value& value) override { current_dsl_value = value; }
     Value enum_tree() const override { return enums; }
     bool has_converter() const override { return convert != MockConvert::Absent; }
     Value convert_parameter_for_uniform(const Value& value, const Value& spec) const override;

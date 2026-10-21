@@ -305,26 +305,25 @@ int main() {
     }
 
     // ======================================================================
-    // Control flow: the reference expander iterates `plan.chain` with
-    // for...of, so a Branch/Break/Continue/Return plan raises a TypeError
-    // (oracle-gated by parity/corpus/control_flow_*.dsl).
+    // Control flow: nothing executes Branch/Break/Continue/Return plans.
+    // The expander records the reference error for each and expands no
+    // passes for them (oracle-gated by parity/corpus/control_flow_*.dsl).
     // ======================================================================
     {
-        libnoisemaker::JsText error;
-        try {
-            expandSrc(libnoisemaker::JsText(u"search synth\nnoise().write(o0)\nif (1) {\n  noise().write(o1)\n}\nrender(o0)\n"));
-        } catch (const std::runtime_error& e) {
-            error = libnoisemaker::JsText::fromUtf8(std::string(e.what()));
-        }
-        check(error == libnoisemaker::JsText(u"plan.chain is not iterable"),
-              "a Branch plan fails expansion with the reference's TypeError text");
-        error.clear();
-        try {
-            expandSrc(libnoisemaker::JsText(u"search synth\nnoise().write(o0)\nreturn 3\nrender(o0)\n"));
-        } catch (const std::runtime_error& e) {
-            error = libnoisemaker::JsText::fromUtf8(std::string(e.what()));
-        }
-        check(error == libnoisemaker::JsText(u"plan.chain is not iterable"), "a Return plan fails expansion the same way");
+        const libnoisemaker::ExpandResult r = expandSrc(
+            libnoisemaker::JsText(u"search synth\nnoise().write(o0)\nif (1) {\n  noise().write(o1)\n}\nrender(o0)\n"));
+        check(r.errors.size() == 1
+                  && r.errors.first().toObject().value(libnoisemaker::JsText(u"message")).toString()
+                         == libnoisemaker::JsText(u"The runtime does not yet execute control flow ('if')"),
+              "a Branch plan records the reference control-flow error and expands nothing for it");
+        const libnoisemaker::ExpandResult returned = expandSrc(
+            libnoisemaker::JsText(u"search synth\nnoise().write(o0)\nreturn 3\nrender(o0)\n"));
+        check(returned.errors.size() == 1
+                  && returned.errors.first().toObject().value(libnoisemaker::JsText(u"message")).toString()
+                         == libnoisemaker::JsText(u"The runtime does not yet execute control flow ('return')"),
+              "a Return plan records the same control-flow error");
+        const libnoisemaker::ExpandedPass* noisePass = findPass(r, libnoisemaker::JsText(u"node_0_pass_0"));
+        check(noisePass != nullptr, "the plan before the branch still expands");
     }
 
     // ======================================================================

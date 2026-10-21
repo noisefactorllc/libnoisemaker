@@ -7,8 +7,14 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <map>
+#include <unordered_set>
 
 namespace libnoisemaker {
+
+JsString format_lossless_number(double number);
+JsString format_string_literal(const JsString& value);
+
 namespace {
 thread_local size_t format_depth = 0;
 struct DepthGuard {
@@ -30,14 +36,10 @@ JsString join_text(const std::vector<JsString>& parts, const JsString& separator
     }
     return out;
 }
-JsString escape_string(const JsString& s) {
-    JsString out;
-    out.reserve(s.size());
-    for (char16_t ch : s) {
-        if (ch == u'\\' || ch == u'"') out.push_back(u'\\');
-        out.push_back(ch);
-    }
-    return out;
+// Format a numeric field of an automation descriptor (osc, midi, audio).
+// Numbers use the lossless form; other values keep their String() text.
+JsString format_number_text(const Value& value) {
+    return value.is_number() ? format_lossless_number(value.as_number()) : text(value);
 }
 JsString format_list(const Array& items, const UnparseOptions& options) {
     std::vector<JsString> parts;
@@ -129,7 +131,7 @@ Value format_oscillator(const Value& v) {
         // Only the noise kinds (5 and 6) read the seed.
         bool seeded = jsv::strict_equals(kind, Value(5)) || jsv::strict_equals(kind, Value(6));
         if (!jsv::strict_equals(val, Value(def)) && (JsString(key) != u"seed" || seeded))
-            parts.push_back(JsString(key) + u": " + text(val));
+            parts.push_back(JsString(key) + u": " + format_number_text(val));
     }
     return Value(u"osc(" + join_text(parts, u", ") + u")");
 }
@@ -159,7 +161,7 @@ Value format_midi(const Value& v) {
     for (const auto& [key, def] :
          std::initializer_list<std::pair<const char16_t*, double>>{{u"min", 0}, {u"max", 1}, {u"sensitivity", 1}}) {
         Value x = jsv::get(v, key);
-        if (!jsv::strict_equals(x, Value(def))) parts.push_back(JsString(key) + u": " + text(x));
+        if (!jsv::strict_equals(x, Value(def))) parts.push_back(JsString(key) + u": " + format_number_text(x));
     }
     for (const char16_t* key : {u"name", u"id"}) {
         Value x = jsv::get(v, key);
@@ -178,7 +180,7 @@ Value format_audio(const Value& v) {
                                 text(name_or(band, std::vector<JsString>(std::begin(names), std::end(names)), u"low"))};
     for (const auto& [key, def] : std::initializer_list<std::pair<const char16_t*, double>>{{u"min", 0}, {u"max", 1}}) {
         Value x = jsv::get(v, key);
-        if (!jsv::strict_equals(x, Value(def))) parts.push_back(JsString(key) + u": " + text(x));
+        if (!jsv::strict_equals(x, Value(def))) parts.push_back(JsString(key) + u": " + format_number_text(x));
     }
     Value channel = jsv::get(v, u"channel");
     if (channel.is_number() && std::floor(channel.as_number()) == channel.as_number() && channel.as_number() >= 1)
@@ -194,9 +196,9 @@ Value format_object(const Value& value, const Value& spec, const UnparseOptions&
     Value ast = field(value, u"_ast");
     if (is(value, u"String")) {
         Value raw = jsv::get(value, u"value");
-        if (raw.is_null() || raw.is_undefined()) throw jsv::cannot_read(raw, u"replace");
-        if (!raw.is_string()) throw jsv::not_a_function(u"value.value.replace");
-        return Value(u"\"" + escape_string(raw.as_string()) + u"\"");
+        if (raw.is_null() || raw.is_undefined()) throw jsv::cannot_read(raw, u"includes");
+        if (!raw.is_string()) throw jsv::not_a_function(u"value.includes");
+        return Value(format_string_literal(raw.as_string()));
     }
     if (is(value, u"Oscillator") || jsv::strict_equals(field(value, u"oscillator"), Value(true)))
         return format_oscillator(value);
@@ -333,7 +335,75 @@ UnparseOptions UnparseOptions::from_value(const Value& source, const EffectRegis
     }
     return o;
 }
+// True when the lexer scan of `"value"` or `'value'` stops at the closing
+// quote. The scan stops at an unescaped quote or newline, and a backslash
+// always takes the next character with it.
+bool quoted_scan_ends_at_close(const JsString& value, char16_t quote) {
+    JsString scan = value;
+    scan.push_back(quote);
+    size_t i = 0;
+    while (i < scan.size() && scan[i] != quote && scan[i] != u'\n') {
+        i += scan[i] == u'\\' && i + 1 < scan.size() ? 2 : 1;
+    }
+    return i == value.size();
+}
+
+// The first quote form whose literal the lexer reads back as `value`, or
+// an empty string. Triple quotes come first for multi-line values.
+JsString string_quote_for(const JsString& value) {
+    bool multiline = value.find(u'\n') != JsString::npos;
+    std::vector<JsString> forms =
+        multiline ? std::vector<JsString>{u"\"\"\"", u"\"", u"'"} : std::vector<JsString>{u"\"", u"'", u"\"\"\""};
+    for (const JsString& form : forms) {
+        bool holds;
+        if (form == u"\"\"\"") {
+            // The scan stops at the first `"""`, so it must sit at the end.
+            JsString probe = value;
+            probe += form;
+            holds = probe.find(u"\"\"\"") == value.size();
+        } else {
+            holds = quoted_scan_ends_at_close(value, form[0]);
+        }
+        if (holds) return form;
+    }
+    return JsString();
+}
+
+// Format a string value as a DSL string literal. The lexer keeps the
+// content of a string literal as written and does not decode escapes, so
+// the value is written back with the content that the lexer reads as the
+// same value. A value that no quote form holds gets a backslash before
+// each double quote and newline that would end a double-quoted string,
+// and before a last lone backslash.
+JsString format_string_literal(const JsString& value) {
+    JsString content = value;
+    if (string_quote_for(content).empty()) {
+        content.clear();
+        for (size_t i = 0; i < value.size(); ++i) {
+            char16_t ch = value[i];
+            if (ch == u'\\') {
+                if (i + 1 < value.size()) {
+                    content.push_back(u'\\');
+                    content.push_back(value[++i]);
+                } else {
+                    content += u"\\\\";
+                }
+            } else if (ch == u'"' || ch == u'\n') {
+                content.push_back(u'\\');
+                content.push_back(ch);
+            } else {
+                content.push_back(ch);
+            }
+        }
+    }
+    const JsString quote = string_quote_for(content);
+    return quote + content + quote;
+}
+
 JsString format_lossless_number(double number) {
+    if (std::isnan(number)) return utf8_to_js("0 / 0");
+    if (number == std::numeric_limits<double>::infinity()) return utf8_to_js("1 / 0");
+    if (number == -std::numeric_limits<double>::infinity()) return utf8_to_js("-1 / 0");
     std::string s = js_to_utf8(js_number_to_string(number));
     auto e = s.find_first_of("eE");
     if (e == std::string::npos) return utf8_to_js(s);
@@ -363,18 +433,33 @@ Value format_value(const Value& value, const Value& spec, const UnparseOptions& 
     }
     if (value.is_null() || value.is_undefined()) return Value(u"null");
     Value type = field(spec, u"type");
-    if (jsv::strict_equals(type, u"vec4") && jsv::strict_equals(field(field(spec, u"ui"), u"format"), u"vector") &&
-        value.is_array() && value.as_array().size() == 4 &&
-        std::all_of(value.as_array().begin(), value.as_array().end(), jsv::is_finite_number)) {
-        std::vector<JsString> parts;
-        for (const auto& v : value.as_array()) parts.push_back(format_lossless_number(v.as_number()));
-        return Value(u"[" + join_text(parts, u", ") + u"]");
+    if (jsv::strict_equals(type, u"vec4") && jsv::strict_equals(field(field(spec, u"ui"), u"format"), u"vector")) {
+        Array items;
+        if (value.is_array() && value.as_array().size() == 4 &&
+            std::all_of(value.as_array().begin(), value.as_array().end(), jsv::is_finite_number))
+            items = value.as_array();
+        else if (value.is_float32_array() && value.as_float32_array().size() == 4 &&
+                 std::all_of(value.as_float32_array().begin(), value.as_float32_array().end(),
+                             [](float v) { return std::isfinite(v); }))
+            for (float v : value.as_float32_array()) items.emplace_back(static_cast<double>(v));
+        if (items.size() == 4) {
+            std::vector<JsString> parts;
+            for (const auto& v : items) parts.push_back(format_lossless_number(v.as_number()));
+            return Value(u"[" + join_text(parts, u", ") + u"]");
+        }
     }
-    if (jsv::strict_equals(source_form, u"array") && value.is_array())
-        return Value(u"[" + format_list(value.as_array(), options) + u"]");
+    if (jsv::strict_equals(source_form, u"array") && (value.is_array() || value.is_float32_array())) {
+        Array items = value.is_array() ? value.as_array() : Array{};
+        if (value.is_float32_array())
+            for (float v : value.as_float32_array()) items.emplace_back(static_cast<double>(v));
+        return Value(u"[" + format_list(items, options) + u"]");
+    }
     if (jsv::is_object_like(value) && jsv::truthy(field(value, u"_varRef"))) return field(value, u"_varRef");
     Value ast = field(value, u"_ast");
     if (is(ast, u"Ident")) return field(ast, u"name");
+    // Arrow-function arguments compile to {fn} objects that keep their
+    // parser Func node, which carries the let name when one was used.
+    if (is(ast, u"Func")) return format_let_expr(ast, options);
     if (value.is_bool()) return Value(value.as_bool() ? u"true" : u"false");
     Value choices = field(spec, u"choices");
     if (jsv::truthy(choices) && value.is_number())
@@ -420,10 +505,7 @@ Value format_value(const Value& value, const Value& spec, const UnparseOptions& 
         const auto& s = value.as_string();
         if (!s.empty() && s[0] == u'#') return value;
         bool quoted = jsv::strict_equals(type, u"string") || (!identifier(s) && !enum_path(s));
-        if (quoted) {
-            if (s.find(u'\n') != JsString::npos) return Value(u"\"\"\"" + s + u"\"\"\"");
-            return Value(u"\"" + escape_string(s) + u"\"");
-        }
+        if (quoted) return Value(format_string_literal(s));
         return value;
     }
     if (value.is_array()) return format_array(value.as_array(), type, options);
@@ -687,11 +769,12 @@ Value format_let_expr(const Value& expr, const UnparseOptions& options) {
     Value type = field(expr, u"type");
     if (!type.is_string()) return format_value(expr, Value::null(), options);
     const auto& t = type.as_string();
-    if (t == u"Number") return Value(text(field(expr, u"value")));
+    if (t == u"Number") return Value(format_lossless_number(field(expr, u"value").as_number()));
     if (t == u"String") {
         Value raw = field(expr, u"value");
-        if (raw.is_undefined() || raw.is_function()) return Value();
-        return Value(utf8_to_js(json::stringify(raw)));
+        if (raw.is_null() || raw.is_undefined()) throw jsv::cannot_read(raw, u"includes");
+        if (!raw.is_string()) throw jsv::not_a_function(u"value.includes");
+        return Value(format_string_literal(raw.as_string()));
     }
     if (t == u"Boolean") return Value(jsv::truthy(field(expr, u"value")) ? u"true" : u"false");
     if (t == u"Ident") return field(expr, u"name");
@@ -706,7 +789,9 @@ Value format_let_expr(const Value& expr, const UnparseOptions& options) {
     if (t == u"Audio") return format_let_audio(expr, options);
     if (t == u"Call") return Value(unparse_call(expr, options));
     if (t == u"Chain") return Value(unparse_chain(field(expr, u"chain"), options));
-    if (t == u"Func") return Value(u"() => " + text(format_let_expr(field(expr, u"body"), options)));
+    if (t == u"Func")
+        // The parser keeps the arrow-function body as source text.
+        return Value(u"() => " + text(field(expr, u"src")));
     return format_value(expr, Value::null(), options);
 }
 namespace {
@@ -790,6 +875,97 @@ Value specs_for(const OpSpec* op) {
     return Value(result);
 }
 }
+// The reference builds a Set from `compiled.plans` (or []) and iterates
+// `compiled.vars` (or []). A truthy non-iterable value raises this
+// TypeError before any output line is built.
+JsString not_iterable_error(const Value& v) {
+    if (v.is_object()) return u"object is not iterable (cannot read property Symbol(Symbol.iterator))";
+    if (v.is_number()) return u"number " + jsv::to_string(v) + u" is not iterable (cannot read property Symbol(Symbol.iterator))";
+    if (v.is_bool()) return u"boolean " + jsv::to_string(v) + u" is not iterable (cannot read property Symbol(Symbol.iterator))";
+    return u"value is not iterable (cannot read property Symbol(Symbol.iterator))";
+}
+
+// Unparse a compiled control-flow plan (Branch, Break, Continue or
+// Return), or a `let` (VarAssign) inside a block body. Conditions and
+// return values come from the parser statement that the validator keeps
+// as `plan.source`. Block bodies are unparsed as programs; their lines
+// are not indented, so string literals in them keep their content. An
+// empty result stands for the reference null (an unknown plan type).
+JsString unparse_control_flow(const Value& plan, const Value& search, const UnparseOptions& options,
+                              const EffectRegistry& registry) {
+    const Value source = field(plan, u"source");
+    // `body` is the parser block, which keeps the comments before its '}'
+    auto block = [&](const Value& plans, const Value& trailing) -> JsString {
+        Object nested;
+        nested.set(u"searchNamespaces", search);
+        nested.set(u"plans", jsv::truthy(plans) ? plans : Value(Array{}));
+        nested.set(u"trailingComments", jsv::truthy(trailing) ? trailing : Value(Array{}));
+        UnparseOptions nested_options = options;
+        nested_options.omit_search_directive = Value(true);
+        Value code(unparse(Value(nested), Value(Object{}), nested_options, registry));
+        return code.as_string().empty() ? JsString() : code.as_string() + u"\n";
+    };
+    const JsString t = text(field(plan, u"type"));
+    JsString body;
+    if (t == u"Branch") {
+        auto condition = [&](const Value& node) -> Value {
+            return jsv::truthy(node) ? format_let_expr(node, options)
+                                     : format_value(field(plan, u"cond"), Value::null(), options);
+        };
+        body = u"if (" + text(condition(field(source, u"condition"))) + u") {\n" +
+               block(fallback(field(plan, u"then"), Value(Array{})), field(source, u"_thenTrailingComments")) + u"}";
+        Value elif = fallback(field(plan, u"elif"), Value(Array{}));
+        const size_t elif_count = elif.is_array() ? elif.as_array().size() : 0;
+        Value elif_source = field(source, u"elif");
+        for (size_t index = 0; index < elif_count; ++index) {
+            const Value& entry = elif.as_array()[index];
+            Value elif_condition;
+            Value trailing;
+            if (elif_source.is_array() && index < elif_source.as_array().size()) {
+                const Value& es = elif_source.as_array()[index];
+                if (jsv::truthy(es)) {
+                    elif_condition = format_let_expr(field(es, u"condition"), options);
+                    trailing = field(es, u"_trailingComments");
+                }
+            }
+            if (!jsv::truthy(elif_condition))
+                elif_condition = format_value(field(entry, u"cond"), Value::null(), options);
+            body += u" elif (" + text(elif_condition) + u") {\n" +
+                    block(fallback(field(entry, u"then"), Value(Array{})), trailing) + u"}";
+        }
+        bool emit_else;
+        if (jsv::truthy(source)) emit_else = jsv::truthy(field(source, u"else"));
+        else {
+            Value else_plans = field(plan, u"else");
+            emit_else = else_plans.is_array() && !else_plans.as_array().empty();
+        }
+        if (emit_else)
+            body += u" else {\n" + block(fallback(field(plan, u"else"), Value(Array{})),
+                                         field(source, u"_elseTrailingComments")) + u"}";
+    } else if (t == u"Break") {
+        body = u"break";
+    } else if (t == u"Continue") {
+        body = u"continue";
+    } else if (t == u"Return") {
+        const Value value = jsv::truthy(source) ? field(source, u"value") : field(plan, u"value");
+        body = jsv::truthy(value) ? u"return " + text(format_let_expr(value, options)) : JsString(u"return");
+    } else if (t == u"VarAssign") {
+        // A `let` inside a block body
+        body = u"let " + text(field(plan, u"name")) + u" = " + text(format_let_expr(field(plan, u"expr"), options));
+    } else {
+        return JsString();
+    }
+    // A block-level VarAssign is the parser node itself
+    const Value comment_owner = jsv::truthy(source) ? source : plan;
+    std::vector<JsString> parts;
+    const Value comments = field(comment_owner, u"leadingComments");
+    if (comments.is_array())
+        for (const auto& c : comments.as_array())
+            parts.push_back(c.is_null() || c.is_undefined() ? JsString() : text(c));
+    parts.push_back(body);
+    return join_text(parts, u"\n");
+}
+
 JsString unparse(const Value& compiled, const Value& override_input, const UnparseOptions& options_input,
                  const EffectRegistry& registry) {
     DepthGuard guard;
@@ -803,9 +979,68 @@ JsString unparse(const Value& compiled, const Value& override_input, const Unpar
         lines.push_back(u"search " + jsv::join(search.as_array(), u", "));
         lines.emplace_back();
     }
+    // Keep statement order: each let is written before the first remaining
+    // plan that followed it in the source. A let's `planIndex` points into
+    // `compiled.planOrder`, the plans in source order. Without them, every
+    // let comes before the plans.
+    Value plans = fallback(jsv::get(compiled, u"plans"), Value(Array{}));
+    if (jsv::truthy(plans) && !plans.is_array() && !plans.is_string() && !plans.is_float32_array())
+        throw JsError(u"TypeError", not_iterable_error(plans));
+    double plan_count = jsv::to_number(jsv::member(plans, u"length"));
+    Value plan_order = jsv::get(compiled, u"planOrder");
+    if (!plan_order.is_array()) plan_order = plans;
+    // The reference matches plans by object identity (Set(plans) plus
+    // indexOf). The compiled value reaches this unparser through copies, so
+    // identity by address is meaningless; match by a fingerprint that
+    // includes the plan's non-enumerable members (its `source` statement),
+    // which equal plans share.
+    auto plan_key = [](const Value& plan) {
+        std::string key = json::stringify(plan);
+        const Object& object = plan.as_object();
+        for (const JsString& hidden : object.hidden_keys())
+            if (const Value* value = object.find(hidden)) key += "|" + js_to_utf8(hidden) + "=" + json::stringify(*value);
+        return key;
+    };
+    std::map<std::string, size_t> plan_at;
+    for (size_t i = 0; static_cast<double>(i) < plan_count; ++i) {
+        const Value plan = jsv::get_v(plans, Value(static_cast<double>(i)));
+        if (!plan.is_object()) continue;
+        plan_at.emplace(plan_key(plan), i);
+    }
+    // planOrder holds the plans in source order. Callers may mutate plans in
+    // place (routing overrides, inserted steps) without changing the count;
+    // the source plan k then still sits at index k. Only a host that removed
+    // plans makes the counts differ, and there the fingerprint scan finds the
+    // first surviving source plan.
+    std::map<size_t, std::vector<Value>> vars_before;
     Value vars = jsv::get(compiled, u"vars");
-    if (jsv::truthy(vars) && jsv::to_number(jsv::member(vars, u"length")) > 0) {
-        for (const auto& v : jsv::iterate(vars, u"compiled.vars")) {
+    if (jsv::truthy(vars) && !vars.is_array() && !vars.is_string() && !vars.is_float32_array())
+        throw JsError(u"TypeError", not_iterable_error(vars));
+    if (vars.is_array())
+        for (const Value& v : vars.as_array()) {
+            size_t at = static_cast<size_t>(plan_count);
+            Value plan_index = jsv::get(v, u"planIndex");
+            const double start = plan_index.is_number() ? plan_index.as_number() : 0.0;
+            const double order_length = jsv::to_number(jsv::member(plan_order, u"length"));
+            if (order_length == plan_count) {
+                at = static_cast<size_t>(start < plan_count ? start : plan_count);
+            } else
+            for (double k = start; k < order_length; ++k) {
+                const Value plan = jsv::get_v(plan_order, Value(k));
+                if (!plan.is_object()) continue;
+                if (const auto found = plan_at.find(plan_key(plan)); found != plan_at.end()) {
+                    at = found->second;
+                    break;
+                }
+            }
+            if (plan_count == 0) at = 0;
+            vars_before[at].push_back(v);
+        }
+    auto emit_vars = [&](size_t at) {
+        auto group = vars_before.find(at);
+        if (group == vars_before.end()) return;
+        if (!lines.empty() && !lines.back().empty()) lines.emplace_back();
+        for (const Value& v : group->second) {
             Value comments = field(v, u"leadingComments");
             if (comments.is_array())
                 for (const auto& c : comments.as_array())
@@ -813,15 +1048,30 @@ JsString unparse(const Value& compiled, const Value& override_input, const Unpar
             lines.push_back(u"let " + text(jsv::get(v, u"name")) + u" = " +
                             text(format_let_expr(jsv::get(v, u"expr"), options)));
         }
-        lines.emplace_back();
-    }
-    Value plans = fallback(jsv::get(compiled, u"plans"), Value(Array{}));
-    double plan_count = jsv::to_number(jsv::member(plans, u"length"));
+        // Blank line separator after a let block that comes before a plan
+        if (static_cast<double>(at) < plan_count || plan_count == 0) lines.emplace_back();
+    };
+    // Emit the let declarations written before the first plan
+    emit_vars(0);
+
+    // Track global step index across all plans
     size_t global_index = 0;
+
+    // Process each plan
     for (size_t pi = 0; static_cast<double>(pi) < plan_count; ++pi) {
         Value plan = jsv::get_v(plans, Value(static_cast<double>(pi)));
+        if (pi > 0) emit_vars(pi);
         Value chain = jsv::get(plan, u"chain");
-        if (!jsv::truthy(chain) || jsv::strict_equals(jsv::member(chain, u"length"), Value(0))) continue;
+        if (!jsv::truthy(chain)) {
+            // Branch, Break, Continue, Return, or a block `let`
+            JsString statement = unparse_control_flow(plan, search, options, registry);
+            if (!statement.empty()) {
+                lines.push_back(statement);
+                if (static_cast<double>(pi + 1) < plan_count) lines.emplace_back();
+            }
+            continue;
+        }
+        if (jsv::strict_equals(jsv::member(chain, u"length"), Value(0))) continue;
         if (!chain.is_array()) throw jsv::not_a_function(u"plan.chain.map");
         const auto& steps = chain.as_array();
         std::vector<StepEntry> steps_by_temp;
@@ -931,8 +1181,8 @@ JsString unparse(const Value& compiled, const Value& override_input, const Unpar
             if (builtin && op_name == u"_subchain_begin") {
                 std::vector<JsString> fields;
                 Value n = field(args, u"name"), id = field(args, u"id");
-                if (jsv::truthy(n)) fields.push_back(u"name: \"" + text(n) + u"\"");
-                if (jsv::truthy(id)) fields.push_back(u"id: \"" + text(id) + u"\"");
+                if (jsv::truthy(n)) fields.push_back(u"name: " + format_string_literal(text(n)));
+                if (jsv::truthy(id)) fields.push_back(u"id: " + format_string_literal(text(id)));
                 add(u"subchain(" + join_text(fields, u", ") + u") {", true);
                 in_sub = true;
                 ++global_index;
@@ -1029,6 +1279,8 @@ JsString unparse(const Value& compiled, const Value& override_input, const Unpar
         lines.push_back(line);
         if (static_cast<double>(pi + 1) < plan_count) lines.emplace_back();
     }
+    // Emit the let declarations written after the last plan
+    if (plan_count > 0) emit_vars(plan_count);
     Value render = jsv::get(compiled, u"render");
     if (jsv::truthy(render)) {
         lines.emplace_back();

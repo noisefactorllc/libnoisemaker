@@ -92,6 +92,9 @@ class NM_CXX_API Object {
     bool erase(const JsString& key);
     std::vector<JsString> keys() const;
     void define_hidden(const JsString& key, Value value);
+    // Keys of the non-enumerable members only; keys() lists the
+    // enumerable ones.
+    std::vector<JsString> hidden_keys() const;
     size_t size() const;
 
  private:

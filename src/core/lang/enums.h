@@ -216,10 +216,19 @@ public:
             const Value* item = value.as_object().find(key);
             if (item) insert(JsText(key), *item);
         }
+        for (const auto& key : value.as_object().hidden_keys()) {
+            const Value* item = value.as_object().find(key);
+            if (item) define_hidden(JsText(key), *item);
+        }
     }
-    bool contains(const JsString& key) const { return find(key) != entries_.end(); }
+    bool contains(const JsString& key) const { return find(key) != entries_.end() || hidden_.contains(key); }
     bool contains(const char* key) const { return contains(utf8_to_js(key)); }
-    JsValue value(const JsString& key) const { auto it = find(key); return it == entries_.end() ? JsValue{} : it->second; }
+    JsValue value(const JsString& key) const {
+        auto it = find(key);
+        if (it != entries_.end()) return it->second;
+        auto hidden = hidden_.find(key);
+        return hidden != hidden_.end() ? hidden->second : JsValue{};
+    }
     JsValue value(const char* key) const { return value(utf8_to_js(key)); }
     void insert(const JsText& key, JsValue value) {
         auto it = find(key);
@@ -250,7 +259,15 @@ public:
     Iterator constEnd() const { return {this, entries_.size()}; }
     Iterator begin() const { return constBegin(); }
     Iterator end() const { return constEnd(); }
-    Value raw() const { libnoisemaker::Object out; for (const auto& [key, val] : entries_) out.set(key, val.raw()); return Value(std::move(out)); }
+    // Non-enumerable member (reference Object.defineProperty(..., {enumerable: false})):
+    // read by find()/value(), omitted from keys() and raw().
+    void define_hidden(const JsText& key, JsValue value) { hidden_.insert_or_assign(key, std::move(value)); }
+    Value raw() const {
+        libnoisemaker::Object out;
+        for (const auto& [key, val] : entries_) out.set(key, val.raw());
+        for (const auto& [key, val] : hidden_) out.define_hidden(key, val.raw());
+        return Value(std::move(out));
+    }
     operator Value() const { return raw(); }
     bool operator==(const JsObject& other) const {
         if (entries_.size() != other.entries_.size()) return false;
@@ -263,8 +280,11 @@ public:
     bool operator!=(const JsObject& other) const { return !(*this == other); }
 private:
     std::vector<std::pair<JsText, JsValue>> entries_;
+    std::map<JsText, JsValue> hidden_;
     std::vector<std::pair<JsText, JsValue>>::iterator find(const JsString& key) { return std::find_if(entries_.begin(), entries_.end(), [&](const auto& p) { return p.first == key; }); }
     std::vector<std::pair<JsText, JsValue>>::const_iterator find(const JsString& key) const { return std::find_if(entries_.begin(), entries_.end(), [&](const auto& p) { return p.first == key; }); }
+    // value()/contains() also read the hidden members; keys() and
+    // operator== see only the enumerable entries, like JSON.stringify.
 };
 
 inline JsValue::JsValue(const JsObject& value) : value_(value.raw()) {}

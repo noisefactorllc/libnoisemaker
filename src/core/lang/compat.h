@@ -157,6 +157,7 @@ public:
     void remove(const LangString& key) { object_.erase(key); }
     bool isEmpty() const { return object_.size() == 0; }
     LangStringList keys() const { LangStringList out; for (const auto& k : object_.keys()) out.append(LangString(k)); return out; }
+    void define_hidden(const LangString& key, const JsonValue& value) { object_.define_hidden(key, value.native()); }
     const Object& native_object() const { return object_; }
     Value native() const { return Value(object_); }
 private:

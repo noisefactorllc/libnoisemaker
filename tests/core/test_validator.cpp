@@ -488,14 +488,21 @@ int main() {
                   && ds.at(1).toObject().value(libnoisemaker::JsText(u"message")).toString() == libnoisemaker::JsText(u"Unknown enum path: 'foo.bar'"),
               "diagnostics: S003 for bogus, S001 'Unknown enum path' for foo.bar, in evaluation order");
 
-        libnoisemaker::JsText letError;
-        try {
-            validateSrc(libnoisemaker::JsText(u"search synth\nif (1) {\n  let x = 1\n}\n"));
-        } catch (const std::runtime_error& e) {
-            letError = libnoisemaker::JsText::fromUtf8(e.what());
-        }
-        check(letError == libnoisemaker::JsText(u"Cannot read properties of undefined (reading '0')"),
-              "let inside a block fails validation with the reference's TypeError text");
+        // A `let` inside a block compiles (upstream 8e62508b compileBlock):
+        // the block body keeps the VarAssign parser node as a plan.
+        const libnoisemaker::JsObject blockLet = validateSrc(libnoisemaker::JsText(u"search synth\nif (1) {\n  let x = 1\n}\n"));
+        const libnoisemaker::JsArray thenPlans = blockLet.value(libnoisemaker::JsText(u"plans"))
+                                                     .toArray()
+                                                     .first()
+                                                     .toObject()
+                                                     .value(libnoisemaker::JsText(u"then"))
+                                                     .toArray();
+        check(thenPlans.size() == 1
+                  && thenPlans.first().toObject().value(libnoisemaker::JsText(u"type")).toString()
+                         == libnoisemaker::JsText(u"VarAssign")
+                  && thenPlans.first().toObject().value(libnoisemaker::JsText(u"name")).toString()
+                         == libnoisemaker::JsText(u"x"),
+              "let inside a block compiles to a VarAssign plan in the block body");
     }
 
     // Bare state values (time/frame/...) compile to the values the reference

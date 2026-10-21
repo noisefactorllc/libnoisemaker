@@ -54,6 +54,7 @@ public:
     void from_dsl(const JsString& dsl);
     void from_dsl_value(const Value& dsl);
     JsString to_dsl() const;
+    Value to_dsl_value() const;
     bool would_change_structure(const JsString& dsl) const;
     void reset_step(const JsString& step_key);
     void set_skip(const JsString& step_key, const Value& skip);

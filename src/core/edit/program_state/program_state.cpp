@@ -111,6 +111,16 @@ double step_index(const JsString& key) {
     return std::strtod(js_to_utf8(digits).c_str(), nullptr);
 }
 JsString number_key(double number) { return format_lossless_number(number); }
+// Reference _structuresMatch: two nullish or empty structures match only
+// when both are arrays of the same length with equal effectKeys.
+bool structures_match(const Value& a, const Value& b) {
+    if (!jsv::truthy(a) || !jsv::truthy(b)) return false;
+    if (!a.is_array() || !b.is_array()) return true;  // non-array lengths read undefined on both sides
+    if (a.as_array().size() != b.as_array().size()) return false;
+    for (std::size_t i = 0; i < a.as_array().size(); ++i)
+        if (!jsv::strict_equals(field(a.as_array()[i], u"effectKey"), field(b.as_array()[i], u"effectKey"))) return false;
+    return true;
+}
 Value map_entries(const std::vector<std::pair<Value, Value>>& entries) {
     Array out;
     for (const auto& [key, value] : entries) out.emplace_back(Array{key, value});
@@ -514,7 +524,7 @@ Value ProgramStateCore::snapshot() const {
     out.set(u"media", get_all_media_inputs());
     out.set(u"text", get_all_text_inputs());
     out.set(u"batch", Value(std::move(batch_state)));
-    out.set(u"dsl", host_ ? Value(host_->dsl()) : Value::null());
+    out.set(u"dsl", host_ ? host_->dsl_value() : Value::null());
     return Value(std::move(out));
 }
 
@@ -615,11 +625,15 @@ void ProgramStateCore::apply_routing_overrides(Value& compiled) const {
     }
 }
 
-JsString ProgramStateCore::to_dsl() const {
-    const JsString current = host_ ? host_->dsl() : JsString();
-    if (current.empty()) return {};
+Value ProgramStateCore::to_dsl_value() const {
+    // Reference toDsl(): '' without a renderer or a falsy currentDsl. A
+    // non-string currentDsl fails compile() and comes back verbatim.
+    const Value current = host_ ? host_->dsl_value() : Value();
+    if (!jsv::truthy(current)) return Value(JsString());
+    if (!current.is_string()) return current;
+    const JsString& dsl = current.as_string();
     try {
-        Value compiled = compile_state_dsl(current, *registry_);
+        Value compiled = compile_state_dsl(dsl, *registry_);
         if (!jsv::truthy(field(compiled, u"plans"))) return current;
         const Value overrides = build_parameter_overrides();
         apply_routing_overrides(compiled);
@@ -669,6 +683,11 @@ JsString ProgramStateCore::to_dsl() const {
         program_console_warn({Value(u"[ProgramState] Failed to generate DSL:"), tagged_error(JsError(name, message))});
         return current;
     }
+}
+
+JsString ProgramStateCore::to_dsl() const {
+    const Value dsl = to_dsl_value();
+    return dsl.is_string() ? dsl.as_string() : JsString();
 }
 
 
@@ -965,7 +984,11 @@ Value ProgramStateCore::serialize() const {
     overrides.set(u"renderTarget", render_target_override_);
     Object out;
     out.set(u"version", Value(1));
-    out.set(u"dsl", Value(host_ ? host_->dsl() : JsString()));
+    // Reference serialize(): the renderer's currentDsl verbatim, or '' when
+    // it is absent or falsy.
+    Value serialized_dsl = host_ ? host_->dsl_value() : Value();
+    if (!jsv::truthy(serialized_dsl)) serialized_dsl = Value(JsString());
+    out.set(u"dsl", std::move(serialized_dsl));
     out.set(u"stepStates", Value(std::move(steps)));
     out.set(u"overrides", Value(std::move(overrides)));
     out.set(u"mediaInputs", map_object(media_inputs_.entries));
@@ -990,8 +1013,24 @@ void ProgramStateCore::deserialize(const Value& data) {
     const Value text = field(data, u"textInputs");
     if (jsv::truthy(media)) for (const auto& [key, value] : jsv::entries(media)) map_set(media_inputs_, Value(key), value);
     if (jsv::truthy(text)) for (const auto& [key, value] : jsv::entries(text)) map_set(text_inputs_, Value(key), value);
+    // Load DSL (this rebuilds stepStates from structure). A snapshot can
+    // hold another program than the compiled one, as an undo across an
+    // added or removed step does. Make it the renderer's current program,
+    // so toDsl() and serialize() describe it, and ask the host to
+    // recompile once the state is restored.
     const Value dsl = field(data, u"dsl");
-    if (jsv::truthy(dsl)) from_dsl_value(dsl);
+    bool program_changed = false;
+    if (jsv::truthy(dsl)) {
+        if (host_ && !jsv::strict_equals(host_->dsl_value(), dsl)) {
+            const Value compiled = host_->dsl_value().is_string()
+                ? extract_effects_from_dsl(host_->dsl_value().as_string(), *registry_)
+                : Value(Array{});  // extractEffectsFromDsl reads only strings
+            const Value effects = dsl.is_string() ? extract_effects_from_dsl(dsl.as_string(), *registry_) : Value(Array{});
+            program_changed = !structures_match(compiled, effects);
+            if (program_changed) host_->set_dsl_value(dsl);
+        }
+        from_dsl_value(dsl);
+    }
     const Value saved = field(data, u"stepStates");
     if (jsv::truthy(saved)) for (const auto& [key, saved_state] : jsv::entries(saved)) {
         auto it = std::find_if(step_states_.begin(), step_states_.end(), [&](const auto& item) { return item.first == key; });
@@ -1003,6 +1042,7 @@ void ProgramStateCore::deserialize(const Value& data) {
     Object event;
     event.set(u"structure", structure_);
     emit(u"load", Value(std::move(event)));
+    if (program_changed) emit(u"recompileNeeded");
 }
 
 }  // namespace libnoisemaker

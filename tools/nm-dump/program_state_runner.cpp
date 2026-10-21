@@ -223,7 +223,7 @@ struct Scenario {
 
     Value host_load(const JsString& dsl, bool set_dsl) {
         libnoisemaker::MockHost& host = mock();
-        if (set_dsl) host.current_dsl = dsl;
+        if (set_dsl) host.current_dsl_value = Value(dsl);
         try {
             Value graph(libnoisemaker::compileGraphJson(dsl, registry));
             const Value passes = field(graph, u"passes");
@@ -312,7 +312,7 @@ struct Scenario {
         const auto s = [&](const char16_t* key) { return string_field(op, key); };
         const auto a = [&](const char16_t* key) { return decode(field(op, key)); };
         if (name == u"fromDsl") { state->from_dsl(s(u"dsl")); return {}; }
-        if (name == u"toDsl") return Value(state->to_dsl());
+        if (name == u"toDsl") return state->to_dsl_value();
         if (name == u"wouldChangeStructure") return Value(state->would_change_structure(s(u"dsl")));
         if (name == u"getValue") return state->get_value(s(u"stepKey"), s(u"paramName"));
         if (name == u"setValue") { state->set_value(s(u"stepKey"), s(u"paramName"), a(u"value")); return {}; }
@@ -419,7 +419,7 @@ struct Scenario {
         const JsString dsl = string_field(op, u"dsl");
         if (name == u"host.load") return host_load(dsl, true);
         if (name == u"host.loadGraph") return host_load(dsl, false);
-        if (name == u"host.setDsl") { mock().current_dsl = dsl; return {}; }
+        if (name == u"host.setDsl") { mock().current_dsl_value = Value(dsl); return {}; }
         if (name == u"host.clearPipeline") { mock().pipeline.reset(); pass_json.clear(); return {}; }
         if (name == u"host.setMethods") {
             const Value values = field(op, u"methods");
