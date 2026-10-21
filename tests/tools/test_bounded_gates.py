@@ -18,9 +18,10 @@ class FixturePartitionTests(unittest.TestCase):
         script = r'''
 import { readFileSync as read } from 'node:fs';
 import vm from 'node:vm';
+import { pathToFileURL } from 'node:url';
 const root = process.argv[1], mode = process.argv[2];
 let partitionFixtureFiles = files => files;
-try { ({ partitionFixtureFiles } = await import(root + '/tools/fixture_partition.mjs')); }
+try { ({ partitionFixtureFiles } = await import(pathToFileURL(root + '/tools/fixture_partition.mjs').href)); }
 catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
 const file = mode === 'dsl' ? 'reference-dsl-tools.mjs' : 'reference-program-state.mjs';
 const source = read(root + '/tools/' + file, 'utf8');
@@ -87,6 +88,25 @@ class BoundedGateTests(unittest.TestCase):
             self.assertEqual('once', attempts.read_text())
             self.assertEqual(7, runner.bounded([sys.executable, '-c', 'raise SystemExit(7)'], 1))
 
+    def test_windows_timeout_terminates_the_exact_child_tree_without_retry(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        runner = self.runner()
+        real = runner.subprocess
+        process = SimpleNamespace(pid=12345, wait=Mock(side_effect=[
+            real.TimeoutExpired(['synthetic'], .1), -1]))
+        launch, stop = Mock(return_value=process), Mock()
+        runner.os = SimpleNamespace(name='nt')
+        runner.subprocess = SimpleNamespace(Popen=launch, run=stop,
+            TimeoutExpired=real.TimeoutExpired, DEVNULL=real.DEVNULL,
+            CREATE_NEW_PROCESS_GROUP=512)
+        self.assertEqual(124, runner.bounded(['synthetic'], .1))
+        launch.assert_called_once_with(['synthetic'], env=None,
+                                      start_new_session=False, creationflags=512)
+        stop.assert_called_once_with(['taskkill', '/PID', '12345', '/T', '/F'],
+            check=True, stdout=real.DEVNULL, stderr=real.DEVNULL, timeout=5)
+        self.assertEqual(2, process.wait.call_count)
+
     def test_plan_covers_original_gates_and_fixture_partitions_exactly_once(self):
         runner = self.runner()
         with tempfile.TemporaryDirectory() as directory:
@@ -129,18 +149,25 @@ class BoundedGateTests(unittest.TestCase):
             (root / 'tests/__init__.py').touch()
             (root / 'tests/tools/__init__.py').touch()
             (root / 'tests/tools/test_smoke.py').write_text('import unittest\nclass Smoke(unittest.TestCase):\n def test_ok(self): pass\n')
-            for name in ('cmake', 'ctest', 'ninja'):
+            (root / 'build-test').mkdir()
+            for name in ('cmake', 'ninja'):
                 path = root / 'bin' / name
-                path.write_text('#!' + sys.executable + '\nimport pathlib,sys\n'
+                path.write_text('#!' + pathlib.Path(sys.executable).as_posix() + '\nimport pathlib,sys\n'
                                 f'pathlib.Path({str(root / "commands")!r}).open("a").write(repr(sys.argv)+"\\n")\n')
                 path.chmod(0o700)
-            env = dict(os.environ, NM_PYTHON=sys.executable,
+            env = dict(os.environ, NM_PYTHON=pathlib.Path(sys.executable).as_posix(),
                        PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'])
-            result = subprocess.run(['bash', str(root / 'scripts/test')], env=env,
+            bash = 'bash'
+            if os.name == 'nt':
+                # Windows' System32 bash is a WSL launcher, not the Git shell.
+                git = pathlib.Path(shutil.which('git'))
+                bash = str(git.parent.parent / 'bin/bash.exe')
+                self.assertTrue(pathlib.Path(bash).is_file())
+            result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=env,
                                     capture_output=True, text=True, timeout=5)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             commands = (root / 'commands').read_text()
-            self.assertIn("'--timeout', '300'", commands)
+            self.assertIn('--output-on-failure --timeout 300', result.stdout)
             self.assertIn('[gate] start: ctest', result.stdout)
             self.assertIn('-m unittest discover', result.stdout)
 

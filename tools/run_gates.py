@@ -21,11 +21,17 @@ def bounded(command, seconds=300, env=None):
         raise ValueError('gate timeout must be positive and at most 300 seconds')
     started = time.monotonic()
     print('[gate] start: ' + shlex.join(map(str, command)), flush=True)
-    process = subprocess.Popen(command, env=env, start_new_session=True)
+    windows = os.name == 'nt'
+    process = subprocess.Popen(command, env=env, start_new_session=not windows,
+                               creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0)
     try:
         result = process.wait(timeout=seconds)
     except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
+        if windows:
+            subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
         process.wait()
         print('[gate] timeout: child process group stopped', flush=True)
         result = 124
