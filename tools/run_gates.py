@@ -21,7 +21,21 @@ def bounded(command, seconds=300, env=None):
     if not math.isfinite(seconds) or not 0 < seconds <= 300:
         raise ValueError('gate timeout must be positive and at most 300 seconds')
     started = time.monotonic()
-    print('[gate] start: ' + shlex.join(map(str, command)), flush=True)
+    words = [str(word) for word in command]
+    line = shlex.join(words)
+    # Giant echoed commands can wedge the runner's output capture when the
+    # stream stalls; keep the echoed start line short.
+    if len(line) > 400:
+        shown = 0
+        kept = []
+        for word in words:
+            width = len(shlex.quote(word)) + 1
+            if shown + width > 400:
+                break
+            kept.append(word)
+            shown += width
+        line = shlex.join(kept) + f' ... [truncated, {len(words)} args, {len(line)} chars]'
+    print('[gate] start: ' + line, flush=True)
     windows = os.name == 'nt'
     process = subprocess.Popen(command, env=env, start_new_session=not windows,
                                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if windows else 0)

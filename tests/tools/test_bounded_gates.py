@@ -99,6 +99,20 @@ class BoundedGateTests(unittest.TestCase):
             self.assertIn('[gate] start:', buffer.getvalue())
             self.assertEqual(2, len(list(receipts.glob('*.json'))))
 
+    def test_start_line_echoes_a_bounded_prefix_of_giant_commands(self):
+        runner = self.runner()
+        import io
+        import contextlib
+        long_word = 'x' * 5000
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            self.assertEqual(0, runner.bounded([sys.executable, '-c', 'pass', long_word], 60))
+        line = [l for l in buffer.getvalue().splitlines() if l.startswith('[gate] start:')][0]
+        self.assertLess(len(line), 700)
+        self.assertIn('truncated', line)
+        self.assertIn('pass', line)
+        self.assertNotIn(long_word, line)
+
     def interpreter_startup(self):
         started = time.monotonic()
         subprocess.run([sys.executable, '-c', 'import subprocess,pathlib'], timeout=60)
@@ -197,6 +211,7 @@ class BoundedGateTests(unittest.TestCase):
                 path.chmod(0o700)
             env = dict(os.environ, NM_PYTHON=pathlib.Path(sys.executable).as_posix(),
                        PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'])
+            env.pop('NM_CHANGED_FILES', None)
             bash = 'bash'
             if os.name == 'nt':
                 # Windows' System32 bash is a WSL launcher, not the Git shell.
@@ -210,6 +225,21 @@ class BoundedGateTests(unittest.TestCase):
             self.assertIn('--output-on-failure --timeout 300', result.stdout)
             self.assertIn('[gate] start: ctest', result.stdout)
             self.assertIn('-m unittest discover', result.stdout)
+            # With NM_CHANGED_FILES the entrypoint runs only the tests that
+            # exercise the changed paths.
+            focused = dict(env, NM_CHANGED_FILES='tools/run_gates.py\n')
+            result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=focused,
+                                    capture_output=True, text=True, timeout=5)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn('-m unittest discover', result.stdout)
+            self.assertNotIn('ctest', result.stdout)
+            core = dict(env, NM_CHANGED_FILES='src/core/value.cpp\nparity/x.json\n')
+            result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=core,
+                                    capture_output=True, text=True, timeout=5)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn('[gate] start: ctest', result.stdout)
+            # A gate run needs the native build, even without core sources.
+            self.assertIn('cmake', (root / 'commands').read_text())
 
     def test_missing_duplicate_or_wrong_partition_receipt_cannot_pass(self):
         runner = self.runner()

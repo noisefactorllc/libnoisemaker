@@ -10,6 +10,9 @@
 #   NM_TEST_BUILD_DIR  build directory (default: build-test)
 #   NM_TEST_JOBS       parallel compile jobs (default: 2)
 #   NM_PYTHON          Python interpreter to try first
+#   NM_CHANGED_FILES   changed paths, one per line. When set, run only the
+#                      tests that exercise those paths; when unset, run the
+#                      whole suite exactly as before.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,13 +36,37 @@ if [[ -z "$python" ]]; then
   exit 1
 fi
 
+run_core=true; run_tools=true; run_gates=true
+if [[ -n "${NM_CHANGED_FILES:-}" ]]; then
+  run_core=false; run_tools=false; run_gates=false
+  while IFS= read -r path; do
+    [[ -z "$path" ]] && continue
+    case "$path" in
+      # Core sources: the native tests and the parity gates exercise them.
+      src/*|include/*|host/*|tests/core/*|tests/CMakeLists.txt|CMakeLists.txt|cmake/*)
+        run_core=true; run_gates=true ;;
+      parity/*) run_gates=true ;;
+      tools/*|scripts/*|tests/tools/*) run_tools=true ;;
+      *) run_tools=true ;;
+    esac
+  done <<< "$NM_CHANGED_FILES"
+  # The parity gates compare the native build, so a gate run needs the build.
+  $run_gates && run_core=true
+fi
+
 generator=()
 if command -v ninja >/dev/null 2>&1; then generator=(-G Ninja); fi
 
-cmake -S . -B "$build_dir" ${generator[@]+"${generator[@]}"} -DCMAKE_BUILD_TYPE=Release \
-  -DNM_BUILD_GPU=OFF -DPython3_EXECUTABLE="$python"
-cmake --build "$build_dir" --parallel "$jobs"
-"$python" tools/run_gates.py --run ctest --test-dir "$build_dir" --output-on-failure --timeout 300
-"$python" tools/run_gates.py --run "$python" -m unittest discover -s tests/tools -t .
-NM_BUILD_DIR="$build_dir" NM_PYTHON="$python" scripts/gates
+if $run_core; then
+  cmake -S . -B "$build_dir" ${generator[@]+"${generator[@]}"} -DCMAKE_BUILD_TYPE=Release \
+    -DNM_BUILD_GPU=OFF -DPython3_EXECUTABLE="$python"
+  cmake --build "$build_dir" --parallel "$jobs"
+  "$python" tools/run_gates.py --run ctest --test-dir "$build_dir" --output-on-failure --timeout 300
+fi
+if $run_tools; then
+  "$python" tools/run_gates.py --run "$python" -m unittest discover -s tests/tools -t .
+fi
+if $run_gates; then
+  NM_BUILD_DIR="$build_dir" NM_PYTHON="$python" scripts/gates
+fi
 echo "scripts/test: all tests and gates passed"
