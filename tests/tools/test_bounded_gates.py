@@ -72,6 +72,38 @@ class BoundedGateTests(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
+    def test_retained_receipt_skips_a_child_and_invalidates_on_other_head(self):
+        runner = self.runner()
+        with tempfile.TemporaryDirectory() as directory:
+            receipts = pathlib.Path(directory) / 'receipts'
+            plan = [{'group': 'gate', 'command': [sys.executable, '-c', 'pass']}]
+            import io
+            import contextlib
+            head_a, head_b = 'a' * 40, 'b' * 40
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                self.assertEqual(0, runner.run_plan(plan, 1, 60, receipts, head_a))
+            self.assertIn('[gate] start:', buffer.getvalue())
+            self.assertEqual(1, len(list(receipts.glob('*.json'))))
+            receipt = json.loads(next(receipts.glob('*.json')).read_text())
+            self.assertEqual({'head': head_a, 'command': [sys.executable, '-c', 'pass'], 'exit': 0}, receipt)
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                self.assertEqual(0, runner.run_plan(plan, 1, 60, receipts, head_a))
+            self.assertIn('[gate] skip (retained receipt):', buffer.getvalue())
+            self.assertNotIn('[gate] start:', buffer.getvalue())
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                self.assertEqual(0, runner.run_plan(plan, 1, 60, receipts, head_b))
+            # A different head invalidates the receipt and runs the child again.
+            self.assertIn('[gate] start:', buffer.getvalue())
+            self.assertEqual(2, len(list(receipts.glob('*.json'))))
+
+    def interpreter_startup(self):
+        started = time.monotonic()
+        subprocess.run([sys.executable, '-c', 'import subprocess,pathlib'], timeout=60)
+        return time.monotonic() - started
+
     def test_timeout_stops_only_its_process_group_without_retry(self):
         runner = self.runner()
         with tempfile.TemporaryDirectory() as directory:
@@ -82,7 +114,11 @@ class BoundedGateTests(unittest.TestCase):
                        'import subprocess,sys,time,pathlib; '
                        f'pathlib.Path({str(attempts)!r}).write_text("once"); '
                        f'subprocess.Popen([sys.executable,"-c",{descendant!r}]); time.sleep(2)']
-            self.assertEqual(124, runner.bounded(command, .15))
+            # The child writes `attempts` in its first statement, so the kill
+            # must land after interpreter startup; the descendant must not
+            # reach its marker before the kill (its sleep is 0.4 s).
+            budget = max(.15, self.interpreter_startup() * 3)
+            self.assertEqual(124, runner.bounded(command, budget))
             time.sleep(.45)
             self.assertFalse(marker.exists())
             self.assertEqual('once', attempts.read_text())
@@ -126,13 +162,17 @@ class BoundedGateTests(unittest.TestCase):
                     self.assertEqual({'index': row['partition'], 'count': 16},
                                      json.loads(row['suite'].read_text())[key][0]['partition'])
             ordinary_commands = [row['command'][1] for row in plan if row['group'] == 'gate']
-            self.assertEqual([
-                'tools/catalog/fetch-catalog.mjs', 'tools/catalog/check-catalog.mjs',
-                'parity/check_func_bodies_differential.mjs', 'parity/check_frontend.mjs',
-                'parity/check_frontend.mjs', 'parity/check_wgsl.mjs', 'parity/check_uniforms.mjs',
-                'parity/check_backend.mjs', 'parity/check_js_math.mjs', 'parity/check_pipeline.mjs',
-                'parity/check_registry.mjs', 'parity/check_midi_state.mjs',
-                'parity/check_audio_state.mjs', 'parity/check_obj_parser.mjs'], ordinary_commands)
+            self.assertEqual(
+                ['tools/catalog/fetch-catalog.mjs', 'tools/catalog/check-catalog.mjs',
+                 'parity/check_func_bodies_differential.mjs']
+                # One frontend child per stage: the stages together exceed
+                # the 300 s bound, and every stage covers the same programs.
+                + ['parity/check_frontend.mjs'] * 12
+                + ['parity/check_wgsl.mjs', 'parity/check_uniforms.mjs',
+                   'parity/check_backend.mjs', 'parity/check_js_math.mjs', 'parity/check_pipeline.mjs',
+                   'parity/check_registry.mjs', 'parity/check_midi_state.mjs',
+                   'parity/check_audio_state.mjs', 'parity/check_obj_parser.mjs'],
+                ordinary_commands)
 
     def test_test_entrypoint_bounds_unit_suites_without_running_real_tests(self):
         import os
