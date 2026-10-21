@@ -39,7 +39,7 @@ if command -v ninja >/dev/null 2>&1; then generator=(-G Ninja); fi
 cmake -S . -B "$build_dir" ${generator[@]+"${generator[@]}"} -DCMAKE_BUILD_TYPE=Release \
   -DNM_BUILD_GPU=OFF -DPython3_EXECUTABLE="$python"
 cmake --build "$build_dir" --parallel "$jobs"
-ctest --test-dir "$build_dir" --output-on-failure
-"$python" -m unittest discover -s tests/tools -t .
-NM_BUILD_DIR="$build_dir" scripts/gates
+"$python" tools/run_gates.py --run ctest --test-dir "$build_dir" --output-on-failure --timeout 300
+"$python" tools/run_gates.py --run "$python" -m unittest discover -s tests/tools -t .
+NM_BUILD_DIR="$build_dir" NM_PYTHON="$python" scripts/gates
 echo "scripts/test: all tests and gates passed"

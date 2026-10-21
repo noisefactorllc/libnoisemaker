@@ -62,6 +62,7 @@ import { closeSync, openSync, readFileSync, readdirSync, writeSync } from 'node:
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { bootstrapReference } from './reference-oracle.mjs'
+import { partitionFixtureFiles } from './fixture_partition.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REFERENCE_ROOT = resolve(process.env.NM_REFERENCE_ROOT)
@@ -718,14 +719,16 @@ function resolveOp (ctx, op) {
 // ---------------------------------------------------------------------------
 
 function fixtureScenarios (gen) {
-  const out = []
+  const files = []
   for (const dir of gen.dirs) {
     for (const f of readdirSync(join(ROOT, dir)).filter(f => f.endsWith('.dsl')).sort()) {
-      const dsl = readFileSync(join(ROOT, dir, f), 'utf8')
-      out.push({ name: `${dir.replace(/^parity\//, '')}/${f.replace(/\.dsl$/, '')}`, host: gen.host, ops: [{ op: 'fixture', dsl }] })
+      files.push({ dir, name: f.replace(/\.dsl$/, ''), path: join(ROOT, dir, f) })
     }
   }
-  return out
+  return partitionFixtureFiles(files, gen.partition).map(({ dir, name, path }) => ({
+    name: `${dir.replace(/^parity\//, '')}/${name}`, host: gen.host,
+    ops: [{ op: 'fixture', dsl: readFileSync(path, 'utf8') }]
+  }))
 }
 
 // Probe values for convertParameterForUniform: every JavaScript type the

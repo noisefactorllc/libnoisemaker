@@ -44,6 +44,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { bootstrapReference } from './reference-oracle.mjs'
+import { partitionFixtureFiles } from './fixture_partition.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REFERENCE_ROOT = resolve(process.env.NM_REFERENCE_ROOT)
@@ -565,19 +566,25 @@ function generateUpdates (compiled) {
 function * generateFixtureCases (m, gen, resolver) {
   const every = gen.compatibleEvery || 0
   let n = 0
-  for (const { dir, name, path } of fixtureFiles(gen.dirs)) {
+  const files = fixtureFiles(gen.dirs)
+  const selected = new Set(partitionFixtureFiles(files, gen.partition))
+  for (const file of files) {
+    const { dir, name, path } = file
     const src = readFileSync(path, 'utf8')
     const id = `${dir.replace(/^parity\//, '')}/${name}`
     let compiled
     try {
       compiled = resolver.compile(src)
     } catch {
+      if (!selected.has(file)) continue
       for (const contextLines of [undefined, 0, 1, 4]) {
         yield { id: `${id}#formatDslError${contextLines === undefined ? '' : `:${contextLines}`}`, op: 'formatDslError', source: src, error: { $errorOf: { $compile: src } }, ...(contextLines === undefined ? {} : { options: { contextLines } }) }
       }
       yield { id: `${id}#isDslSyntaxError`, op: 'isDslSyntaxError', error: { $errorOf: { $compile: src } } }
       continue
     }
+    const compatible = every && (n++ % every === 0)
+    if (!selected.has(file)) continue
     yield { id: `${id}#unparse`, op: 'unparse', compiled: { $compile: src } }
     yield { id: `${id}#unparse:host`, op: 'unparse', compiled: { $compile: src }, options: HOST_UNPARSE_OPTIONS }
     yield { id: `${id}#unparse:compact`, op: 'unparse', compiled: { $compile: src }, overrides: {}, options: { multilineKwargs: false, omitSearchDirective: true } }
@@ -616,7 +623,7 @@ function * generateFixtureCases (m, gen, resolver) {
       yield { id: `${id}#replace:filter.grain`, op: 'replaceEffect', compiled: { $compile: src }, stepIndex: filter.stepIndex, newEffectName: 'grain', newArgs: { amount: 5, bogus: 1 } }
       yield { id: `${id}#replace:illegal-filter`, op: 'replaceEffect', compiled: { $compile: src }, stepIndex: filter.stepIndex, newEffectName: 'noise' }
     }
-    if (every && (n++ % every === 0) && steps.length) {
+    if (compatible && steps.length) {
       const target = steps[steps.length - 1]
       yield { id: `${id}#compatible`, op: 'getCompatibleReplacements', compiled: { $compile: src }, stepIndex: target.stepIndex, options: { preflight: n % 2 === 0, manifest: { $manifest: true } } }
     }
