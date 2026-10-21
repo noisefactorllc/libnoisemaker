@@ -44,20 +44,26 @@ void plain_ast(libnoisemaker::Value& value) {
     }
 }
 
-void restore_ast_sidecars(libnoisemaker::Value& isolated, const libnoisemaker::Value& parsed) {
-    if (isolated.is_array() && parsed.is_array()) {
-        auto& target = isolated.as_array();
-        const auto& source = parsed.as_array();
-        for (std::size_t i = 0; i < std::min(target.size(), source.size()); ++i)
-            restore_ast_sidecars(target[i], source[i]);
-    } else if (isolated.is_object() && parsed.is_object()) {
-        const libnoisemaker::Value* diagnostics = parsed.as_object().find(u"subchainArgumentDiagnostics");
-        if (diagnostics && !isolated.as_object().has(u"subchainArgumentDiagnostics"))
-            isolated.as_object().set(u"subchainArgumentDiagnostics", *diagnostics);
-        for (const auto& key : isolated.as_object().keys()) {
-            const libnoisemaker::Value* source = parsed.as_object().find(key);
-            if (source) restore_ast_sidecars(isolated.as_object()[key], *source);
+void restore_ast_sidecars(libnoisemaker::Value& isolated, const libnoisemaker::Value& sidecars) {
+    if (!sidecars.is_array()) throw std::invalid_argument("isolated AST sidecars must be an array");
+    for (const auto& entry : sidecars.as_array()) {
+        if (!entry.is_object()) throw std::invalid_argument("isolated AST sidecar must be an object");
+        const auto* path = entry.as_object().find(u"path");
+        const auto* fields = entry.as_object().find(u"fields");
+        if (!path || !path->is_array() || !fields || !fields->is_object())
+            throw std::invalid_argument("isolated AST sidecar requires path and fields");
+        auto* target = &isolated;
+        for (const auto& key : path->as_array()) {
+            if (target->is_array() && key.is_number() && key.as_number() >= 0
+                && key.as_number() < static_cast<double>(target->as_array().size())) {
+                target = &target->as_array()[static_cast<std::size_t>(key.as_number())];
+            } else if (target->is_object() && key.is_string() && target->as_object().has(key.as_string())) {
+                target = &target->as_object()[key.as_string()];
+            } else throw std::invalid_argument("isolated AST sidecar path is absent");
         }
+        if (!target->is_object()) throw std::invalid_argument("isolated AST sidecar target must be an object");
+        for (const auto* key : {u"planIndex", u"position", u"subchainArgumentDiagnostics"})
+            if (const auto* value = fields->as_object().find(key)) target->as_object().define_hidden(key, *value);
     }
 }
 
@@ -101,7 +107,7 @@ libnoisemaker::Value normalized_graph(const libnoisemaker::JsString& source) {
 }
 
 libnoisemaker::Value result_for(const std::string& stage, const libnoisemaker::JsString& source,
-                     const libnoisemaker::Value* isolated) {
+                     const libnoisemaker::Value* isolated, const libnoisemaker::Value* sidecars) {
     if (stage == "graph") return normalized_graph(source);
     if (stage == "graph-normalized") {
         const libnoisemaker::Object graph = libnoisemaker::compileGraphJson(source, registry_instance());
@@ -113,7 +119,7 @@ libnoisemaker::Value result_for(const std::string& stage, const libnoisemaker::J
     }
     if (stage == "validated") {
         libnoisemaker::Value ast = isolated ? *isolated : libnoisemaker::parse(libnoisemaker::lexTokens(source));
-        if (isolated) restore_ast_sidecars(ast, libnoisemaker::parse(libnoisemaker::lexTokens(source)));
+        if (isolated && sidecars) restore_ast_sidecars(ast, *sidecars);
         libnoisemaker::Value validated = libnoisemaker::validate(ast, registry_instance());
         plain_ast(validated);
         return validated;
@@ -180,6 +186,7 @@ int dump(int argc, char** argv) {
         record.set(u"stage", libnoisemaker::Value(libnoisemaker::utf8_to_js(stage)));
         try {
             const libnoisemaker::Value* isolated = nullptr;
+            const libnoisemaker::Value* sidecars = nullptr;
             if (!isolated_path.empty()) {
                 const auto it = isolated_records.find(program);
                 if (it == isolated_records.end()) throw std::runtime_error("missing isolated record");
@@ -190,8 +197,9 @@ int dump(int argc, char** argv) {
                     continue;
                 }
                 isolated = it->second.as_object().find(u"result");
+                sidecars = it->second.as_object().find(u"astSidecars");
             }
-            record.set(u"result", result_for(stage, libnoisemaker::utf8_to_js(read_text(path)), isolated));
+            record.set(u"result", result_for(stage, libnoisemaker::utf8_to_js(read_text(path)), isolated, sidecars));
         } catch (const libnoisemaker::DslSyntaxError& error) {
             record.set(u"error", error_record(u"SyntaxError", error.message()));
         } catch (const libnoisemaker::CompilationError& error) {

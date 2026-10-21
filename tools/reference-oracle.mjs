@@ -198,6 +198,24 @@ export function runStage (mod, stage, src) {
   throw new Error(`unknown stage ${stage}`)
 }
 
+const AST_SIDECAR_FIELDS = ['planIndex', 'position', 'subchainArgumentDiagnostics']
+
+function astSidecars (value, path = [], out = []) {
+  if (!value || typeof value !== 'object') return out
+  const fields = {}
+  for (const key of AST_SIDECAR_FIELDS) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (descriptor && !descriptor.enumerable) fields[key] = descriptor.value
+  }
+  if (Object.keys(fields).length) out.push({ path, fields })
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => astSidecars(item, [...path, index], out))
+  } else {
+    for (const key of Object.keys(value)) astSidecars(value[key], [...path, key], out)
+  }
+  return out
+}
+
 async function main () {
   const argv = process.argv.slice(2)
   const stage = argv.shift()
@@ -218,7 +236,12 @@ async function main () {
     const src = readFileSync(file, 'utf8')
     let record
     try {
-      record = { program, stage, result: runStage(mod, stage, src) }
+      if (stage === 'ast') {
+        const ast = mod.parse(mod.lex(src))
+        record = { program, stage, result: plain(ast), astSidecars: astSidecars(ast) }
+      } else {
+        record = { program, stage, result: runStage(mod, stage, src) }
+      }
     } catch (err) {
       record = { program, stage, error: thrown(err) }
     }
