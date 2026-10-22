@@ -123,17 +123,18 @@ class BoundedGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             marker = pathlib.Path(directory) / 'late'
             attempts = pathlib.Path(directory) / 'attempts'
-            descendant = f'import time,pathlib; time.sleep(.4); pathlib.Path({str(marker)!r}).touch()'
+            budget = max(.15, self.interpreter_startup() * 3)
+            descendant = f'import time,pathlib; time.sleep({budget * 1.5 + .2!r}); pathlib.Path({str(marker)!r}).touch()'
             command = [sys.executable, '-c',
                        'import subprocess,sys,time,pathlib; '
                        f'pathlib.Path({str(attempts)!r}).write_text("once"); '
                        f'subprocess.Popen([sys.executable,"-c",{descendant!r}]); time.sleep(2)']
             # The child writes `attempts` in its first statement, so the kill
-            # must land after interpreter startup; the descendant must not
-            # reach its marker before the kill (its sleep is 0.4 s).
-            budget = max(.15, self.interpreter_startup() * 3)
+            # must land after interpreter startup; the descendant's sleep
+            # exceeds the budget, so it must not reach its marker before the
+            # kill.
             self.assertEqual(124, runner.bounded(command, budget))
-            time.sleep(.45)
+            time.sleep(budget * 1.5 + .2)
             self.assertFalse(marker.exists())
             self.assertEqual('once', attempts.read_text())
             self.assertEqual(7, runner.bounded([sys.executable, '-c', 'raise SystemExit(7)'], 1))
