@@ -152,6 +152,12 @@ struct Scenario {
     Array events;
     Array logs;
     std::size_t index = 0;
+    // The registry's enum trees for the conversion probes, built once per
+    // scenario: nothing changes the registry while scenarios run, and a Value
+    // copy is deep, so building them for every probe dominated the
+    // conversions suite.
+    std::optional<Value> std_enums_cache;
+    std::optional<Value> host_enums_cache;
 
     Scenario(libnoisemaker::EffectRegistry& registry, JsString name, const Value& host)
         : registry(registry), name(std::move(name)) {
@@ -161,6 +167,21 @@ struct Scenario {
             logs.push_back(object({{u"level", Value(level)}, {u"args", Value(encoded)}}));
         });
         new_state(host);
+    }
+
+    // The enum tree a conversion probe names: "std", the standard enums, or
+    // any other kind, the standard enums merged with the registered effects'.
+    const Value& probe_enums(const JsString& kind) {
+        if (kind == u"std") {
+            if (!std_enums_cache) std_enums_cache = registry.enums().std().raw();
+            return *std_enums_cache;
+        }
+        if (!host_enums_cache) {
+            Object combined = registry.enums().std().raw().as_object();
+            merge(combined, registry.enums().project().raw());
+            host_enums_cache = Value(combined);
+        }
+        return *host_enums_cache;
     }
 
     Value same(const std::string& key, const Value& encoded) {
@@ -450,23 +471,15 @@ struct Scenario {
         if (name == u"newState") { new_state(field(op, u"host")); return {}; }
         if (name == u"convertParameterForUniform") {
             const JsString kind = string_field(op, u"enums");
-            Value enums;
-            if (kind == u"empty") enums = Value(Object{});
-            else if (kind == u"none") enums = Value();
-            else if (kind == u"std") enums = registry.enums().std().raw();
-            else { Object combined = registry.enums().std().raw().as_object();
-                   merge(combined, registry.enums().project().raw()); enums = Value(combined); }
+            const Value fixed = kind == u"empty" ? Value(Object{}) : Value();
+            const Value& enums = kind == u"empty" || kind == u"none" ? fixed : probe_enums(kind);
             return libnoisemaker::convert_parameter_for_uniform(decode(field(op, u"value")),
                                                      decode(field(op, u"spec")), enums);
         }
         if (name == u"resolveEnumValue") {
             const JsString kind = string_field(op, u"enums");
-            Value enums;
-            if (kind == u"empty") enums = Value(Object{});
-            else if (kind == u"none") enums = Value();
-            else if (kind == u"std") enums = registry.enums().std().raw();
-            else { Object combined = registry.enums().std().raw().as_object();
-                   merge(combined, registry.enums().project().raw()); enums = Value(combined); }
+            const Value fixed = kind == u"empty" ? Value(Object{}) : Value();
+            const Value& enums = kind == u"empty" || kind == u"none" ? fixed : probe_enums(kind);
             return libnoisemaker::resolve_enum_value(decode(field(op, u"path")), enums);
         }
         return run_state_op(op);

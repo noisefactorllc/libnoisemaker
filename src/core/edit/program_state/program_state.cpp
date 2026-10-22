@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <exception>
 #include <limits>
+#include <memory>
 
 namespace libnoisemaker {
 namespace {
@@ -639,11 +640,14 @@ Value ProgramStateCore::to_dsl_value() const {
         apply_routing_overrides(compiled);
         UnparseOptions options;
         options.enums = host_ && jsv::truthy(host_->enum_tree()) ? host_->enum_tree() : Value(Object{});
-        const Value enums = options.enums;
-        options.custom_formatter = [enums](const Value& value, const Value& spec) {
-            UnparseOptions format_options;
-            format_options.enums = enums;
-            return format_value(value, spec, format_options, Value());
+        // The reference formats each value with { enums }, the same enum
+        // tree every time. Build those options once: a Value copy is deep,
+        // and copying the whole tree for every formatted value dominated
+        // toDsl().
+        auto format_options = std::make_shared<UnparseOptions>();
+        format_options->enums = options.enums;
+        options.custom_formatter = [format_options](const Value& value, const Value& spec) {
+            return format_value(value, spec, *format_options, Value());
         };
         EffectRegistry* registry = registry_;
         options.get_effect_def = [registry](const Value& name, const Value& ns) {
