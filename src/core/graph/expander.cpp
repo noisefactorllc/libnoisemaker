@@ -120,9 +120,23 @@ struct PassKeyOrder {
     JsList outputs;
 };
 
+// /^global_(xyz|vel|rgba|points_trail|life_data|[a-z]+_base_color)$/: the
+// pipeline's shared state and each behavior's global_<behavior>_base_color.
 bool isParticleTexture(const JsText& name) {
-    return name == u"global_xyz" || name == u"global_vel" || name == u"global_rgba" ||
-           name == u"global_points_trail" || name == u"global_life_data";
+    if (name == u"global_xyz" || name == u"global_vel" || name == u"global_rgba" ||
+        name == u"global_points_trail" || name == u"global_life_data") {
+        return true;
+    }
+    const JsText prefix(u"global_");
+    const JsText suffix(u"_base_color");
+    if (!name.startsWith(prefix) || !name.endsWith(suffix)) return false;
+    const std::ptrdiff_t start = std::ssize(prefix);
+    const std::ptrdiff_t end = std::ssize(name) - std::ssize(suffix);
+    if (end <= start) return false;
+    for (std::ptrdiff_t i = start; i < end; ++i) {
+        if (name[i] < u'a' || name[i] > u'z') return false;
+    }
+    return true;
 }
 
 } // namespace

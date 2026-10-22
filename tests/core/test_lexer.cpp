@@ -410,7 +410,7 @@ int main() {
         check(libnoisemaker::diagStage(LangString(u"R001")) == LangString(u"runtime"), "diagStage R001");
         check(libnoisemaker::diagSeverity(LangString(u"L001")) == LangString(u"error"), "diagSeverity L001 error");
         check(libnoisemaker::diagSeverity(LangString(u"S002")) == LangString(u"warning"), "diagSeverity S002 warning");
-        check(libnoisemaker::diagStage(LangString(u"S007")) == LangString(u"unknown"), "diagStage S007 retired");
+        check(libnoisemaker::diagSeverity(LangString(u"S007")) == LangString(u"warning"), "diagSeverity S007 warning");
         check(libnoisemaker::diagSeverity(LangString(u"S008")) == LangString(u"warning"), "diagSeverity S008 warning");
         check(libnoisemaker::diagDefaultMessage(LangString(u"L003")) == LangString(u"Unterminated comment"), "diagDefaultMessage L003");
         check(libnoisemaker::diagDefaultMessage(LangString(u"L004")) == LangString(u"Output surface reference out of range"), "diagDefaultMessage L004");

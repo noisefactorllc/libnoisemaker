@@ -77,6 +77,14 @@ JsText sanitizeEnumName(const JsText& name) {
     return isValidIdentifier(stripped) ? stripped : JsText();
 }
 
+// lang/paramAliases.js registerParamAliases: Object.assign onto the op's
+// existing map, so a later registration adds to it and wins per name.
+void mergeParamAliases(JsMap<JsText, JsObject>& registry, const JsText& opName, const JsObject& aliases) {
+    JsObject merged = registry.value(opName);
+    for (auto it = aliases.constBegin(); it != aliases.constEnd(); ++it) merged.insert(it.key(), it.value());
+    registry.insert(opName, merged);
+}
+
 } // namespace
 
 void EffectRegistry::loadEmbedded() {
@@ -278,6 +286,13 @@ void EffectRegistry::registerEffect(const std::string& rawJson) {
         starterOps_.insert(func);
     }
 
+    // Built-in definitions may carry deprecated parameter names
+    // (renderer/canvas.js registerParamAliases); empty maps are inert.
+    const JsValue paramAliasesVal = def.value(JsText(u"paramAliases"));
+    if (paramAliasesVal.isObject() && !paramAliasesVal.toObject().isEmpty()) {
+        mergeParamAliases(paramAliases_, opName, paramAliasesVal.toObject());
+    }
+
     if (def.value(JsText(u"hidden")).toBool(false)) {
         const JsValue deprecatedBy = def.value(JsText(u"deprecatedBy"));
         if (deprecatedBy.isString()) {
@@ -339,6 +354,28 @@ JsText EffectRegistry::checkEffectAlias(const JsText& opName) const {
     return JsText(u"effect '%1' is deprecated, use '%2' instead.").arg(oldName, newName);
 }
 
+JsList EffectRegistry::resolveParamAliases(const JsText& opName, JsObject& kwargs) const {
+    // lang/paramAliases.js resolveParamAliases: mutates kwargs in place and
+    // returns one warning per deprecated name present.
+    JsList warnings;
+    const auto it = paramAliases_.find(opName);
+    if (it == paramAliases_.end()) return warnings;
+    const JsObject aliases = it.value();
+    for (auto ait = aliases.constBegin(); ait != aliases.constEnd(); ++ait) {
+        const JsText oldName = ait.key();
+        if (!kwargs.contains(oldName)) continue;
+        const JsText newName = ait.value().toString();
+        if (!kwargs.contains(newName)) {
+            kwargs.insert(newName, kwargs.value(oldName));
+        }
+        kwargs.remove(oldName);
+        warnings.append(
+            JsText(u"param '%1' is deprecated, use '%2' instead. Aliases will be removed on 2027-06-01.")
+                .arg(oldName, newName));
+    }
+    return warnings;
+}
+
 bool EffectRegistry::isStarterDef(const JsObject& def) {
     const JsValue passesVal = def.value(JsText(u"passes"));
     if (!passesVal.isArray()) return true; // no passes => starter
@@ -389,6 +426,10 @@ JsObject EffectRegistry::dumpSummary() const {
         const OpSpec* spec = getOp(name);
         if (spec) opsOut.insert(name, opSpecToJson(*spec));
     }
+    JsObject paramAliasesOut;
+    for (auto it = paramAliases_.constBegin(); it != paramAliases_.constEnd(); ++it) {
+        paramAliasesOut.insert(it.key(), it.value());
+    }
     JsObject effectAliasesOut;
     for (auto it = effectAliases_.constBegin(); it != effectAliases_.constEnd(); ++it) {
         effectAliasesOut.insert(it.key(), it.value());
@@ -404,6 +445,7 @@ JsObject EffectRegistry::dumpSummary() const {
     JsObject out;
     out.insert(JsText(u"ops"), opsOut);
     out.insert(JsText(u"enums"), enums_.project());
+    out.insert(JsText(u"paramAliases"), paramAliasesOut);
     out.insert(JsText(u"effectAliases"), effectAliasesOut);
     out.insert(JsText(u"effectKeys"), effectKeysOut);
     return out;

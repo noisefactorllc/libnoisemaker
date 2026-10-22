@@ -321,6 +321,29 @@ int main() {
         def.insert("globals", globals);
         checkMessageCount(def, "resetOnChange", 1, "non-boolean ui.resetOnChange diagnosed");
     }
+    // --- an inherited texture dimension is accepted as a boolean and
+    // diagnosed otherwise (upstream test_effect_definition_validation.js) ---
+    {
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject textures = getObject(def, "textures");
+        libnoisemaker::JsObject width; width.insert("param", "amount"); width.insert("inherit", true);
+        libnoisemaker::JsObject height; height.insert("param", "amount"); height.insert("inherit", true);
+        libnoisemaker::JsObject state; state.insert("width", width); state.insert("height", height);
+        textures.insert("state", state);
+        def.insert("textures", textures);
+        checkValid(def, "inherited texture dimension accepted");
+        width.insert("inherit", "yes");
+        state.insert("width", width);
+        textures.insert("state", state);
+        def.insert("textures", textures);
+        checkMessageCount(def, "inherit", 1, "non-boolean inherit diagnosed");
+    }
+    // --- paramAliases mapping to declared globals are accepted ---
+    {
+        libnoisemaker::JsObject def = validDefinition();
+        libnoisemaker::JsObject a; a.insert("amt", "amount"); def.insert("paramAliases", a);
+        checkValid(def, "paramAliases naming a declared global accepted");
+    }
     {
         libnoisemaker::JsObject def = validDefinition();
         libnoisemaker::JsObject textures = getObject(def, "textures");
@@ -628,14 +651,13 @@ int main() {
         }
     }
     {
-        // Noisemaker 1.0.289 retired paramAliases: it is an unknown field,
-        // even when every alias names a declared global.
+        // The reference emits paramAliases['<alias>'] with BOTH quotes.
         libnoisemaker::JsObject def = validDefinition();
-        libnoisemaker::JsObject a; a.insert("amt", "amount"); def.insert("paramAliases", a);
-        const std::vector<std::string> want = {"Unknown definition field 'paramAliases'"};
+        libnoisemaker::JsObject a; a.insert("amt", "nosuchglobal"); def.insert("paramAliases", a);
+        const std::vector<std::string> want = {"paramAliases['amt'] references unknown global 'nosuchglobal'"};
         const std::vector<std::string> errors = validate(def);
         const bool ok = errors == want;
-        std::printf("%s: paramAliases is an unknown definition field\n", ok ? "PASS" : "FAIL");
+        std::printf("%s: paramAliases unknown-global message is exact\n", ok ? "PASS" : "FAIL");
         if (!ok) {
             for (const std::string& e : errors) std::printf("  [%s]\n", e.c_str());
             ++g_failures;

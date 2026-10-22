@@ -1,7 +1,7 @@
 {
  "provenance": {
   "reference": "noisefactorllc/noisemaker",
-  "referenceCommit": "13eb5fb69c582bcbf5344c3dd3824da51a449b74",
+  "referenceCommit": "12751c78103ec352bd359a9944bbeac5ad239a4b",
   "generator": "parity/gen-effect-validator-corpus.mjs",
   "note": "referenceErrors are the reference validateEffectDefinition() output at referenceCommit, verbatim. Consumers compare SORTED error lists (port emits sorted key order; see effect_validator.h deviation note)."
  },
@@ -9024,7 +9024,7 @@
     "paramAliases": "aliases"
    },
    "referenceErrors": [
-    "Unknown definition field 'paramAliases'"
+    "\"paramAliases\" must be an object mapping aliases to global names"
    ]
   },
   {
@@ -9242,7 +9242,7 @@
     }
    },
    "referenceErrors": [
-    "Unknown definition field 'paramAliases'"
+    "paramAliases['amt'] references unknown global 'nosuchglobal'"
    ]
   },
   {

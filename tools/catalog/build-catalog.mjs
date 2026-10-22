@@ -137,6 +137,9 @@ function convertEffect (instance, namespace, name) {
   def.starter = !!(mentry && mentry.starter)
   if (instance.tags) def.tags = instance.tags
   if (instance.description) def.description = instance.description
+  // Deprecated parameter names of a built-in effect (renderer/canvas.js
+  // registerParamAliases).
+  if (instance.paramAliases) def.paramAliases = instance.paramAliases
   def.globals = projectGlobals(instance.globals)
   def.passes = (instance.passes || []).map(projectPass)
   def.textures = projectTextures(instance.textures, false) || {}

@@ -51,6 +51,9 @@ bool referencesParam(const JsValue& d);
 // not this texture's own chain scope, so it agrees with the pipeline's real
 // state-texture dimensions instead of picking up an unrelated chain-scoped
 // default. Mirrors reference expander.js's inline `dimensionScope` ternary.
+//
+// A `{param, inherit: true}` dimension is scoped the same way but records no
+// mapping: it reads the scope's value and never writes its own over it.
 JsValue scope(const JsValue& d, const JsText& scopeSuffix, JsMap<JsText, JsText>& scopedParamMap,
                   const JsText& stateSizeScope = JsText());
 

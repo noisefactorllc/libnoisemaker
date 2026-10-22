@@ -1455,6 +1455,10 @@ JsValue Validator::resolveArgs(JsArray& chain, const OpSpec& spec, const JsObjec
                                    const JsText& writeName, JsObject* resolvedKwargs) {
     const bool hasKw = call.contains(JsText(u"kwargs"));
     JsObject kw = hasKw ? call.value(JsText(u"kwargs")).toObject() : JsObject();
+    if (hasKw) {
+        const JsList warnings = reg_.resolveParamAliases(opName, kw);
+        for (const JsText& w : warnings) pushDiag(JsText(u"S007"), call, w);
+    }
     const JsArray callArgs = call.value(JsText(u"args")).toArray();
     JsSet<JsText> seen;
     JsObject argSources;
@@ -1650,8 +1654,8 @@ JsValue Validator::mirrorNestedMemberPaths(const JsValue& nodeVal) {
             kwargs.insert(def.name, member);
         }
     }
-    // Descend into deeper inline surfaces: the nested call's copy changes,
-    // not its parent AST.
+    // Descend into deeper inline surfaces without renaming this call's
+    // kwargs: alias renames mutate the nested call's copy, not its parent AST.
     for (auto it = kwargs.constBegin(); it != kwargs.constEnd(); ++it) {
         kwargs.insert(it.key(), mirrorNestedMemberPaths(it.value()));
     }

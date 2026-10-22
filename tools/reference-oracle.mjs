@@ -56,8 +56,8 @@ export async function bootstrapReference () {
   // exports a `stdEnums`, but that one is the merged enum tree of lang/enums.js,
   // which is still empty here.)
   const { stdEnums } = await import(pathToFileURL(join(SHADERS, 'src', 'lang', 'std_enums.js')).href)
-  // Noisemaker 1.0.289 retired the parameter aliases and lang/paramAliases.js;
-  // an earlier reference still registers them.
+  // Noisemaker 1.0.289 to 1.0.306 have no lang/paramAliases.js; earlier and
+  // later references register the aliases of built-in effects.
   const paramAliasesPath = join(SHADERS, 'src', 'lang', 'paramAliases.js')
   const registerParamAliases = existsSync(paramAliasesPath)
     ? (await import(pathToFileURL(paramAliasesPath).href)).registerParamAliases

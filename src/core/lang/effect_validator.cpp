@@ -195,7 +195,7 @@ const JsList& dimSpecKeys() {
         JsText(u"param"), JsText(u"power"), JsText(u"multiply"),
         JsText(u"default"), JsText(u"paramDefault"),
         JsText(u"screenDivide"), JsText(u"scale"), JsText(u"clamp"),
-        JsText(u"inputOverride"),
+        JsText(u"inputOverride"), JsText(u"inherit"),
     };
     return keys;
 }
@@ -207,7 +207,7 @@ const JsList& topLevelKeys() {
         JsText(u"description"), JsText(u"tags"), JsText(u"globals"),
         JsText(u"passes"), JsText(u"textures"), JsText(u"textures3d"),
         JsText(u"shaders"), JsText(u"uniformLayout"), JsText(u"uniformLayouts"),
-        JsText(u"openCategories"),
+        JsText(u"paramAliases"), JsText(u"openCategories"),
         JsText(u"defaultProgram"), JsText(u"hidden"), JsText(u"deprecatedBy"),
         JsText(u"externalTexture"), JsText(u"externalMesh"),
         JsText(u"builtinMeshes"), JsText(u"outputTex3d"), JsText(u"outputGeo"),
@@ -427,6 +427,10 @@ void validateDimSpec(const JsValue& spec, Errors& errors, const std::string& lab
             const JsValue inputOverride = specObj.value(JsText(u"inputOverride"));
             if (!inputOverride.isUndefined() && !isNonEmptyString(inputOverride)) {
                 errors.push_back(label + ": \"inputOverride\" must be a non-empty string");
+            }
+            const JsValue inherit = specObj.value(JsText(u"inherit"));
+            if (!inherit.isUndefined() && !inherit.isBool()) {
+                errors.push_back(label + ": \"inherit\" must be a boolean");
             }
             return;
         }
@@ -1712,6 +1716,25 @@ std::vector<std::string> validateEffectDefinition(const JsValue& def) {
             for (auto it = layoutsObj.begin(); it != layoutsObj.end(); ++it) {
                 validateUniformLayout(it.value(),
                                       errors, "uniformLayouts['" + toStd(it.key()) + "']");
+            }
+        }
+    }
+
+    // --- param aliases ---
+    const JsValue paramAliases = source.value(JsText(u"paramAliases"));
+    if (!paramAliases.isUndefined()) {
+        if (!paramAliases.isObject()) {
+            errors.push_back("\"paramAliases\" must be an object mapping aliases to global names");
+        } else {
+            const JsObject aliasesObj = paramAliases.toObject();
+            for (auto it = aliasesObj.begin(); it != aliasesObj.end(); ++it) {
+                const JsValue target = it.value();
+                if (!isNonEmptyString(target)) {
+                    errors.push_back("paramAliases['" + toStd(it.key()) + "'] must be a non-empty string");
+                } else if (!context.globalKeys.contains(target.toString())) {
+                    errors.push_back("paramAliases['" + toStd(it.key()) + "'] references unknown global '"
+                                     + toStd(target.toString()) + "'");
+                }
             }
         }
     }

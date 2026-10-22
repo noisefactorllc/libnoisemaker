@@ -1,7 +1,32 @@
 #include "dim.h"
 
+#include <cmath>
 
 namespace libnoisemaker::dim {
+
+namespace {
+
+// JavaScript truthiness of a dimension field.
+bool truthy(const JsValue& v) {
+    switch (v.type()) {
+        case JsValue::Null:
+        case JsValue::Undefined:
+            return false;
+        case JsValue::Bool:
+            return v.toBool();
+        case JsValue::Double:
+            return v.toDouble() != 0.0 && !std::isnan(v.toDouble());
+        case JsValue::String:
+            return !v.toString().isEmpty();
+        case JsValue::Array:
+        case JsValue::Object:
+        case JsValue::Function:
+            return true;
+    }
+    return false;
+}
+
+} // namespace
 
 bool referencesParam(const JsValue& d) {
     if (!d.isObject()) return false;
@@ -22,7 +47,9 @@ JsValue scope(const JsValue& d, const JsText& scopeSuffix, JsMap<JsText, JsText>
                                             ? stateSizeScope
                                             : scopeSuffix;
         const JsText scoped = original + u'_' + effectiveScope;
-        scopedParamMap.insert(original, scoped);
+        // An inherited dimension reads the scope's value and never writes
+        // this effect's own value over it.
+        if (!truthy(o.value(JsText(u"inherit")))) scopedParamMap.insert(original, scoped);
         o.insert(JsText(u"param"), scoped);
         return o;
     }

@@ -16,7 +16,7 @@ const { validate, registerStarterOps } = await import(pathToFileURL(resolve(REF,
 const { registerEffect } = await import(pathToFileURL(resolve(REF, 'shaders/src/runtime/registry.js')).href)
 const { registerOp } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/ops.js')).href)
 const { mergeIntoEnums } = await import(pathToFileURL(resolve(REF, 'shaders/src/lang/enums.js')).href)
-// Noisemaker 1.0.289 retired the parameter aliases and lang/paramAliases.js.
+// Noisemaker 1.0.289 to 1.0.306 have no lang/paramAliases.js.
 const paramAliasesPath = resolve(REF, 'shaders/src/lang/paramAliases.js')
 const registerParamAliases = existsSync(paramAliasesPath)
     ? (await import(pathToFileURL(paramAliasesPath).href)).registerParamAliases

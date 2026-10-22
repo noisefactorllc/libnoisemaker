@@ -247,6 +247,35 @@ int main() {
     }
 
     // ==================================================================
+    // paramAliases: the deprecated fieldTex of flow, dla and physarum
+    // ==================================================================
+    {
+        for (const char16_t* op : {u"points.flow", u"points.dla", u"points.physarum"}) {
+            libnoisemaker::JsObject kwargs;
+            kwargs.insert(libnoisemaker::JsText(u"fieldTex"), 3.0);
+            const libnoisemaker::JsList warnings = reg.resolveParamAliases(libnoisemaker::JsText(op), kwargs);
+            check(warnings.size() == 1 && warnings.at(0) == libnoisemaker::JsText(
+                      u"param 'fieldTex' is deprecated, use 'heightTex' instead. Aliases will be removed on 2027-06-01."),
+                  "resolveParamAliases warns once for fieldTex");
+            check(!kwargs.contains(libnoisemaker::JsText(u"fieldTex")) && kwargs.contains(libnoisemaker::JsText(u"heightTex"))
+                      && kwargs.value(libnoisemaker::JsText(u"heightTex")).toDouble() == 3.0,
+                  "resolveParamAliases renames fieldTex -> heightTex in place, preserving the value");
+        }
+        libnoisemaker::JsObject both;
+        both.insert(libnoisemaker::JsText(u"heightTex"), 1.0);
+        both.insert(libnoisemaker::JsText(u"fieldTex"), 2.0);
+        check(reg.resolveParamAliases(libnoisemaker::JsText(u"points.flow"), both).size() == 1
+                  && !both.contains(libnoisemaker::JsText(u"fieldTex"))
+                  && both.value(libnoisemaker::JsText(u"heightTex")).toDouble() == 1.0,
+              "with both names the canonical value wins and the alias is dropped");
+        libnoisemaker::JsObject other;
+        other.insert(libnoisemaker::JsText(u"fieldTex"), 1.0);
+        check(reg.resolveParamAliases(libnoisemaker::JsText(u"points.hydraulic"), other).isEmpty()
+                  && other.contains(libnoisemaker::JsText(u"fieldTex")),
+              "an effect without aliases leaves its kwargs alone");
+    }
+
+    // ==================================================================
     // effect aliases: hidden + deprecatedBy
     // ==================================================================
     {
@@ -273,9 +302,9 @@ int main() {
     {
         const libnoisemaker::JsObject dump = reg.dumpSummary();
         check(dump.contains(libnoisemaker::JsText(u"ops")) && dump.contains(libnoisemaker::JsText(u"enums"))
-                  && dump.contains(libnoisemaker::JsText(u"effectAliases"))
-                  && dump.contains(libnoisemaker::JsText(u"effectKeys")) && dump.size() == 4,
-              "dumpSummary() has exactly the four gate keys");
+                  && dump.contains(libnoisemaker::JsText(u"paramAliases")) && dump.contains(libnoisemaker::JsText(u"effectAliases"))
+                  && dump.contains(libnoisemaker::JsText(u"effectKeys")) && dump.size() == 5,
+              "dumpSummary() has exactly the five gate keys");
         check(dump.value(libnoisemaker::JsText(u"ops")).toObject().size() == 210, "dumpSummary().ops has 210 entries");
         const libnoisemaker::JsObject remapArg = dump.value(libnoisemaker::JsText(u"ops")).toObject().value(libnoisemaker::JsText(u"synth.remap"))
                                           .toObject();

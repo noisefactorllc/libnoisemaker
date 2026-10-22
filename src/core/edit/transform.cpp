@@ -46,6 +46,9 @@ Value deep_clone(const Value& source) {
 }
 Value registry_summary(const EffectRegistry& registry) { return registry.dumpSummaryValue(); }
 Value ops(const EffectRegistry& registry) { return prop(registry_summary(registry), u"ops"); }
+Value aliases(const EffectRegistry& registry, const Value& name) {
+    return registry.paramAliasesValue(JsText(jsv::to_property_key(name)));
+}
 Value op_spec(const EffectRegistry& registry, const Value& name) { return jsv::member(ops(registry), jsv::to_property_key(name)); }
 Value effect_instance(const EffectRegistry& registry, const Value& name) {
     return name.is_string() && registry.hasEffect(JsText(name.as_string()))
@@ -118,6 +121,7 @@ bool type_matches(const Value& value, const Value& declared) {
     if (t == u"surface" || t == u"tex") return value.is_string();
     return true;
 }
+Value canonical(const Value& map, const JsString& key) { return or_value(jsv::member(map, key), Value(key)); }
 Value topology(const Value& instance) {
     if (!jsv::truthy(instance)) return {};
     Array textures, inputs;
@@ -218,6 +222,7 @@ Value predict_replacement(const Value& resolved_name, const Value& spec, const V
                                  {u"message", u"No registered effect definition for '" + string(resolved_name) + u"'"}}));
     }
 
+    Value alias_map = aliases(registry, resolved_name);
     Array accepted;
     for (const auto& def : jsv::iterate_anon(or_value(prop(spec, u"args"), Value(Array{})))) {
         Value name = prop(def, u"name");
@@ -225,11 +230,13 @@ Value predict_replacement(const Value& resolved_name, const Value& spec, const V
     }
     Value globals = prop(instance, u"globals");
     if (jsv::truthy(globals)) for (const auto& key : jsv::keys(globals)) add_set(accepted, Value(key));
+    for (const auto& key : jsv::keys(alias_map)) add_set(accepted, Value(key));
+    for (const auto& value : jsv::values(alias_map)) add_set(accepted, value);
 
     Value provided = or_value(new_args, Value(Object{}));
     Array provided_canonical, unknown;
     for (const auto& key : jsv::keys(provided)) {
-        Value c(key);
+        Value c = canonical(alias_map, key);
         add_set(provided_canonical, c);
         if (!in_set(accepted, c)) unknown.emplace_back(key);
     }
@@ -252,7 +259,7 @@ Value predict_replacement(const Value& resolved_name, const Value& spec, const V
 
     Array types, ranges;
     for (const auto& [key, value] : jsv::entries(provided)) {
-        Value c(key), def;
+        Value c = canonical(alias_map, key), def;
         for (const auto& entry : defs) if (jsv::same_value_zero(entry.first, c)) { def = entry.second; break; }
         if (!jsv::truthy(def)) continue;
         Value expected = jsv::get(def, u"type");
