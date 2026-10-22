@@ -8,7 +8,7 @@
 # 3.11), it uses a newer interpreter on PATH or one that uv manages.
 #
 #   NM_TEST_BUILD_DIR  build directory (default: build-test)
-#   NM_TEST_JOBS       parallel compile jobs (default: 2)
+#   NM_TEST_JOBS       parallel compile jobs (default: 4)
 #   NM_PYTHON          Python interpreter to try first
 #   NM_CHANGED_FILES   changed paths, one per line. When set, run only the
 #                      tests that exercise those paths; when unset, run the
@@ -42,12 +42,14 @@ if [[ -n "${NM_CHANGED_FILES:-}" ]]; then
   while IFS= read -r path; do
     [[ -z "$path" ]] && continue
     case "$path" in
-      # Core sources: the native tests and the parity gates exercise them.
-      src/*|include/*|host/*|tests/core/*|tests/CMakeLists.txt|CMakeLists.txt|cmake/*)
+      # Core sources, the native tools the build compiles, the reference and
+      # catalog helpers the parity gates run, and the gate entry points all
+      # exercise the native tests and the parity gates.
+      src/*|include/*|host/*|tests/core/*|tests/CMakeLists.txt|CMakeLists.txt|cmake/*|tools/nm-dump/*|tools/nm-render/*|tools/*.mjs|tools/catalog/*|scripts/gates|scripts/parity-summary)
         run_core=true; run_gates=true ;;
       parity/*) run_gates=true ;;
       tools/*|scripts/*|tests/tools/*) run_tools=true ;;
-      *) run_tools=true ;;
+      *) run_core=true; run_tools=true; run_gates=true ;;
     esac
   done <<< "$NM_CHANGED_FILES"
   # The parity gates compare the native build, so a gate run needs the build.

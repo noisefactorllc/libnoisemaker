@@ -221,25 +221,44 @@ class BoundedGateTests(unittest.TestCase):
             result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=env,
                                     capture_output=True, text=True, timeout=5)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            commands = (root / 'commands').read_text()
             self.assertIn('--output-on-failure --timeout 300', result.stdout)
             self.assertIn('[gate] start: ctest', result.stdout)
             self.assertIn('-m unittest discover', result.stdout)
+            commands = root / 'commands'
             # With NM_CHANGED_FILES the entrypoint runs only the tests that
             # exercise the changed paths.
+            commands.write_text('')
             focused = dict(env, NM_CHANGED_FILES='tools/run_gates.py\n')
             result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=focused,
                                     capture_output=True, text=True, timeout=5)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertIn('-m unittest discover', result.stdout)
             self.assertNotIn('ctest', result.stdout)
+            self.assertEqual('', commands.read_text())
+            # A path the gates consume selects the build, ctest and the gates.
+            commands.write_text('')
+            gate_tool = dict(env, NM_CHANGED_FILES='tools/reference-oracle.mjs\n')
+            result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=gate_tool,
+                                    capture_output=True, text=True, timeout=5)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn('[gate] start: ctest', result.stdout)
+            self.assertIn('cmake', commands.read_text())
             core = dict(env, NM_CHANGED_FILES='src/core/value.cpp\nparity/x.json\n')
             result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=core,
                                     capture_output=True, text=True, timeout=5)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertIn('[gate] start: ctest', result.stdout)
             # A gate run needs the native build, even without core sources.
-            self.assertIn('cmake', (root / 'commands').read_text())
+            self.assertIn('cmake', commands.read_text())
+            # An unmatched path does not narrow the run.
+            commands.write_text('')
+            unmatched = dict(env, NM_CHANGED_FILES='README.md\n')
+            result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=unmatched,
+                                    capture_output=True, text=True, timeout=5)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn('[gate] start: ctest', result.stdout)
+            self.assertIn('-m unittest discover', result.stdout)
+            self.assertIn('cmake', commands.read_text())
 
     def test_missing_duplicate_or_wrong_partition_receipt_cannot_pass(self):
         runner = self.runner()
