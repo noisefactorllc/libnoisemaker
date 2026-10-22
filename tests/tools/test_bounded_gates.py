@@ -178,7 +178,7 @@ class BoundedGateTests(unittest.TestCase):
             ordinary_commands = [row['command'][1] for row in plan if row['group'] == 'gate']
             self.assertEqual(
                 ['tools/catalog/fetch-catalog.mjs', 'tools/catalog/check-catalog.mjs',
-                 'parity/check_func_bodies_differential.mjs']
+                 'tools/generate-kit-compat.mjs', 'parity/check_func_bodies_differential.mjs']
                 # One frontend child per stage: the stages together exceed
                 # the 300 s bound, and every stage covers the same programs.
                 + ['parity/check_frontend.mjs'] * 12

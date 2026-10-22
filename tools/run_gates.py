@@ -117,6 +117,8 @@ def gate_plan(root, temporary):
     commands = [
         ['tools/catalog/fetch-catalog.mjs', '--cache', '.cache/catalog', '--offline'],
         ['tools/catalog/check-catalog.mjs', build + '/catalog'],
+        # The export kit's effect list follows the locked catalog.
+        ['tools/generate-kit-compat.mjs', '--check'],
         ['parity/check_func_bodies_differential.mjs'],
         # One child per stage: the six stages together exceed the 300 s
         # bound, and every stage covers the same full program set.
