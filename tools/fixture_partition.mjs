@@ -4,7 +4,7 @@ export function partitionFixtureFiles (files, partition) {
   if (!partition) return files
   const { index, count } = partition
   if (!Number.isSafeInteger(index) || !Number.isSafeInteger(count) ||
-      count < 1 || count > 16 || index < 0 || index >= count) {
+      count < 1 || index < 0 || index >= count) {
     throw new Error('invalid fixture partition')
   }
   const selected = files.filter((_, ordinal) => ordinal % count === index)

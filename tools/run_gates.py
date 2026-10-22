@@ -14,7 +14,35 @@ import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PARTITIONS = 16
+# Fixture partitions keep each fixture child inside the per-child bound even
+# on slow runners: under full-plan load a child runs several times slower
+# than standalone, so the split must be fine enough to keep that margin.
+PARTITIONS = 64
+
+
+def effective_cpus():
+    """Concurrent CPU budget: the cgroup quota when set, else the core count.
+
+    A runner can expose many cores while its cgroup grants far fewer, so
+    sizing the pool from os.cpu_count alone oversubscribes the quota and
+    stalls children in throttle windows. Prefer the quota; fall back to the
+    cgroup v1 files and finally the core count.
+    """
+    cgroup = pathlib.Path('/sys/fs/cgroup')
+    try:
+        quota, period = (cgroup / 'cpu.max').read_text().split()[:2]
+        if quota != 'max' and int(quota) > 0 and int(period) > 0:
+            return max(1.0, int(quota) / int(period))
+    except (OSError, ValueError):
+        pass
+    try:
+        quota = int((cgroup / 'cpu/cpu.cfs_quota_us').read_text().strip())
+        period = int((cgroup / 'cpu/cpu.cfs_period_us').read_text().strip())
+        if quota > 0 and period > 0:
+            return max(1.0, quota / period)
+    except (OSError, ValueError):
+        pass
+    return float(os.cpu_count() or 2)
 
 
 def bounded(command, seconds=300, env=None):
@@ -230,7 +258,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--timeout-seconds', type=float, default=300)
     parser.add_argument('--jobs', type=int, default=int(os.environ.get('NM_GATE_JOBS', '0')) or
-                        min(8, os.cpu_count() or 2))
+                        min(8, math.floor(effective_cpus())))
     parser.add_argument('--receipts', type=str,
                         default='' if os.environ.get('NM_GATE_FRESH') else str(ROOT / '.cache' / 'gates'))
     parser.add_argument('--run', nargs=argparse.REMAINDER)

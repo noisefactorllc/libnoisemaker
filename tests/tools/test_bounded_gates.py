@@ -168,13 +168,13 @@ class BoundedGateTests(unittest.TestCase):
                 ordinary = [row['suite'] for row in rows if row['partition'] is None]
                 self.assertEqual([p for p in expected if p.name != 'fixtures.json'], ordinary)
                 parts = [row for row in rows if row['partition'] is not None]
-                self.assertEqual(list(range(16)), [row['partition'] for row in parts])
+                self.assertEqual(list(range(64)), [row['partition'] for row in parts])
                 discovered = runner.fixture_ids(ROOT, json.loads((ROOT / 'parity' / mode / 'fixtures.json').read_text())[key][0])
                 self.assertEqual(collections.Counter(discovered), collections.Counter(
                     item for row in parts for item in row['fixture_ids']))
                 for row in parts:
                     self.assertEqual('fixtures.json', row['suite'].name)
-                    self.assertEqual({'index': row['partition'], 'count': 16},
+                    self.assertEqual({'index': row['partition'], 'count': 64},
                                      json.loads(row['suite'].read_text())[key][0]['partition'])
             ordinary_commands = [row['command'][1] for row in plan if row['group'] == 'gate']
             self.assertEqual(
