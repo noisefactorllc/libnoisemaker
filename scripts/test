@@ -13,6 +13,8 @@
 #   NM_CHANGED_FILES   changed paths, one per line. When set, run only the
 #                      tests that exercise those paths; when unset, run the
 #                      whole suite exactly as before.
+#   NM_SHARD_INDEX     with NM_SHARD_COUNT, run only this shard of the parity
+#                      gate plan (from 0), so the shards together cover it all.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

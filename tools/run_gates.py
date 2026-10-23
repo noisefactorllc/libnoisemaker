@@ -254,6 +254,26 @@ def run_plan(plan, jobs, seconds, receipts, head):
         return failure
 
 
+def sharded_plan(plan):
+    """Split the plan across parallel shard invocations.
+
+    NM_SHARD_COUNT and NM_SHARD_INDEX name one shard of the plan; together
+    the shards cover every plan row exactly once. When either variable is
+    unset the full plan runs unchanged. Serial rows run in every shard so
+    each shard builds its offline catalog cache before its pool starts.
+    """
+    count = os.environ.get('NM_SHARD_COUNT', '')
+    index = os.environ.get('NM_SHARD_INDEX', '')
+    if not count or not index:
+        return plan
+    count, index = int(count), int(index)
+    if not 2 <= count <= 8 or not 0 <= index < count:
+        raise ValueError('shard index must fall inside a shard count of 2 to 8')
+    serial = [row for row in plan if row.get('serial')]
+    rest = [row for row in plan if not row.get('serial')]
+    return serial + rest[index::count]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--timeout-seconds', type=float, default=300)
@@ -272,7 +292,8 @@ def main():
     head = head_id() if args.receipts else ''
     receipts = pathlib.Path(args.receipts) if args.receipts else None
     with tempfile.TemporaryDirectory(prefix='nm-gates-') as directory:
-        return run_plan(gate_plan(ROOT, pathlib.Path(directory)), args.jobs, args.timeout_seconds,
+        plan = sharded_plan(gate_plan(ROOT, pathlib.Path(directory)))
+        return run_plan(plan, args.jobs, args.timeout_seconds,
                         receipts or pathlib.Path(directory), head)
 
 
