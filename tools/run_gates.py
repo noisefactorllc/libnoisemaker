@@ -147,6 +147,8 @@ def gate_plan(root, temporary):
         ['tools/catalog/check-catalog.mjs', build + '/catalog'],
         # The export kit's effect list follows the locked catalog.
         ['tools/generate-kit-compat.mjs', '--check'],
+        # The README's tracking statement follows the locked release too.
+        [sys.executable, 'tools/check-readme-lock.py'],
         ['parity/check_func_bodies_differential.mjs'],
         # One child per stage: the six stages together exceed the 300 s
         # bound, and every stage covers the same full program set.
@@ -161,7 +163,16 @@ def gate_plan(root, temporary):
             'wgsl', 'uniforms', 'backend', 'js_math', 'pipeline', 'registry',
             'midi_state', 'audio_state', 'obj_parser')],
     ]
-    plan = [{'group': 'gate', 'command': ['node', *command]} for command in commands]
+    plan = []
+    for command in commands:
+        # The README check runs under Python directly; every other gate is a
+        # Node script. The check may fetch the history its anchor needs, so
+        # it runs serially before the pool like the catalog fetch.
+        if command[0] == sys.executable:
+            plan.append({'group': 'gate', 'serial': True,
+                         'command': list(command)})
+        else:
+            plan.append({'group': 'gate', 'command': ['node', *command]})
     # The catalog fetch populates the offline cache; keep it ahead of the pool.
     plan[0]['serial'] = True
     for mode, key, checker in (

@@ -63,6 +63,11 @@ set_tests_properties(test_effect_validator PROPERTIES WORKING_DIRECTORY "${PROJE
 add_test(NAME catalog_notices COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/catalog/check_notices.py"
   "${PROJECT_BINARY_DIR}/catalog" "${PROJECT_SOURCE_DIR}/src/core/catalog/catalog-NOTICES.txt")
 
+# The tracking statement in the README names the Noisemaker release that
+# parity/reference.json locks, and no stale release number.
+add_test(NAME readme_lock COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/check-readme-lock.py"
+  WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
 add_executable(test_jsre wgsl/test_jsre.cpp)
 target_include_directories(test_jsre PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_jsre PRIVATE noisemaker_backend)
