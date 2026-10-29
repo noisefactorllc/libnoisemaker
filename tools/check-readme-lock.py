@@ -145,20 +145,19 @@ def anchored_state(root, check_name):
 def history_state(root, check_name):
     """Anchor the statement, fetching history when the clone is shallow.
 
-    A shallow clone hides the commits the anchor needs. When the readable
-    history cannot anchor the statement and the clone is shallow, one
-    unshallow fetch of the repository's own remote repairs that; the check
-    degrades to the stated skip when even the fetch cannot.
+    A shallow clone hides the commits the anchor needs, so an anchor read
+    from one can mistake the truncated history for the sentence's write.
+    When the clone is shallow, one unshallow fetch of the repository's own
+    remote repairs that before anchoring; the check degrades to the stated
+    skip when even the fetch cannot.
     """
-    state = anchored_state(root, check_name)
-    if state is not None:
-        return state
     code, shallow = git(root, "rev-parse", "--is-shallow-repository")
-    if code != 0 or shallow != "true":
-        return None
-    code, _ = git(root, "fetch", "--unshallow", "origin", seconds=120)
     if code != 0:
         return None
+    if shallow == "true":
+        code, _ = git(root, "fetch", "--unshallow", "origin", seconds=120)
+        if code != 0:
+            return None
     return anchored_state(root, check_name)
 
 
