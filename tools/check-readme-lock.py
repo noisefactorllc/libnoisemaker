@@ -150,7 +150,8 @@ def history_state(root, check_name):
     A shallow clone hides the commits the anchor needs, so an anchor read
     from one can mistake the truncated history for the sentence's write.
     When the clone is shallow, one unshallow fetch of the repository's own
-    remote repairs that before anchoring. Returns (state, unshallow_failed).
+    remote repairs that before anchoring. A successful fetch that leaves
+    the clone shallow also fails closed. Returns (state, unshallow_failed).
     unshallow_failed is True when the clone is shallow and the fetch could
     not repair it; the caller then fails the check closed, because the
     repository holds the history the sentence must be anchored against.
@@ -162,6 +163,9 @@ def history_state(root, check_name):
     if shallow == "true":
         code, _ = git(root, "fetch", "--unshallow", "origin", seconds=120)
         if code != 0:
+            return None, True
+        code, shallow = git(root, "rev-parse", "--is-shallow-repository")
+        if code != 0 or shallow != "false":
             return None, True
     return anchored_state(root, check_name), False
 

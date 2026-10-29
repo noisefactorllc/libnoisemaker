@@ -1,5 +1,8 @@
 import importlib.util
+import os
 import pathlib
+import shutil
+import tempfile
 import unittest
 
 TOOL = pathlib.Path(__file__).resolve().parents[2] / "tools" / "check-readme-lock.py"
@@ -66,6 +69,60 @@ class EvaluateTests(unittest.TestCase):
 
     def test_a_lock_move_that_left_a_lock_only_sentence_unchanged_passes(self):
         self.assertEqual(check.evaluate(LOCK_ONLY, "1.0.312", True), [])
+
+
+class FakeGitTests(unittest.TestCase):
+    """history_state against a fake git, per shallow-fetch scenario.
+
+    Each test gets a temp root, a PATH whose "git" is a shell wrapper
+    around tests/tools/test_readme_lock_gitfake.py, and a scenario name in
+    NM_FAKE_SCENARIO. state_path lives inside the temp root, so state
+    never leaks between tests. The wrapper is restored in tearDown.
+    """
+
+    FAKE = pathlib.Path(__file__).resolve().parent / "test_readme_lock_gitfake.py"
+
+    def setUp(self):
+        self.old_path = os.environ.get("PATH", "")
+        self.old_scenario = os.environ.get("NM_FAKE_SCENARIO")
+        self.bin = pathlib.Path(tempfile.mkdtemp(prefix="readme-lock-git-bin-"))
+        self.root = tempfile.mkdtemp(prefix="readme-lock-git-root-")
+        wrapper = self.bin / "git"
+        wrapper.write_text(
+            "#!/bin/sh\nexec python3 '%s' \"$@\"\n" % self.FAKE)
+        wrapper.chmod(0o755)
+        os.environ["PATH"] = f"{self.bin}{os.pathsep}{self.old_path}"
+        os.environ["NM_FAKE_SCENARIO"] = "not-shallow"
+
+    def tearDown(self):
+        os.environ["PATH"] = self.old_path
+        if self.old_scenario is None:
+            del os.environ["NM_FAKE_SCENARIO"]
+        else:
+            os.environ["NM_FAKE_SCENARIO"] = self.old_scenario
+        shutil.rmtree(self.bin, ignore_errors=True)
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def run_scenario(self, scenario):
+        os.environ["NM_FAKE_SCENARIO"] = scenario
+        return check.history_state(self.root,
+                                   "tools/check-readme-lock.py")
+
+    def test_a_fetch_that_unshallows_does_not_fail_the_check(self):
+        self.assertEqual(self.run_scenario("fetch-success-unshallows"),
+                         (None, False))
+
+    def test_a_fetch_that_leaves_the_clone_shallow_fails_closed(self):
+        self.assertEqual(self.run_scenario("fetch-success-still-shallow"),
+                         (None, True))
+
+    def test_a_failed_shallow_fetch_fails_closed(self):
+        self.assertEqual(self.run_scenario("fetch-fail"), (None, True))
+
+    def test_a_clone_that_is_not_shallow_never_fetches(self):
+        self.assertEqual(self.run_scenario("not-shallow"), (None, False))
+        self.assertFalse(
+            (pathlib.Path(self.root) / ".fake-git-state").exists())
 
 
 if __name__ == "__main__":
