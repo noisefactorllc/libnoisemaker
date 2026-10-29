@@ -26,6 +26,7 @@ Exits 1 and lists each failure.
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -71,7 +72,12 @@ def evaluate(sentence, written_version, stale_move):
 
 
 def git(root, *args, seconds=30):
-    result = subprocess.run(["git", "-C", str(root), *args],
+    # Bare "git" without a shell resolves only .exe on Windows: CreateProcess
+    # appends .exe to an extensionless name and never consults PATHEXT. The
+    # tests shadow git with a git.bat wrapper, so resolve the executable
+    # explicitly with shutil.which, which honors PATHEXT, and run the path.
+    exe = shutil.which("git") or "git"
+    result = subprocess.run([exe, "-C", str(root), *args],
                             capture_output=True, text=True, timeout=seconds)
     return result.returncode, result.stdout.strip()
 

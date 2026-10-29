@@ -2,6 +2,7 @@ import importlib.util
 import os
 import pathlib
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -74,10 +75,16 @@ class EvaluateTests(unittest.TestCase):
 class FakeGitTests(unittest.TestCase):
     """history_state against a fake git, per shallow-fetch scenario.
 
-    Each test gets a temp root, a PATH whose "git" is a shell wrapper
-    around tests/tools/test_readme_lock_gitfake.py, and a scenario name in
-    NM_FAKE_SCENARIO. state_path lives inside the temp root, so state
-    never leaks between tests. The wrapper is restored in tearDown.
+    Each test gets a temp root, a PATH whose "git" is a wrapper around
+    tests/tools/test_readme_lock_gitfake.py, and a scenario name in
+    NM_FAKE_SCENARIO. The check resolves "git" with shutil.which, which
+    honors PATHEXT on Windows, so the wrapper is an extensionless sh script
+    for POSIX plus a git.bat companion that Windows resolves; without a
+    shell, CreateProcess appends only .exe to an extensionless name, so
+    nothing would reach the fake otherwise. The wrappers invoke the test
+    interpreter directly, so the fake needs nothing else on PATH.
+    state_path lives inside the temp root, so state never leaks between
+    tests. The wrapper is restored in tearDown.
     """
 
     FAKE = pathlib.Path(__file__).resolve().parent / "test_readme_lock_gitfake.py"
@@ -87,10 +94,13 @@ class FakeGitTests(unittest.TestCase):
         self.old_scenario = os.environ.get("NM_FAKE_SCENARIO")
         self.bin = pathlib.Path(tempfile.mkdtemp(prefix="readme-lock-git-bin-"))
         self.root = tempfile.mkdtemp(prefix="readme-lock-git-root-")
+        python = pathlib.Path(sys.executable).resolve()
         wrapper = self.bin / "git"
         wrapper.write_text(
-            "#!/bin/sh\nexec python3 '%s' \"$@\"\n" % self.FAKE)
+            "#!/bin/sh\nexec '%s' '%s' \"$@\"\n" % (python, self.FAKE))
         wrapper.chmod(0o755)
+        (self.bin / "git.bat").write_text(
+            '@"%s" "%s" %%*\r\n' % (python, self.FAKE))
         os.environ["PATH"] = f"{self.bin}{os.pathsep}{self.old_path}"
         os.environ["NM_FAKE_SCENARIO"] = "not-shallow"
 
