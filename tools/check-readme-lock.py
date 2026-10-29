@@ -15,10 +15,12 @@ again, unless the sentence names no literal release number. This
 grandfathers the sentence as it was published before the check landed;
 that known stale sentence stays tracked in the open issue.
 
-The history rules need the history that anchors the sentence. When that
-history is not readable, the check fetches the repository's own history
-once when the clone is shallow, and otherwise states what it skipped and
-passes. The local gate run has the history.
+The history rules need the history that anchors the sentence. When the
+clone is shallow, the check fetches the repository's own history once;
+when that fetch cannot repair the clone, the check fails closed instead
+of passing a numbered sentence unverified. When the history stays
+unreadable without a fetch, the check states what it skipped and passes.
+The local gate run has the history.
 Exits 1 and lists each failure.
 """
 
@@ -148,17 +150,20 @@ def history_state(root, check_name):
     A shallow clone hides the commits the anchor needs, so an anchor read
     from one can mistake the truncated history for the sentence's write.
     When the clone is shallow, one unshallow fetch of the repository's own
-    remote repairs that before anchoring; the check degrades to the stated
-    skip when even the fetch cannot.
+    remote repairs that before anchoring. Returns (state, unshallow_failed).
+    unshallow_failed is True when the clone is shallow and the fetch could
+    not repair it; the caller then fails the check closed, because the
+    repository holds the history the sentence must be anchored against.
+    Genuinely unreadable history keeps the stated skip.
     """
     code, shallow = git(root, "rev-parse", "--is-shallow-repository")
     if code != 0:
-        return None
+        return None, False
     if shallow == "true":
         code, _ = git(root, "fetch", "--unshallow", "origin", seconds=120)
         if code != 0:
-            return None
-    return anchored_state(root, check_name)
+            return None, True
+    return anchored_state(root, check_name), False
 
 
 def descendant_of(root, commit, ancestor):
@@ -180,9 +185,15 @@ def main(argv):
             name = str(Path(__file__).resolve().relative_to(root.resolve()))
         except ValueError:
             name = None
-        state = history_state(root, name) if name else None
+        state, unshallow_failed = (history_state(root, name) if name
+                                   else (None, False))
     else:
-        state = None
+        state, unshallow_failed = None, False
+    if unshallow_failed:
+        print("check-readme-lock: the clone is shallow and the unshallow "
+              "fetch failed. The write-time version was not verified",
+              file=sys.stderr)
+        return 1
     written_version, written_at, newest_move = (
         state if state is not None else (None, None, None))
     if state is None:
