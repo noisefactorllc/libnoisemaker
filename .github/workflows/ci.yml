@@ -101,6 +101,30 @@ jobs:
         run: |
           python -m pip install cmake==4.4.4
           python -m cmake --version
+      - name: Verify the Visual Studio 2026 CMake requirement
+        if: matrix.name == 'windows-x64'
+        shell: python
+        run: |
+          import os, pathlib, subprocess, sys
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "cmake-generator-probe"
+          older = root / "older"
+          subprocess.run([sys.executable, "-m", "pip", "install", "--target", str(older),
+                          "cmake==3.31.6"], check=True)
+          cmake = older / "cmake" / "data" / "bin" / "cmake.exe"
+          subprocess.run([str(cmake), "--version"], check=True)
+          args = ["-S", ".", "-G", "Visual Studio 18 2026", "-A", "x64", "-DNM_BUILD_GPU=OFF"]
+          command = [str(cmake), *args, "-B", str(root / "unsupported")]
+          print(subprocess.list2cmdline(command), flush=True)
+          result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+          print(result.stdout, flush=True)
+          print(f"CMake 3.31.6 configure exit: {result.returncode}", flush=True)
+          if result.returncode == 0 or "Could not create named generator Visual Studio 18 2026" not in result.stdout:
+              raise SystemExit("CMake below 4.2 did not reject the unsupported generator as expected")
+          command = [sys.executable, "-m", "cmake", *args, "-B", str(root / "supported")]
+          print(subprocess.list2cmdline(command), flush=True)
+          result = subprocess.run(command)
+          print(f"CMake 4.4.4 configure exit: {result.returncode}", flush=True)
+          result.check_returncode()
       - name: Install Linux packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ninja-build mesa-vulkan-drivers libvulkan1
