@@ -31,6 +31,13 @@ JsString type_of(const Value& value) {
     }
     return u"undefined";
 }
+// The reference deepClone clones every own member, including the
+// non-enumerable statement-order fields (`planOrder` on the compiled program,
+// each plan's hidden `source`), so a replaced program keeps its let
+// declaration order. The unparser matches plans by a fingerprint that
+// includes the hidden members, and the reference's WeakMap lets shared plan
+// references stay shared, which this port's fingerprint matching does not
+// need.
 Value deep_clone(const Value& source) {
     if (source.is_array()) {
         Array copy;
@@ -40,6 +47,8 @@ Value deep_clone(const Value& source) {
     if (source.is_object()) {
         Object copy;
         for (const auto& key : source.as_object().keys()) copy.set(key, deep_clone(*source.as_object().find(key)));
+        for (const auto& key : source.as_object().hidden_keys())
+            if (const Value* value = source.as_object().find(key)) copy.define_hidden(key, deep_clone(*value));
         return Value(std::move(copy));
     }
     return source;

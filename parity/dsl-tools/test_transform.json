@@ -412,6 +412,16 @@
    "newEffectName": "synth.voronoi"
   },
   {
+   "id": "transform/let-order-unparse",
+   "op": "replaceEffectUnparse",
+   "compiled": {
+    "$compile": "search synth\\nlet amount = 13\\nnoise(scale: amount).write(o0)\\nlet amount = 97\\nnoise(scale: amount).write(o1)\\nrender(o1)"
+   },
+   "stepIndex": 1,
+   "newEffectName": "synth.voronoi",
+   "newArgs": { "scale": 31 }
+  },
+  {
    "id": "transform/inline-steps",
    "op": "listSteps",
    "compiled": {
