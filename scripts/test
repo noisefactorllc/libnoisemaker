@@ -47,8 +47,13 @@ if [[ -n "${NM_CHANGED_FILES:-}" ]]; then
       # Core sources, the native tools the build compiles, the reference and
       # catalog helpers the parity gates run, and the gate entry points all
       # exercise the native tests and the parity gates.
-      src/*|include/*|host/*|tests/core/*|tests/CMakeLists.txt|CMakeLists.txt|cmake/*|tools/nm-dump/*|tools/nm-render/*|tools/*.mjs|tools/catalog/*|scripts/gates|scripts/parity-summary)
+      src/*|include/*|host/*|tests/core/*|tests/CMakeLists.txt|CMakeLists.txt|cmake/*|tools/nm-dump/*|tools/*.mjs|tools/catalog/*|scripts/gates|scripts/parity-summary)
         run_core=true; run_gates=true ;;
+      # nm-render and the gpu tests compile only in the GPU build, which the
+      # GPU-free entrypoint never builds; their ctests run in CI's exact-source
+      # build. The entrypoint's gate plan compares nm-dump: scripts/gates
+      # exports NM_RENDER="$build_dir/nm-dump".
+      tools/nm-render/*|tests/gpu/*) run_core=true ;;
       parity/*) run_gates=true ;;
       tools/*|scripts/*|tests/tools/*) run_tools=true ;;
       *) run_core=true; run_tools=true; run_gates=true ;;

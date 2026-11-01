@@ -128,6 +128,31 @@ void test_round_trips_an_unaligned_texture() {
     wgpuTextureRelease(tex);
 }
 
+void test_recovers_from_a_forced_device_loss() {
+    auto result = libnoisemaker::gpu::create_device(options_from_env());
+    if (result.status != libnoisemaker::gpu::Status::Ok) std::fprintf(stderr, "create_device: %s\n", result.message.c_str());
+    NM_CHECK(result.status == libnoisemaker::gpu::Status::Ok);
+    auto& d = result.device;
+    WGPUStringView message = {"Device lost for testing", WGPU_STRLEN};
+    wgpuDeviceForceLoss(d.device, WGPUDeviceLostReason_Unknown, message);
+    wgpuInstanceProcessEvents(d.instance);
+    {
+        std::lock_guard<std::mutex> lock(d.errors->mutex);
+        NM_CHECK(d.errors->lost);
+        NM_CHECK(d.errors->lost_message.find("Device lost for testing") != std::string::npos);
+    }
+    // A fresh device renders after the loss, the canvas.js recovery.
+    auto fresh = libnoisemaker::gpu::create_device(options_from_env());
+    if (fresh.status != libnoisemaker::gpu::Status::Ok) std::fprintf(stderr, "create_device: %s\n", fresh.message.c_str());
+    NM_CHECK(fresh.status == libnoisemaker::gpu::Status::Ok);
+    WGPUTexture tex = make_texture(fresh.device, 2, 2, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc);
+    std::vector<uint8_t> pixels;
+    std::string readMessage;
+    NM_CHECK(libnoisemaker::gpu::read_rgba8(fresh.device, tex, 2, 2, pixels, readMessage) ==
+             libnoisemaker::gpu::Status::Ok);
+    wgpuTextureRelease(tex);
+}
+
 }  // namespace
 
 int main() {
@@ -136,6 +161,7 @@ int main() {
     test_cpu_adapter_requires_explicit_fallback();
     test_clears_and_reads_back();
     test_round_trips_an_unaligned_texture();
+    test_recovers_from_a_forced_device_loss();
     std::printf("test_device: ok\n");
     return 0;
 }

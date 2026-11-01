@@ -75,7 +75,7 @@ def main(argv):
     with open(ledger) as f:
         rows = json.load(f)
     evidence = None
-    effects_file = ledger + ".effects.json"
+    effects_file = (ledger[:-len(".json")] if ledger.endswith(".json") else ledger) + ".effects.json"
     if not only and os.path.exists(effects_file):
         with open(effects_file) as f:
             evidence = json.load(f)

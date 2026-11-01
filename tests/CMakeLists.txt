@@ -4,6 +4,30 @@ if(NM_BUILD_GPU)
   target_link_libraries(test_device PRIVATE noisemaker_gpu)
   add_test(NAME test_device COMMAND test_device)
 
+  # Inject a real device loss into the renderer's test build after a draw.
+  file(READ "${PROJECT_SOURCE_DIR}/tools/nm-render/main.cpp" _nm_renderer)
+  set(_nm_draw "pipeline.render(fixture.time);")
+  string(REPLACE "${_nm_draw}" "" _nm_without_draw "${_nm_renderer}")
+  string(LENGTH "${_nm_renderer}" _nm_source_length)
+  string(LENGTH "${_nm_without_draw}" _nm_without_length)
+  string(LENGTH "${_nm_draw}" _nm_draw_length)
+  math(EXPR _nm_removed "${_nm_source_length} - ${_nm_without_length}")
+  if(NOT _nm_removed EQUAL _nm_draw_length)
+    message(FATAL_ERROR "nm-render device-loss injection point changed")
+  endif()
+  string(REPLACE "${_nm_draw}" "${_nm_draw}\n                    nm_test_after_draw(device);" _nm_renderer "${_nm_renderer}")
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/nm_render_loss.inc" "${_nm_renderer}")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/tools/nm-render/main.cpp")
+  add_executable(test_nm_render_loss gpu/test_nm_render_loss.cpp ${PROJECT_SOURCE_DIR}/tools/nm-render/png.cpp)
+  target_include_directories(test_nm_render_loss PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
+    ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/tools/nm-render)
+  target_link_libraries(test_nm_render_loss PRIVATE noisemaker_dawn)
+  foreach(mode single batch)
+    add_test(NAME nm_render_loss_${mode} COMMAND test_nm_render_loss "${mode}"
+      "${PROJECT_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/nm_render_loss_${mode}")
+    set_tests_properties(nm_render_loss_${mode} PROPERTIES TIMEOUT 60)
+  endforeach()
+
   # nm-render's PNG codec, built with nm-render.
   add_executable(test_png gpu/test_png.cpp ${PROJECT_SOURCE_DIR}/tools/nm-render/png.cpp)
   target_include_directories(test_png PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/tools/nm-render)

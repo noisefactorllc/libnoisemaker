@@ -214,6 +214,7 @@ class BoundedGateTests(unittest.TestCase):
             env = dict(os.environ, NM_PYTHON=pathlib.Path(sys.executable).as_posix(),
                        PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'])
             env.pop('NM_CHANGED_FILES', None)
+            env.pop('NM_TEST_BUILD_DIR', None)
             bash = 'bash'
             if os.name == 'nt':
                 # Windows' System32 bash is a WSL launcher, not the Git shell.

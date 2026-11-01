@@ -714,7 +714,8 @@ async function runDsl (page, src, expectedPassCount) {
   }, { src })
   await page.waitForFunction(({ src, expectedPassCount, backendName }) => {
     const status = document.getElementById('status')?.textContent || ''
-    if (/error|failed/i.test(status)) throw new Error('DSL compile failed: ' + status)
+    // External-input status can report failure before the demo compiles the DSL.
+    if (/^(?:compilation failed|failed to load effects):/i.test(status)) throw new Error('DSL compile failed: ' + status)
     const p = window.__noisemakerRenderingPipeline
     if (!(p && p.graph && p.graph.source === src.trim() && !p.isCompiling)) return false
     if (p.backend?.getName?.() !== backendName) return false
@@ -913,6 +914,7 @@ async function withSession (opts, fn) {
   await session.setup()
   try {
     const page = session.page
+    await page.context().grantPermissions(['midi', 'midi-sysex'], { origin: new URL(page.url()).origin })
     await installCaptureRoute(page)
     await session.setBackend(opts.backend)
     await page.setViewportSize({ width: opts.size, height: opts.size })

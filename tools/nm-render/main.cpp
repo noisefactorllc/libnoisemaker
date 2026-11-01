@@ -1222,12 +1222,17 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
                 }
                 return nm_render::encode_png_rgba8(width, height, presented);
             };
+            const auto require_live_device = [&]() {
+                std::lock_guard<std::mutex> lock(device.errors->mutex);
+                if (device.errors->lost) throw std::runtime_error("device lost: " + device.errors->lost_message);
+            };
             if (fixture.timed()) {
                 int frame = 0;
                 for (const Sample& sample : sample_schedule(fixture)) {
                     for (; frame < sample.frame; ++frame) {
                         pipeline.render(std::fmod((frame + 1) / 600.0, 1.0));
                         dawn.processEvents();
+                        require_live_device();
                     }
                     const std::vector<uint8_t> png = capture();
                     for (const std::string& label : sample.labels) {
@@ -1238,6 +1243,7 @@ int render_fixture(nm::gpu::Device& device, const Fixture& fixture) {
                 for (int i = 0; i < fixture.frames; ++i) {
                     pipeline.render(fixture.time);
                     dawn.processEvents();
+                    require_live_device();
                 }
                 if (!nm_render::write_file(fixture.out, capture())) status = fail("cannot write the PNG");
             }
@@ -1296,11 +1302,17 @@ int run_batch(const std::string& manifestPath, bool allowFallback) {
             lost = created->device.errors->lost;
         }
         if (lost) {
-            // Every later fixture would fail for this one's loss.
-            std::cerr << "nm-render: batch stopped after entry " << i << ": the device was lost; " << entries.size() - i - 1
-                      << " entries not rendered\n";
-            failed += entries.size() - i - 1;
-            break;
+            // canvas.js rebuilds on a fresh canvas after a lost context and
+            // keeps going; the batch does the same on a fresh device.
+            std::cerr << "nm-render: batch: the device was lost after entry " << i
+                      << "; rebuilding on a fresh device\n";
+            created = open_device(allowFallback);
+            if (!created) {
+                std::cerr << "nm-render: batch stopped after entry " << i << ": the device was lost; "
+                          << entries.size() - i - 1 << " entries not rendered\n";
+                failed += entries.size() - i - 1;
+                break;
+            }
         }
     }
     std::cerr << "nm-render: batch: " << entries.size() - failed << " of " << entries.size() << " rendered\n";

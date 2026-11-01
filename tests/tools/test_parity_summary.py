@@ -4,6 +4,7 @@ policy passes; a near case without one, a failure, a missing case and an
 unevidenced effect do not."""
 
 import contextlib
+import ast
 import importlib.util
 import io
 import json
@@ -15,6 +16,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location("summarize", ROOT / "parity" / "summarize.py")
 summarize = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(summarize)
+
+# Load the sweep's path helper without its rendering dependencies.
+_sweep = ROOT / "parity" / "sweep.py"
+_path_function = next(node for node in ast.parse(_sweep.read_text()).body
+                      if isinstance(node, ast.FunctionDef) and node.name == "effects_path")
+_path_scope = {"Path": pathlib.Path}
+exec(compile(ast.Module(body=[_path_function], type_ignores=[]), str(_sweep), "exec"), _path_scope)
+effects_path = _path_scope["effects_path"]
 
 POLICY = {"tolerance": 42.001, "ssim_min": 0.99933}
 
@@ -30,13 +39,13 @@ def near(name, mechanism="reviewed side by side: the same"):
     return row
 
 
-def run(rows, sweep_rc=0, only=(), evidence=None):
+def run(rows, sweep_rc=0, only=(), evidence=None, ledger_name="ledger.json"):
     """(exit status, PARITY-SUMMARY counts) of summarize.main on a ledger file."""
     with tempfile.TemporaryDirectory() as tmp:
-        ledger = pathlib.Path(tmp) / "ledger.json"
+        ledger = pathlib.Path(tmp) / ledger_name
         ledger.write_text(json.dumps(rows))
         if evidence is not None:
-            (pathlib.Path(tmp) / "ledger.json.effects.json").write_text(json.dumps(evidence))
+            effects_path(ledger).write_text(json.dumps(evidence))
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             status = summarize.main(["summarize.py", str(ledger), str(sweep_rc), *only])
@@ -46,6 +55,15 @@ def run(rows, sweep_rc=0, only=(), evidence=None):
 
 
 class NearPolicyTests(unittest.TestCase):
+    def test_actual_sweep_sidecar_reports_missing_effects(self):
+        for name in ("ledger.json", "ledger", "ledger.custom"):
+            with self.subTest(ledger=name):
+                status, counts = run([exact("a")], evidence={"filter.a": ["a"], "filter.b": []},
+                                     ledger_name=name)
+                self.assertEqual(1, status)
+                self.assertEqual(2, counts["effects"])
+                self.assertEqual(1, counts["effects_evidenced"])
+
     def test_reviewed_near_cases_pass(self):
         status, counts = run([exact("a"), near("b"), near("c")])
         self.assertEqual(status, 0)
