@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "7153bec4360709f41c1a9132ba78e30af633126e",
-  "version": "1.0.323",
+  "commit": "babf6b2dbb3d3bc991bfd095bcf6783c13cd9f07",
+  "version": "1.0.325",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "f93dcd039ec8422da7e7f12be486f9a5e024a7afef1e7c513fde570ee1b2c687",
@@ -196,7 +196,7 @@
     "effects/synth/osc2d.js": "5a74a6dc8a902f8a0ff43be928a1191790e358101544e54d4ca5e0c4b1bdc99c",
     "effects/synth/pattern.js": "c609d5ee53e11059314e282ca0b61a86ca7e3321ad1bd8722b4e32d84969d73a",
     "effects/synth/perlin.js": "086f9d7ffc65a16f03ee75f19d9a8787234002f0ad54041f35020c5b44c1a4f2",
-    "effects/synth/polygon.js": "ebdd0470d16686f33900ec0a0da5ffa8764e5877a141bcf6daec70cfc3a1f9ff",
+    "effects/synth/polygon.js": "82eb4487885bc6b68cfc8ef570ac248584981d25a418c49a86783f415b915615",
     "effects/synth/reactionDiffusion.js": "6d896eca7b0b4d79885029fff128d94fa6bebcf516e8a2711dbc70234431d45c",
     "effects/synth/remap.js": "bb1198a63e4d34bfaade32cde7b15c3f714367059400f7b463418922d337e38e",
     "effects/synth/roll.js": "bb89cc2404c7887bf1e444a3d12a80668bf0cc326ed6b716cd821a1f624a5e76",
