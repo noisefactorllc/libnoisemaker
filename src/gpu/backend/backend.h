@@ -127,14 +127,10 @@ public:
     void copyTextureScaled(const JsString& srcId, const JsString& dstId);
     void generateMipmaps(const std::vector<JsString>& ids);
     void clearTexture(const JsString& id);
-    // updateTextureFromPixels(id, width, height, rgba, flipY):
-    // updateTextureFromSource(id, canvas, { flipY, context2d }) for a 2D
-    // canvas created with willReadFrequently, whose getImageData rows are
-    // rgba: the path that writes CPU pixels. The reference's WebGPU backend
-    // no longer asks the canvas for a 2D context; its caller passes one
-    // (pipeline.js), and the parity oracle passes the mock's. { width,
-    // height }, zero for an empty source. rgba holds width * height * 4
-    // bytes, or it throws a RangeError.
+    // updateTextureFromSource(id, canvas, { flipY }) for a 2D canvas created
+    // with willReadFrequently, whose getImageData rows are rgba: the path
+    // that writes CPU pixels. { width, height }, zero for an empty source.
+    // rgba holds width * height * 4 bytes, or it throws a RangeError.
     Value updateTextureFromPixels(const JsString& id, double width, double height, const std::vector<uint8_t>& rgba,
                                   bool flipY);
     // readPixels(textureId): the texture's texels as RGBA8, rgba16float and

@@ -18,10 +18,7 @@ const REF = resolve(process.env.NM_REFERENCE_ROOT)
 console.log = console.warn = console.info = (...args) => process.stderr.write(args.map(String).join(' ') + '\n')
 // The DOM classes updateTextureFromSource tests sources against, and a 2D
 // canvas created with willReadFrequently whose getImageData returns the
-// op's bytes: the path that writes CPU pixels. The reference takes that
-// path's context from the caller (its pipeline.js passes
-// canvas.getContext?.('2d')), so the op passes it too, with the canvas
-// back-reference the reference's context2d check reads.
+// op's bytes: the path that writes CPU pixels.
 globalThis.HTMLVideoElement ??= class HTMLVideoElement {}
 globalThis.HTMLImageElement ??= class HTMLImageElement {}
 globalThis.ImageBitmap ??= class ImageBitmap {}
