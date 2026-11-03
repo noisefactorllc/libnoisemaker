@@ -18,7 +18,10 @@ const REF = resolve(process.env.NM_REFERENCE_ROOT)
 console.log = console.warn = console.info = (...args) => process.stderr.write(args.map(String).join(' ') + '\n')
 // The DOM classes updateTextureFromSource tests sources against, and a 2D
 // canvas created with willReadFrequently whose getImageData returns the
-// op's bytes: the path that writes CPU pixels.
+// op's bytes: the path that writes CPU pixels. The reference takes that
+// path's context from the caller (its pipeline.js passes
+// canvas.getContext?.('2d')), so the op passes it too, with the canvas
+// back-reference the reference's context2d check reads.
 globalThis.HTMLVideoElement ??= class HTMLVideoElement {}
 globalThis.HTMLImageElement ??= class HTMLImageElement {}
 globalThis.ImageBitmap ??= class ImageBitmap {}
@@ -27,6 +30,7 @@ globalThis.HTMLCanvasElement ??= class HTMLCanvasElement {
   getContext (kind) {
     if (kind !== '2d') return null
     return {
+      canvas: this,
       getContextAttributes: () => ({ willReadFrequently: true }),
       getImageData: (x, y, w, h) => {
         if (x !== 0 || y !== 0 || w !== this.width || h !== this.height || !Number.isInteger(w) || !Number.isInteger(h) ||
@@ -99,7 +103,7 @@ for await (const line of lines) {
       case 'clearTexture': backend.clearTexture(op.id); break
       case 'updateTextureFromPixels': {
         const canvas = new HTMLCanvasElement(op.width, op.height, Uint8ClampedArray.from(op.data))
-        result = backend.updateTextureFromSource(op.id, canvas, op.flipY === undefined ? {} : { flipY: op.flipY })
+        result = backend.updateTextureFromSource(op.id, canvas, { flipY: op.flipY, context2d: canvas.getContext?.('2d') })
         break
       }
       case 'readPixels': {
