@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "7aa54b54492c0a158b000a5c563e94e6e4dce3dc",
-  "version": "1.0.336",
+  "commit": "8e0e2b36e2ea6ef9aad7966971549a53399455b6",
+  "version": "1.0.338",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "f93dcd039ec8422da7e7f12be486f9a5e024a7afef1e7c513fde570ee1b2c687",
@@ -46,7 +46,7 @@
     "effects/filter/edge.js": "d12324196484a8c148cfe4ee4c1acb93fe8e45406a4ddb350bb56bcd9790310e",
     "effects/filter/emboss.js": "ad4077d3e38be835f6966d4affc4b1ffee30bd7a7d36edf8117827f2c01b25a3",
     "effects/filter/extrude.js": "edba79eb92cba9bc22bd5ecd5560e0467a23581a7c8a248e329bbc0dd533b191",
-    "effects/filter/feedback.js": "17e264a3d5a0c298e35d033ef184b5dbd32f4fe2f3608e58f89cb1d05b376160",
+    "effects/filter/feedback.js": "c4af8aee03f13a38712cffedc1d0baa9727c854c3ab19167a986ca119a2c17cd",
     "effects/filter/fibers.js": "fdcdc39984d12562cc0b411cd486add49f6098227287062575b7c1d01dbcf49c",
     "effects/filter/flipMirror.js": "a4b6553631afe3823b637a44ccc1aef9309971c14dd3aa3e4f39133d46818bb8",
     "effects/filter/fxaa.js": "297cea3567bb993dd39dbc5ee4215dbd8c913a2f32333bdbe45c387316930a4a",
@@ -96,7 +96,7 @@
     "effects/filter/rotate.js": "cb737653c64df12aeeaa79873e292d8a2e9bedb77eef4376e7e325e03536bb1e",
     "effects/filter/scale.js": "b90bee763d596c0d971583e7f8faf313a719128faea8dee45ceff76770d2528d",
     "effects/filter/scanlineError.js": "647391c315f23ccbd695d9f32c994813c4d0a4ded92da5212d9085600a6af981",
-    "effects/filter/scatter.js": "2e85c1a27de1f963143475310729260067968156e00e2cb9e0332c572a6b491c",
+    "effects/filter/scatter.js": "e6570550d8bfdcc52055b62fb602ab7befe3da549e243e16f6522a968a2a8947",
     "effects/filter/scratches.js": "a4b377fd3e88ab73bdd982260f1b707c1bfed473ff38c5c8a5e3d06d0ab159b2",
     "effects/filter/scroll.js": "d5b91299d73747f9b452e0d66fb18f4ce3e025eea29bfdc5687eb745acb8f9ea",
     "effects/filter/seamless.js": "e5c90435e1754997f15cb2005f1444c2109ca85927196f28f8393d0141406b88",
