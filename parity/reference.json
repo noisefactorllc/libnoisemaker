@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "8e0e2b36e2ea6ef9aad7966971549a53399455b6",
-  "version": "1.0.338",
+  "commit": "e3317b04f460a93127c879159e69ef3ddb38c402",
+  "version": "1.0.339",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "f93dcd039ec8422da7e7f12be486f9a5e024a7afef1e7c513fde570ee1b2c687",
@@ -37,7 +37,7 @@
     "effects/filter/colorReplace.js": "4ed64211d0d50acb1b21bd8c0cd2dbf1969ea828bc0febb5855f006455da6422",
     "effects/filter/convolutionFeedback.js": "e3d1f80c1ad43d53241aa200eaee1c96f24ba9d952d21f3e41b4ee5c3c57b905",
     "effects/filter/corrupt.js": "931a5f28339f66f58ea2eba5bab1e889f57ca5c641ac936e02954f80938afbbb",
-    "effects/filter/craquelure.js": "3260e1d250a3dc533aee4346bc8a4b58ef264054bef32cb739578b2921c7c709",
+    "effects/filter/craquelure.js": "10674896a5c9dca3f1d697c5d894c8e8a7dc86082f9e490f62b338d61037d375",
     "effects/filter/crt.js": "15323bf266bef0f14dcfd1b0659bf12ed524f3c52c536a74bbd075d72ddd5e56",
     "effects/filter/degauss.js": "1377376265438935bc0f771eed131f7171b2d5e364198a841964262a2dba42c7",
     "effects/filter/deriv.js": "fd4a450096e866b7cc960e5122769566856a7ed747edaab3e892a8c3a6d50eb1",
