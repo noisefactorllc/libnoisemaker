@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "e3317b04f460a93127c879159e69ef3ddb38c402",
-  "version": "1.0.339",
+  "commit": "1faed961be169863e84fd719a4ca85c27a8b1322",
+  "version": "1.0.340",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "f93dcd039ec8422da7e7f12be486f9a5e024a7afef1e7c513fde570ee1b2c687",
@@ -114,7 +114,7 @@
     "effects/filter/spookyTicker.js": "733ce81f3c835a214093829479c8e668667b260292b0a5c4efd4894e02cf57c2",
     "effects/filter/stamp.js": "c8e605d10f70d6abd4e66f053969c3985bcc5bfa5a4c1b22287a173a165990de",
     "effects/filter/step.js": "c8adb4dd839f391df9ec8ebdd7cc309a730320030294ed1c86159cf144618244",
-    "effects/filter/stipple.js": "17ff97bf895673772c590a228df17619a5bc786aef1808aa5153adc952456253",
+    "effects/filter/stipple.js": "f4b8e89de915e6931bd774c56464ce02c7d55429d8c17c95462b0a5818849dda",
     "effects/filter/strayHair.js": "6f55759f14272241f72c54bd9e8e18daa774626e0bd63c077da569bfbd404477",
     "effects/filter/strokes.js": "c25d2e67a7c63e282b91614f161cb6d5ccb6436717003a3e43da740d6f3268dc",
     "effects/filter/temporalAberration.js": "635d11f8920030aa50ff4729a3259c0097fcf614eb8e520dd744f9740f8894bc",
