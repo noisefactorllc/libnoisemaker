@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "71771987158d6a2583b50d68ea4ded90dd461548",
-  "version": "1.0.328",
+  "commit": "7aa54b54492c0a158b000a5c563e94e6e4dce3dc",
+  "version": "1.0.336",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "f93dcd039ec8422da7e7f12be486f9a5e024a7afef1e7c513fde570ee1b2c687",
@@ -96,7 +96,7 @@
     "effects/filter/rotate.js": "cb737653c64df12aeeaa79873e292d8a2e9bedb77eef4376e7e325e03536bb1e",
     "effects/filter/scale.js": "b90bee763d596c0d971583e7f8faf313a719128faea8dee45ceff76770d2528d",
     "effects/filter/scanlineError.js": "647391c315f23ccbd695d9f32c994813c4d0a4ded92da5212d9085600a6af981",
-    "effects/filter/scatter.js": "57cf19b20e413bb3c43d1781d49dcc3379d27d1418921892f80774545f0ac25c",
+    "effects/filter/scatter.js": "2e85c1a27de1f963143475310729260067968156e00e2cb9e0332c572a6b491c",
     "effects/filter/scratches.js": "a4b377fd3e88ab73bdd982260f1b707c1bfed473ff38c5c8a5e3d06d0ab159b2",
     "effects/filter/scroll.js": "d5b91299d73747f9b452e0d66fb18f4ce3e025eea29bfdc5687eb745acb8f9ea",
     "effects/filter/seamless.js": "e5c90435e1754997f15cb2005f1444c2109ca85927196f28f8393d0141406b88",
