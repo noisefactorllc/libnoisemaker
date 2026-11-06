@@ -243,13 +243,13 @@ https://iquilezles.org/articles/distfunctions/,
 https://iquilezles.org/articles/sdfrepetition/ and his tunnel shader
 The smooth minimum, signed distance functions, SDF repetition and the tunnel
 shader. These Noisemaker source lines mark this code with the MIT License:
-  shaders/effects/classicNoisedeck/cellNoise/glsl/cellNoise.glsl:250
-  shaders/effects/classicNoisedeck/cellRefract/glsl/cellRefract.glsl:365
+  shaders/effects/classicNoisedeck/cellNoise/glsl/cellNoise.glsl:248
+  shaders/effects/classicNoisedeck/cellRefract/glsl/cellRefract.glsl:363
   shaders/effects/classicNoisedeck/noise3d/glsl/noise3d.glsl:435
   shaders/effects/classicNoisedeck/noise3d/glsl/noise3d.glsl:477
-  shaders/effects/classicNoisedeck/shapes3d/glsl/shapes3d.glsl:279
-  shaders/effects/classicNoisedeck/shapes3d/glsl/shapes3d.glsl:291
-  shaders/effects/classicNoisedeck/shapes3d/glsl/shapes3d.glsl:307
+  shaders/effects/classicNoisedeck/shapes3d/glsl/shapes3d.glsl:277
+  shaders/effects/classicNoisedeck/shapes3d/glsl/shapes3d.glsl:289
+  shaders/effects/classicNoisedeck/shapes3d/glsl/shapes3d.glsl:305
   shaders/effects/filter/tunnel/glsl/tunnel.glsl:4
   shaders/effects/filter/tunnel/wgsl/tunnel.wgsl:4
   shaders/effects/synth/cell/glsl/cell.glsl:92
@@ -280,4 +280,4 @@ Julia fractal
 Source: http://nuclear.mutantstargoat.com/articles/sdr_fract/
 The Julia fractal shader by Nuclear / Mutant Stargoat. This Noisemaker source
 line marks it as public domain, which needs no notice:
-  shaders/effects/classicNoisedeck/fractal/glsl/fractal.glsl:249
+  shaders/effects/classicNoisedeck/fractal/glsl/fractal.glsl:247
