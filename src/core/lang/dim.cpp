@@ -35,7 +35,7 @@ bool referencesParam(const JsValue& d) {
 }
 
 JsValue scope(const JsValue& d, const JsText& scopeSuffix, JsMap<JsText, JsText>& scopedParamMap,
-                  const JsText& stateSizeScope) {
+                  const JsText& stateSizeScope, const SizeParamClaim& claimSizeParam) {
     if (!d.isObject()) return d;
     JsObject o = d.toObject();
     // `param` takes precedence, matching the reference's if/else-if chain
@@ -43,10 +43,18 @@ JsValue scope(const JsValue& d, const JsText& scopeSuffix, JsMap<JsText, JsText>
     // `dimSpec.screenDivide !== undefined`).
     if (o.contains(JsText(u"param"))) {
         const JsText original = o.value(JsText(u"param")).toString();
-        const JsText effectiveScope = (original == JsText(u"stateSize") && !stateSizeScope.isEmpty())
-                                            ? stateSizeScope
-                                            : scopeSuffix;
-        const JsText scoped = original + u'_' + effectiveScope;
+        // A particle-pipeline `stateSize` reads the pipeline's own state
+        // resolution and bypasses the size-param claim, exactly like the
+        // reference's inline `dimensionScope` ternary ahead of
+        // `chainSizeParam`.
+        JsText scoped;
+        if (original == JsText(u"stateSize") && !stateSizeScope.isEmpty()) {
+            scoped = original + u'_' + stateSizeScope;
+        } else {
+            const JsText candidate = original + u'_' + scopeSuffix;
+            scoped = claimSizeParam ? claimSizeParam(candidate, truthy(o.value(JsText(u"inherit"))))
+                                    : candidate;
+        }
         // An inherited dimension reads the scope's value and never writes
         // this effect's own value over it.
         if (!truthy(o.value(JsText(u"inherit")))) scopedParamMap.insert(original, scoped);
@@ -55,7 +63,8 @@ JsValue scope(const JsValue& d, const JsText& scopeSuffix, JsMap<JsText, JsText>
     }
     if (o.contains(JsText(u"screenDivide"))) {
         const JsText original = o.value(JsText(u"screenDivide")).toString();
-        const JsText scoped = original + u'_' + scopeSuffix;
+        const JsText candidate = original + u'_' + scopeSuffix;
+        const JsText scoped = claimSizeParam ? claimSizeParam(candidate, false) : candidate;
         scopedParamMap.insert(original, scoped);
         o.insert(JsText(u"screenDivide"), scoped);
         return o;

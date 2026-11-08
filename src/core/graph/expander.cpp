@@ -209,8 +209,85 @@ private:
     JsText currentParticlePipelineId_;
     JsObject pipelineUniforms_;
     JsText chainScopeId_;
+    // Private-state scoping (reference expander.js collectGlobalTextureUsers):
+    // global_ textures deliberately shared between effects in a chain, the
+    // effects of the chain already seen, and the first node that claims each
+    // chain-scoped sizing param.
+    GraphMap<JsText, JsSet<JsText>> globalTextureUsers_;
+    JsSet<JsText> seenEffects_;
+    GraphMap<JsText, JsText> sizeParamOwners_;
+    // Per-step: the textures this effect's definition writes.
+    JsSet<JsText> ownedTextures_;
+    JsText instanceScopeId_;
 
     static JsText nodeIdOf(int temp) { return JsText(u"node_%1").arg(temp); }
+
+    // Find globals deliberately shared by different effects in a chain
+    // (reference expander.js collectGlobalTextureUsers): every global_-
+    // prefixed reference an effect definition names, mapped to the set of
+    // distinct effects naming it.
+    GraphMap<JsText, JsSet<JsText>> collectGlobalTextureUsers(const JsArray& chain) const {
+        GraphMap<JsText, JsSet<JsText>> users;
+        JsSet<JsText> effects;
+        for (const JsValue& stepValue : chain) {
+            const JsObject step = stepValue.toObject();
+            if (step.value(JsText(u"builtin")).toBool(false)) continue;
+            const JsObject stepArgs = step.value(JsText(u"args")).toObject();
+            const JsValue skip = stepArgs.value(JsText(u"_skip"));
+            if (skip.isBool() && skip.toBool()) continue;
+            const JsText op = step.value(JsText(u"op")).toString();
+            if (!registry_.hasEffect(op)) continue;
+            if (!effects.insert(op).second) continue;
+            const JsObject effectDef = registry_.getEffect(op);
+            JsVector<JsValue> refs;
+            for (const JsText& name : effectDef.value(JsText(u"textures")).toObject().keys()) refs.append(JsValue(name));
+            for (const JsText& name : effectDef.value(JsText(u"textures3d")).toObject().keys()) refs.append(JsValue(name));
+            const JsObject globals = effectDef.value(JsText(u"globals")).toObject();
+            for (auto it = globals.constBegin(); it != globals.constEnd(); ++it) {
+                refs.append(it.value().toObject().value(JsText(u"default")));
+            }
+            for (const JsText field : {JsText(u"outputTex"), JsText(u"outputTex3d"), JsText(u"outputGeo"),
+                                       JsText(u"outputXyz"), JsText(u"outputVel"), JsText(u"outputRgba")}) {
+                refs.append(effectDef.value(field));
+            }
+            for (const JsValue& passValue : effectDef.value(JsText(u"passes")).toArray()) {
+                const JsObject pass = passValue.toObject();
+                for (const JsText section : {JsText(u"inputs"), JsText(u"outputs")}) {
+                    const JsObject names = pass.value(section).toObject();
+                    for (auto it = names.constBegin(); it != names.constEnd(); ++it) refs.append(it.value());
+                }
+            }
+            for (const JsValue& ref : refs) {
+                if (!ref.isString()) continue;
+                const JsText name = ref.toString();
+                if (!name.startsWith(JsText(u"global_"))) continue;
+                users[name].insert(op);
+            }
+        }
+        return users;
+    }
+
+    // A global_ texture that only one effect in the chain names, and that the
+    // effect writes, is private state; textures different effects share (the
+    // loop accumulator, mesh buffers) and read-only external uploads keep the
+    // chain scope (reference expander.js isPrivateGlobal).
+    bool isPrivateGlobal(const JsText& texName) const {
+        return ownedTextures_.contains(texName) && globalTextureUsers_.contains(texName)
+                    && globalTextureUsers_.value(texName).size() == 1;
+    }
+
+    // The first node to size private state from a param keeps the legacy
+    // chain-scoped name; any other node, of the same or another effect, gets
+    // its own (reference expander.js claimSizeParam). `volumeSize` and
+    // inherited dimensions bypass the claim.
+    JsText claimSizeParam(const JsText& scopedParam, bool inherit, bool isPrivate, const JsText& nodeId) {
+        if (inherit || scopedParam == volumeSizeParam_) return scopedParam;
+        const auto owner = sizeParamOwners_.find(scopedParam);
+        const bool claimed = owner != sizeParamOwners_.end();
+        if (!claimed) sizeParamOwners_.insert(scopedParam, nodeId);
+        return isPrivate && claimed && owner.value() != nodeId
+                   ? JsText(scopedParam + u'_' + nodeId) : scopedParam;
+    }
 
     JsObject resolveVolume(const JsText& param, JsSet<JsText>& visited) const {
         if (visited.contains(param)) return {};
@@ -323,7 +400,9 @@ private:
     JsText scopeChainTex(const JsText& texName) const {
         const JsText particleResult = scopeParticleTex(texName);
         if (particleResult != texName) return particleResult;
-        if (texName.startsWith(JsText(u"global_"))) return texName + u'_' + chainScopeId_;
+        if (texName.startsWith(JsText(u"global_"))) {
+            return texName + u'_' + (isPrivateGlobal(texName) ? instanceScopeId_ : chainScopeId_);
+        }
         return texName;
     }
 
@@ -373,6 +452,9 @@ private:
         volumeSizeParam_ = JsText(u"volumeSize_") + chainScopeId_;
 
         const JsArray chain = plan.value(JsText(u"chain")).toArray();
+        globalTextureUsers_ = collectGlobalTextureUsers(chain);
+        seenEffects_.clear();
+        sizeParamOwners_.clear();
         for (int stepPos = 0; stepPos < std::ssize(chain); ++stepPos) {
             const JsObject step = chain.at(stepPos).toObject();
             const bool builtin = step.value(JsText(u"builtin")).toBool(false);
@@ -546,6 +628,21 @@ private:
                            const JsText& effectName, const JsText& nodeId, int temp, int stepPos, const JsObject& plan) {
         GraphMap<JsText, JsText> scopedParamMap;
 
+        // Preserve legacy IDs for the first instance. Repeated private state
+        // gets a node suffix; cooperating effects retain the shared chain
+        // scope (reference expander.js's instanceScopeId / ownedTextures).
+        instanceScopeId_ = seenEffects_.contains(effectName) ? chainScopeId_ + u'_' + nodeId : chainScopeId_;
+        seenEffects_.insert(effectName);
+        ownedTextures_.clear();
+        for (const JsText& name : effectDef.value(JsText(u"textures")).toObject().keys()) ownedTextures_.insert(name);
+        for (const JsText& name : effectDef.value(JsText(u"textures3d")).toObject().keys()) ownedTextures_.insert(name);
+        for (const JsValue& passValue : effectDef.value(JsText(u"passes")).toArray()) {
+            const JsObject outputs = passValue.toObject().value(JsText(u"outputs")).toObject();
+            for (auto it = outputs.constBegin(); it != outputs.constEnd(); ++it) {
+                if (it.value().isString()) ownedTextures_.insert(it.value().toString());
+            }
+        }
+
         // 1. Particle-pipeline scope detection (§4.4 step 1).
         const JsObject textures = effectDef.value(JsText(u"textures")).toObject();
         if (textures.contains(JsText(u"global_xyz"))) {
@@ -670,8 +767,7 @@ private:
 
             JsText virtualTexId;
             if (texName.startsWith(JsText(u"global_"))) {
-                virtualTexId = shouldScopeAsParticle ? (texName + u'_' + currentParticlePipelineId_)
-                                                      : (texName + u'_' + chainScopeId_);
+                virtualTexId = scopeChainTex(texName);
             } else {
                 virtualTexId = nodeId + u'_' + texName;
             }
@@ -691,8 +787,17 @@ private:
                 const JsText stateSizeScope = (!currentParticlePipelineId_.isEmpty() && !texName.startsWith(JsText(u"global_")))
                                                     ? currentParticlePipelineId_
                                                     : JsText();
-                resolvedSpec.insert(JsText(u"width"), dim::scope(spec.value(JsText(u"width")), scopeSuffix, scopedParamMap, stateSizeScope));
-                resolvedSpec.insert(JsText(u"height"), dim::scope(spec.value(JsText(u"height")), scopeSuffix, scopedParamMap, stateSizeScope));
+                // Reference expander.js's chainSizeParam: particle-scoped
+                // textures and inherited dimensions bypass the claim.
+                dim::SizeParamClaim claim;
+                if (!shouldScopeAsParticle) {
+                    const bool isPrivateTex = !texName.startsWith(JsText(u"global_")) || isPrivateGlobal(texName);
+                    claim = [this, nodeId, isPrivateTex](const JsText& scopedParam, bool inherit) {
+                        return claimSizeParam(scopedParam, inherit, isPrivateTex, nodeId);
+                    };
+                }
+                resolvedSpec.insert(JsText(u"width"), dim::scope(spec.value(JsText(u"width")), scopeSuffix, scopedParamMap, stateSizeScope, claim));
+                resolvedSpec.insert(JsText(u"height"), dim::scope(spec.value(JsText(u"height")), scopeSuffix, scopedParamMap, stateSizeScope, claim));
             }
             textureSpecs_.insert(virtualTexId, resolvedSpec);
         }

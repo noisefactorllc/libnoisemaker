@@ -423,6 +423,121 @@ int main() {
         check(libnoisemaker::hashSource(u"\U0001F600") == u"11zz7", "source hash uses both UTF-16 surrogate units");
     }
 
+    // ======================================================================
+    // Private state per effect instance (reference cf95f49c expander.js): a
+    // global_ texture that only one effect in the chain names, and that the
+    // effect writes, is private state. The first instance keeps the
+    // chain-scoped ID; each further instance appends its node. A sizing
+    // parameter belongs to the first node that sizes private state from it;
+    // every other node, of the same or another effect, gets a node-scoped
+    // name. Textures different effects share (the loop accumulator, mesh
+    // buffers) and read-only external uploads keep the chain scope.
+    // Fixtures oracle-verified against the reference at the pin:
+    //   NM_REFERENCE_ROOT=<noisemaker at cf95f49c> node tools/reference-oracle.mjs \
+    //     expanded --out probes.jsonl <probe>.dsl
+    // ======================================================================
+    {
+        const libnoisemaker::JsText src = libnoisemaker::JsText(
+            u"search synth, mixer, filter, render\n"
+            "reactionDiffusion(zoom: x4).blendMode(tex: reactionDiffusion(zoom: x16)).write(o0)\n"
+            "render(o0)\n");
+        const libnoisemaker::ExpandResult r = expandSrc(src);
+        check(r.errors.isEmpty(), "two reactionDiffusion instances: no expand errors");
+        const auto screenDivideOf = [&r](const libnoisemaker::JsText& specId) {
+            return r.textureSpecs.value(specId).toObject().value(libnoisemaker::JsText(u"width"))
+                .toObject().value(libnoisemaker::JsText(u"screenDivide")).toString();
+        };
+        check(r.textureSpecs.contains(libnoisemaker::JsText(u"global_rd_state_chain_0"))
+                  && screenDivideOf(libnoisemaker::JsText(u"global_rd_state_chain_0")) == libnoisemaker::JsText(u"zoom_chain_0"),
+              "first reactionDiffusion instance keeps the legacy chain-scoped state and zoom");
+        check(r.textureSpecs.contains(libnoisemaker::JsText(u"global_rd_state_chain_0_node_1"))
+                  && screenDivideOf(libnoisemaker::JsText(u"global_rd_state_chain_0_node_1")) == libnoisemaker::JsText(u"zoom_chain_0_node_1"),
+              "the second reactionDiffusion instance gets node-scoped state and zoom");
+        const libnoisemaker::ExpandedPass* first = findPass(r, libnoisemaker::JsText(u"node_0_pass_0"));
+        const libnoisemaker::ExpandedPass* second = findPass(r, libnoisemaker::JsText(u"node_1_pass_0"));
+        check(first != nullptr && second != nullptr, "two reactionDiffusion instances: both passes exist");
+        if (first && second) {
+            check(findInput(*first, libnoisemaker::JsText(u"bufTex")) == libnoisemaker::JsText(u"global_rd_state_chain_0")
+                      && first->scopedParams.value(libnoisemaker::JsText(u"zoom")).toString() == libnoisemaker::JsText(u"zoom_chain_0")
+                      && first->uniforms.value(libnoisemaker::JsText(u"zoom_chain_0")).toDouble() == 4.0,
+                  "first reactionDiffusion instance reads its own chain-scoped state at zoom 4");
+            check(findInput(*second, libnoisemaker::JsText(u"bufTex")) == libnoisemaker::JsText(u"global_rd_state_chain_0_node_1")
+                      && second->scopedParams.value(libnoisemaker::JsText(u"zoom")).toString() == libnoisemaker::JsText(u"zoom_chain_0_node_1")
+                      && second->uniforms.value(libnoisemaker::JsText(u"zoom_chain_0_node_1")).toDouble() == 16.0,
+                  "second reactionDiffusion instance reads its own node-scoped state at zoom 16");
+        }
+    }
+
+    {
+        const libnoisemaker::ExpandResult r = expandSrc(libnoisemaker::JsText(
+            u"search synth, mixer, filter, render\nperlin().watercolor().watercolor().write(o0)\nrender(o0)\n"));
+        check(r.errors.isEmpty(), "two watercolor instances: no expand errors");
+        check(r.textureSpecs.contains(libnoisemaker::JsText(u"global_wc_state_chain_0"))
+                  && r.textureSpecs.contains(libnoisemaker::JsText(u"global_wc_state_chain_0_node_2")),
+              "repeated watercolor instances get independent ping-pong state textures");
+    }
+
+    {
+        const libnoisemaker::ExpandResult r = expandSrc(libnoisemaker::JsText(
+            u"search synth, mixer, filter, render\n"
+            "reactionDiffusion(zoom: x4).blendMode(tex: cellularAutomata(zoom: x16)).write(o0)\n"
+            "render(o0)\n"));
+        check(r.errors.isEmpty(), "reactionDiffusion then cellularAutomata: no expand errors");
+        const auto screenDivideOf = [&r](const libnoisemaker::JsText& specId) {
+            return r.textureSpecs.value(specId).toObject().value(libnoisemaker::JsText(u"width"))
+                .toObject().value(libnoisemaker::JsText(u"screenDivide")).toString();
+        };
+        check(screenDivideOf(libnoisemaker::JsText(u"global_rd_state_chain_0")) == libnoisemaker::JsText(u"zoom_chain_0"),
+              "different stateful effects: reactionDiffusion keeps its own zoom chain param");
+        check(r.textureSpecs.contains(libnoisemaker::JsText(u"global_ca_state_chain_0"))
+                  && screenDivideOf(libnoisemaker::JsText(u"global_ca_state_chain_0")) == libnoisemaker::JsText(u"zoom_chain_0_node_1"),
+              "different stateful effects: cellularAutomata's first instance keeps the chain-scoped "
+              "state but its zoom sizes from a node-scoped param (reactionDiffusion's node claimed it)");
+    }
+
+    {
+        const libnoisemaker::ExpandResult r = expandSrc(libnoisemaker::JsText(
+            u"search synth, mixer, filter, render\nperlin().loopBegin().loopEnd().loopBegin().loopEnd().write(o0)\nrender(o0)\n"));
+        check(r.errors.isEmpty(), "loopBegin/loopEnd pairs: no expand errors");
+        const libnoisemaker::ExpandedPass* begin = findPass(r, libnoisemaker::JsText(u"node_1_pass_0"));
+        const libnoisemaker::ExpandedPass* end = findPass(r, libnoisemaker::JsText(u"node_2_pass_0"));
+        const libnoisemaker::ExpandedPass* begin2 = findPass(r, libnoisemaker::JsText(u"node_3_pass_0"));
+        const libnoisemaker::ExpandedPass* end2 = findPass(r, libnoisemaker::JsText(u"node_4_pass_0"));
+        check(begin != nullptr && end != nullptr && begin2 != nullptr && end2 != nullptr, "loop passes exist");
+        if (begin && end && begin2 && end2) {
+            check(findInput(*begin, libnoisemaker::JsText(u"accumTex")) == libnoisemaker::JsText(u"global_accum_chain_0")
+                      && findOutput(*end, libnoisemaker::JsText(u"fragColor")) == libnoisemaker::JsText(u"global_accum_chain_0")
+                      && findInput(*begin2, libnoisemaker::JsText(u"accumTex")) == libnoisemaker::JsText(u"global_accum_chain_0")
+                      && findOutput(*end2, libnoisemaker::JsText(u"fragColor")) == libnoisemaker::JsText(u"global_accum_chain_0"),
+                  "loopBegin and loopEnd retain their shared chain-scoped accumulator");
+        }
+    }
+
+    {
+        const libnoisemaker::ExpandResult r = expandSrc(libnoisemaker::JsText(
+            u"search synth, mixer, filter, render\nmeshLoader().meshRender().meshRender().write(o0)\nrender(o0)\n"));
+        check(r.errors.isEmpty(), "meshLoader with repeated meshRender: no expand errors");
+        const libnoisemaker::ExpandedPass* loader = findPass(r, libnoisemaker::JsText(u"node_0_pass_0"));
+        const libnoisemaker::ExpandedPass* renderer1 = findPass(r, libnoisemaker::JsText(u"node_1_pass_1"));
+        const libnoisemaker::ExpandedPass* renderer2 = findPass(r, libnoisemaker::JsText(u"node_2_pass_1"));
+        check(loader != nullptr && renderer1 != nullptr && renderer2 != nullptr, "mesh passes exist");
+        if (loader && renderer1 && renderer2) {
+            const libnoisemaker::JsText positions = libnoisemaker::JsText(u"global_mesh0_positions_chain_0");
+            check(findInput(*loader, libnoisemaker::JsText(u"positionsTex")) == positions
+                      && findInput(*renderer1, libnoisemaker::JsText(u"meshPositions")) == positions
+                      && findInput(*renderer2, libnoisemaker::JsText(u"meshPositions")) == positions,
+                  "meshLoader and repeated meshRender retain their shared chain-scoped buffers");
+        }
+    }
+
+    {
+        const libnoisemaker::ExpandResult r = expandSrc(libnoisemaker::JsText(
+            u"search synth, mixer, filter, render\nperlin().write(o0)\nreactionDiffusion(zoom: x4).watercolor().write(o1)\nrender(o0)\n"));
+        check(r.errors.isEmpty(), "single instances in a second chain: no expand errors");
+        check(r.textureSpecs.contains(libnoisemaker::JsText(u"global_rd_state_chain_1")),
+              "single instances retain their existing chain-scoped texture IDs (chain_1)");
+    }
+
     if (g_failures == 0) {
         std::printf("ALL PASS (test_expander)\n");
         return 0;

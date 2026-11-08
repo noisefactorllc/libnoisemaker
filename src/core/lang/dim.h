@@ -2,6 +2,8 @@
 
 #include "enums.h"
 
+#include <functional>
+
 // dim.h — texture-dimension spec parse/scope helpers. Port of the DimSpec
 // handling embedded in the REFERENCE shaders/src/runtime/expander.js
 // (scopeDimSpec, reference/03 §6.3), cross-checked against
@@ -54,7 +56,14 @@ bool referencesParam(const JsValue& d);
 //
 // A `{param, inherit: true}` dimension is scoped the same way but records no
 // mapping: it reads the scope's value and never writes its own over it.
+//
+// `claimSizeParam` mirrors the reference's `chainSizeParam` closure: when
+// non-null, it is called with the would-be `${original}_${scopeSuffix}` name
+// and the dimension's RAW `inherit` value, and returns the final scoped name.
+// The reference builds it per step and applies it only outside particle
+// pipeline scopes; a null callback keeps the unclaimed name.
+using SizeParamClaim = std::function<JsText(const JsText& scopedParam, bool inherit)>;
 JsValue scope(const JsValue& d, const JsText& scopeSuffix, JsMap<JsText, JsText>& scopedParamMap,
-                  const JsText& stateSizeScope = JsText());
+                  const JsText& stateSizeScope = JsText(), const SizeParamClaim& claimSizeParam = {});
 
 } // namespace libnoisemaker::dim
