@@ -246,13 +246,13 @@ private:
             for (auto it = globals.constBegin(); it != globals.constEnd(); ++it) {
                 refs.append(it.value().toObject().value(JsText(u"default")));
             }
-            for (const JsText field : {JsText(u"outputTex"), JsText(u"outputTex3d"), JsText(u"outputGeo"),
+            for (const JsText& field : {JsText(u"outputTex"), JsText(u"outputTex3d"), JsText(u"outputGeo"),
                                        JsText(u"outputXyz"), JsText(u"outputVel"), JsText(u"outputRgba")}) {
                 refs.append(effectDef.value(field));
             }
             for (const JsValue& passValue : effectDef.value(JsText(u"passes")).toArray()) {
                 const JsObject pass = passValue.toObject();
-                for (const JsText section : {JsText(u"inputs"), JsText(u"outputs")}) {
+                for (const JsText& section : {JsText(u"inputs"), JsText(u"outputs")}) {
                     const JsObject names = pass.value(section).toObject();
                     for (auto it = names.constBegin(); it != names.constEnd(); ++it) refs.append(it.value());
                 }
