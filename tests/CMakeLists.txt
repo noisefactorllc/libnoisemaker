@@ -104,6 +104,13 @@ foreach(name test_async_overlays test_midi_state test_obj_parser test_text_canva
   add_test(NAME ${name} COMMAND ${name})
 endforeach()
 
+# The shared Windows library exports only the API its installed headers
+# declare with NM_API and NM_CXX_API (MSVC exports only what is dllexport).
+if(NM_BUILD_SHARED AND MSVC)
+  add_test(NAME windows_exports COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/abi/windows_exports.py"
+    "$<TARGET_FILE:noisemaker_core>" "${PROJECT_SOURCE_DIR}/include/noisemaker")
+endif()
+
 # Install this build and use it from a separate project, as qt and the kit will.
 string(REPLACE ";" "," _nm_consumer_archs "${CMAKE_OSX_ARCHITECTURES}")
 add_test(NAME consumer COMMAND "${CMAKE_COMMAND}"
