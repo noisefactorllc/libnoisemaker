@@ -151,11 +151,11 @@ public:
     // this.programs, copied for the pipeline's compilePrograms before it
     // compiles, and restored by restorePrograms(accepted) when a program
     // fails, so a rejected candidate never replaces a program the current
-    // graph renders with. The reference releases every entry compiled since
-    // with releaseProgram, a method the WebGL2 backend holds; the WebGPU
-    // backend has none, so dropping those entries is all that happens here.
+    // graph renders with. Every entry the restore drops or replaces releases
+    // its device objects, the work the reference's releaseProgram does on
+    // the WebGL2 backend.
     std::unordered_map<JsString, ProgramInfo> programsSnapshot() const { return programs_; }
-    void restorePrograms(std::unordered_map<JsString, ProgramInfo> accepted) { programs_ = std::move(accepted); }
+    void restorePrograms(std::unordered_map<JsString, ProgramInfo> accepted);
 
     void beginFrame();
     void endFrame();

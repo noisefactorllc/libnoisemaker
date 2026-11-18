@@ -208,10 +208,9 @@ void Pipeline::compilePrograms(const Value* graph) {
     }
 }
 
-// The backend gets back the programs it held before the failed compile. The
-// reference releases every entry compiled since with releaseProgram, a method
-// the WebGL2 backend holds; the WebGPU backend has none, so dropping those
-// entries is all that happens here.
+// The backend gets back the programs it held before the failed compile, and
+// releases every entry the restore drops or replaces, the work the
+// reference's releaseProgram does on the WebGL2 backend.
 void Pipeline::restorePrograms(std::unordered_map<JsString, ProgramInfo> accepted) {
     backend_.restorePrograms(std::move(accepted));
 }

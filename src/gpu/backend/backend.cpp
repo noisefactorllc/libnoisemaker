@@ -405,6 +405,36 @@ const ProgramInfo* WebGPUBackend::program(const JsString& id) const {
     return it == programs_.end() ? nullptr : &it->second;
 }
 
+// The pipeline's restorePrograms: the backend gets back the programs it held
+// before a compile that failed, and every entry the restore drops or
+// replaces releases its device objects, the work the reference's
+// releaseProgram does on the WebGL2 backend. A replaced entry holds new
+// handles, so equal handles identify the entry the snapshot kept.
+void WebGPUBackend::restorePrograms(std::unordered_map<JsString, ProgramInfo> accepted) {
+    const auto handles = [](const ProgramInfo& program) {
+        std::vector<Handle> out{program.module, program.pipeline, program.vertexModule, program.fragmentModule};
+        for (const auto& [entryPoint, handle] : program.pipelines) out.push_back(handle);
+        for (const auto& [key, handle] : program.pipelineCache) out.push_back(handle);
+        return out;
+    };
+    for (const auto& [id, program] : programs_) {
+        const auto kept = accepted.find(id);
+        if (kept != accepted.end() && handles(kept->second) == handles(program)) continue;
+        // Each owned handle once: a render program's module and fragment
+        // module are one object, and the default vertex module belongs to the
+        // backend's cache, not to the program that rendered with it.
+        std::vector<Handle> owned;
+        for (const Handle handle : handles(program)) {
+            if (handle && handle != defaultVertexModule_ &&
+                std::find(owned.begin(), owned.end(), handle) == owned.end()) {
+                owned.push_back(handle);
+            }
+        }
+        for (const Handle handle : owned) device_.release(handle);
+    }
+    programs_ = std::move(accepted);
+}
+
 namespace {
 double jsMax(double a, double b) { return std::isnan(a) || std::isnan(b) ? std::nan("") : std::max(a, b); }
 const Value* lookup(const std::vector<std::pair<JsString, Value>>& entries, const JsString& key) {

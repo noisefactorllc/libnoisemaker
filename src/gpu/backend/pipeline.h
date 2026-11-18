@@ -216,7 +216,7 @@ private:
     // resolveProgramSpec(pass, graph): the graph's spec for the pass's
     // program, the current graph by default.
     Value resolveProgramSpec(const Value& pass, const Value* graph) const;
-    // The backend gets back the programs in `accepted`, and drops every
+    // The backend gets back the programs in `accepted`, and releases every
     // program compiled since.
     void restorePrograms(std::unordered_map<JsString, ProgramInfo> accepted);
     // this.graph.textures when the graph and it are truthy; it must be an object.
