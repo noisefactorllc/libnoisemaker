@@ -82,12 +82,19 @@ public:
 
     // init(width, height): backend.init(), compilePrograms(), resize().
     void init(double width, double height);
-    void compilePrograms();
+    // compilePrograms(graph): the programs of `graph`, the current graph by
+    // default, compiled without touching the graph. A failing program throws
+    // after the backend gets back the programs it held before the call
+    // (restorePrograms), so a rejected candidate never replaces a program the
+    // current graph renders with.
+    void compilePrograms(const Value* graph = nullptr);
     void resize(double width, double height);
-    // compiler.js recompile() once it has the new graph: createSurfaces(),
+    // compiler.js swapGraph() in 1.0.351, the steps of recompile() once
+    // compileGraphFor() has the new graph: createSurfaces(),
     // recreateTextures(collectDefaultUniforms()), initAsyncEffects() and
     // initLifecycleEffects(). Errors propagate; recompile() logs them and
-    // returns null.
+    // returns null. compileGraphFor() compiles the DSL source, which is the
+    // core's compile here, outside the pipeline.
     void recompile(Value graph);
 
     void createSurfaces();
@@ -201,9 +208,17 @@ public:
 
 private:
     const Value* graphMember(const char16_t* key) const;
-    // this.graph.passes when the graph and it are truthy; it must be an array.
+    // A graph's passes when the graph and they are truthy; they must be an
+    // array. passes() reads this.graph's.
+    static const Array* graphPasses(const Value& graph);
     Array* passes();
     const Array* passes() const;
+    // resolveProgramSpec(pass, graph): the graph's spec for the pass's
+    // program, the current graph by default.
+    Value resolveProgramSpec(const Value& pass, const Value* graph) const;
+    // The backend gets back the programs in `accepted`, and drops every
+    // program compiled since.
+    void restorePrograms(std::unordered_map<JsString, ProgramInfo> accepted);
     // this.graph.textures when the graph and it are truthy; it must be an object.
     Object* textures();
     const Object* textures() const;

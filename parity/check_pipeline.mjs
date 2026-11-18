@@ -13,8 +13,9 @@
 // init, resizes and recompiles, without and with texture pooling; synthetic
 // graphs for the paths no catalog effect reaches at this pin (persistent and
 // mipmapped textures, 3D textures, dimension forms, the volume-size clamp,
-// MRT format demotion, pooling groups, errors); and resolveDimension on its
-// own. Errors must be equal too; corpus ops must not throw.
+// MRT format demotion, pooling groups, candidate program compiles, errors);
+// and resolveDimension on its own. Errors must be equal too; corpus ops must
+// not throw.
 //
 //   NM_REFERENCE_ROOT=<checkout> NM_DSL=<nm-dump> node parity/check_pipeline.mjs [--verbose]
 import { execFileSync } from 'node:child_process'
@@ -516,6 +517,34 @@ sequence('synthetic/frame-errors', [
   { op: 'init', width: 8, height: 8 },
   { op: 'render', time: 0.1 }
 ])
+
+// compilePrograms(graph): a candidate's programs compiled without the graph
+// swapped in, and the backend's programs given back when a program fails, so
+// the programs the current graph renders with survive a rejected candidate.
+// The rejected candidate reuses the accepted program's id, adds one that
+// compiles, and then names a program whose spec only the accepted graph
+// holds: the spec resolves from the graph given, not from the pipeline's.
+{
+  const accepted = graph([{ outputs: { color: 'global_o1' } }], { global_o1: screen() },
+    { programs: { p: program, ghost: program } })
+  const rejected = graph([{ program: 'p' }, { program: 'extra' }, { program: 'ghost' }], { global_o1: screen() },
+    { programs: { p: program, extra: program } })
+  const swapped = graph([{ program: 'p' }, { program: 'extra' }], { global_o1: screen() },
+    { programs: { p: program, extra: program } })
+  sequence('synthetic/candidate-programs', [
+    { op: 'create', graph: accepted },
+    { op: 'init', width: 16, height: 16 },
+    { op: 'render', time: 0.1 },
+    { op: 'compilePrograms', graph: rejected },
+    { op: 'render', time: 0.2 },
+    { op: 'compilePrograms' },
+    { op: 'render', time: 0.3 },
+    { op: 'compilePrograms', graph: swapped },
+    { op: 'render', time: 0.4 },
+    { op: 'recompile', graph: swapped },
+    { op: 'render', time: 0.5 }
+  ])
+}
 
 // setUniform and broadcastChainScopedParam: automation values keep
 // priority, aliases, scoped fan-out and scoped names, the palette, the

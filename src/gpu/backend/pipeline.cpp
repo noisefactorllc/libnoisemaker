@@ -141,12 +141,14 @@ const Value* Pipeline::graphMember(const char16_t* key) const {
     return graph_.is_object() ? graph_.as_object().find(key) : nullptr;
 }
 
-const Array* Pipeline::passes() const {
-    const Value* passes = graphMember(u"passes");
+const Array* Pipeline::graphPasses(const Value& graph) {
+    const Value* passes = graph.is_object() ? graph.as_object().find(u"passes") : nullptr;
     if (!passes || !jsv::truthy(*passes)) return nullptr;
     if (!passes->is_array()) throw JsError(u"Error", u"graph.passes other than an array is outside the port");
     return &passes->as_array();
 }
+
+const Array* Pipeline::passes() const { return graphPasses(graph_); }
 Array* Pipeline::passes() { return const_cast<Array*>(std::as_const(*this).passes()); }
 
 const Object* Pipeline::textures() const {
@@ -168,36 +170,61 @@ void Pipeline::init(double width, double height) {
     resize(width, height);
 }
 
-void Pipeline::compilePrograms() {
-    const Array* list = passes();
+void Pipeline::compilePrograms(const Value* graph) {
+    const Value& source = graph ? *graph : graph_;
+    const Array* list = graphPasses(source);
     if (!list) return;
     isCompiling_ = true;
     struct Reset {
         bool& flag;
         ~Reset() { flag = false; }
     } reset{isCompiling_};
-    std::vector<Value> compiled;
-    const Value* programsMember = graphMember(u"programs");
-    const Value programs = programsMember ? *programsMember : Value();
-    for (const Value& pass : *list) {
-        const Value program = jsv::get(pass, u"program");
-        if (std::any_of(compiled.begin(), compiled.end(), [&](const Value& c) { return jsv::same_value_zero(c, program); })) {
-            continue;
+    // The backend's programs before the call, given back when a program
+    // fails, so a rejected candidate never replaces a program the current
+    // graph renders with.
+    std::unordered_map<JsString, ProgramInfo> accepted = backend_.programsSnapshot();
+    try {
+        std::vector<Value> compiled;
+        for (const Value& pass : *list) {
+            const Value program = jsv::get(pass, u"program");
+            if (std::any_of(compiled.begin(), compiled.end(), [&](const Value& c) { return jsv::same_value_zero(c, program); })) {
+                continue;
+            }
+            const Value spec = resolveProgramSpec(pass, graph);
+            if (!jsv::truthy(spec)) {
+                Object thrown;
+                thrown.set(u"code", Value(u"ERR_PROGRAM_SPEC_MISSING"));
+                thrown.set(u"program", jsv::get(pass, u"program"));
+                thrown.set(u"pass", jsv::get(pass, u"id"));
+                throw ThrownValue(Value(std::move(thrown)));
+            }
+            if (!program.is_string()) throw JsError(u"Error", u"a program id other than a string is outside the port");
+            backend_.compileProgram(program.as_string(), spec);
+            compiled.push_back(program);
         }
-        // resolveProgramSpec(pass): programs[pass.program] when truthy.
-        const Value spec = jsv::truthy(programs) && isObjectType(programs)
-            ? jsv::member(programs, jsv::to_property_key(jsv::get(pass, u"program"))) : Value();
-        if (!jsv::truthy(spec)) {
-            Object thrown;
-            thrown.set(u"code", Value(u"ERR_PROGRAM_SPEC_MISSING"));
-            thrown.set(u"program", jsv::get(pass, u"program"));
-            thrown.set(u"pass", jsv::get(pass, u"id"));
-            throw ThrownValue(Value(std::move(thrown)));
-        }
-        if (!program.is_string()) throw JsError(u"Error", u"a program id other than a string is outside the port");
-        backend_.compileProgram(program.as_string(), spec);
-        compiled.push_back(program);
+    } catch (...) {
+        restorePrograms(std::move(accepted));
+        throw;
     }
+}
+
+// The backend gets back the programs it held before the failed compile. The
+// reference releases every entry compiled since with releaseProgram, a method
+// the WebGL2 backend holds; the WebGPU backend has none, so dropping those
+// entries is all that happens here.
+void Pipeline::restorePrograms(std::unordered_map<JsString, ProgramInfo> accepted) {
+    backend_.restorePrograms(std::move(accepted));
+}
+
+// resolveProgramSpec(pass, graph): the graph's spec for the pass's program.
+// A graph's programs travel here as an object, whose keys are the pass's
+// program ids; the reference's Map branch reads the same member.
+Value Pipeline::resolveProgramSpec(const Value& pass, const Value* graph) const {
+    const Value& source = graph ? *graph : graph_;
+    const Value* programsMember = source.is_object() ? source.as_object().find(u"programs") : nullptr;
+    const Value programs = programsMember ? *programsMember : Value();
+    return jsv::truthy(programs) && isObjectType(programs)
+        ? jsv::member(programs, jsv::to_property_key(jsv::get(pass, u"program"))) : Value();
 }
 
 void Pipeline::resize(double width, double height) {

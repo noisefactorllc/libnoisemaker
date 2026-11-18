@@ -294,6 +294,12 @@ int pipeline(int, char**) {
                     else pipeline->resize(width, height);
                 } else if (kind == u"recompile") {
                     pipeline->recompile(field(op, u"graph"));
+                } else if (kind == u"compilePrograms") {
+                    // compilePrograms(graph): the graph's programs, or the
+                    // current graph's when the op has none.
+                    const nm::Value graph = field(op, u"graph");
+                    if (graph.is_undefined()) pipeline->compilePrograms();
+                    else pipeline->compilePrograms(&graph);
                 } else if (kind == u"updateParameterTextures") {
                     const nm::Value uniforms = field(op, u"uniforms");
                     pipeline->updateParameterTextures(uniforms.is_undefined() ? nm::Value(nm::Object{}) : uniforms);

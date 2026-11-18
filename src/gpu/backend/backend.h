@@ -148,6 +148,14 @@ public:
     // compileProgram(id, spec), spec being the graph's program spec.
     const ProgramInfo& compileProgram(const JsString& id, const Value& spec);
     const ProgramInfo* program(const JsString& id) const;
+    // this.programs, copied for the pipeline's compilePrograms before it
+    // compiles, and restored by restorePrograms(accepted) when a program
+    // fails, so a rejected candidate never replaces a program the current
+    // graph renders with. The reference releases every entry compiled since
+    // with releaseProgram, a method the WebGL2 backend holds; the WebGPU
+    // backend has none, so dropping those entries is all that happens here.
+    std::unordered_map<JsString, ProgramInfo> programsSnapshot() const { return programs_; }
+    void restorePrograms(std::unordered_map<JsString, ProgramInfo> accepted) { programs_ = std::move(accepted); }
 
     void beginFrame();
     void endFrame();

@@ -8,7 +8,10 @@
 // error: {name, message} (or {thrown}) when it throws.
 //
 // Ops: create {graph, options}; init and resize {width, height}; recompile
-// {graph}, the steps of compiler.js recompile() once it has the graph;
+// {graph}, the steps of compiler.js swapGraph() once compileGraphFor() has
+// the graph; compilePrograms {graph?}, the graph's programs compiled without
+// the graph swapped in, the current graph when the op has none, with the
+// backend's programs given back when a program fails;
 // updateParameterTextures {uniforms}; resolveDimension {spec, screenSize,
 // uniforms}, whose result is the number as text ("-0" for negative zero);
 // render {time}; syncTime {time}; setTileRegion {offset, fullResolution,
@@ -173,6 +176,9 @@ for await (const line of lines) {
         pipeline.initLifecycleEffects()
         break
       }
+      case 'compilePrograms':
+        await pipeline.compilePrograms(op.graph === undefined ? undefined : decodeGraph(op.graph))
+        break
       case 'updateParameterTextures': pipeline.updateParameterTextures(op.uniforms); break
       case 'render': at(op.wallTime, () => pipeline.render(op.time)); break
       case 'attachMidi': midiState = new MidiState({ portRegistry: op.registry !== false }); pipeline.setMidiState(midiState); break
