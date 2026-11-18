@@ -97,6 +97,12 @@ target_include_directories(test_jsre PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_C
 target_link_libraries(test_jsre PRIVATE noisemaker_backend)
 add_test(NAME test_jsre COMMAND test_jsre)
 
+# A rejected program's modules are released, no GPU needed.
+add_executable(test_backend_compile gpu/test_backend_compile.cpp)
+target_include_directories(test_backend_compile PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_backend_compile PRIVATE noisemaker_backend)
+add_test(NAME test_backend_compile COMMAND test_backend_compile)
+
 foreach(name test_async_overlays test_midi_state test_obj_parser test_text_canvas)
   add_executable(${name} host/${name}.cpp)
   target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
