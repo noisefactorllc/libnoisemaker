@@ -517,6 +517,9 @@ const ProgramInfo& WebGPUBackend::compileComputeProgram(const JsString& id, cons
     info.isCompute = true;
     info.module = device_.createShaderModule(source);
     if (const auto errors = device_.compilationErrors(info.module); !errors.empty()) {
+        // The failed module never enters programs_, so restorePrograms cannot
+        // release it later.
+        device_.release(info.module);
         throw JsError(u"ShaderDiagnostic", errors.front());
     }
     info.bindings = wgsl::parseShaderBindings(source);
@@ -543,6 +546,9 @@ const ProgramInfo& WebGPUBackend::compileRenderProgram(const JsString& id, const
     const bool hasVertex = wgsl::hasVertexEntry(source);
     const Handle mainModule = device_.createShaderModule(source);
     if (const auto errors = device_.compilationErrors(mainModule); !errors.empty()) {
+        // The failed module never enters programs_, so restorePrograms cannot
+        // release it later.
+        device_.release(mainModule);
         throw JsError(u"ShaderDiagnostic", errors.front());
     }
     const JsString defaultVertexEntry = runtimeShader(u"defaultVertexEntryPoint");
@@ -555,6 +561,10 @@ const ProgramInfo& WebGPUBackend::compileRenderProgram(const JsString& id, const
         vertexSource = jsv::to_string(vertexWgsl);
         info.vertexModule = device_.createShaderModule(vertexSource);
         if (const auto errors = device_.compilationErrors(info.vertexModule); !errors.empty()) {
+            // The failed modules never enter programs_, so restorePrograms
+            // cannot release them later.
+            device_.release(info.vertexModule);
+            device_.release(mainModule);
             throw JsError(u"ShaderDiagnostic", errors.front());
         }
         info.vertexEntryPoint = jsv::truthy(vertexEntry) ? entryPointName(vertexEntry) : defaultVertexEntry;
