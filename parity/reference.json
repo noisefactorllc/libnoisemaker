@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "b631fc2c37d75f4cedbdc5e760486f7ecd3a2ca8",
-  "version": "1.0.351",
+  "commit": "7f3721e973944db9a680bc7048b2c3a5b49c9d8a",
+  "version": "1.0.355",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "6ecd0807b7b0c5a9f3a2ee2dd28bdccd7fd7de41e8d8712b6d0d8740fccb6cbb",
@@ -176,7 +176,7 @@
     "effects/render/render3d.js": "bdf6a03257a6f6b47bcafe8540cd990cf90a9f1965b63ead61108f6ab00205f2",
     "effects/render/renderCubemap3d.js": "9889d4b5003867d6e705a6eb5da5add0789c429fcb8ef171f5c455febdc87553",
     "effects/render/renderCubemapSurface.js": "f948719133739152681b57bd04f81abaedf6a5cc662d7de5fe10f23b00cac9b5",
-    "effects/render/renderLandscape3d.js": "eaf3cd47fcd237423569f6e2a22a917500f7a539f98ed223c2975a1235661764",
+    "effects/render/renderLandscape3d.js": "804cc0631afcf2296eb16b4230088be597b2b5dd39aa4c4895b186e97a2c4d22",
     "effects/render/renderLit3d.js": "35118d342fd2c9ea1630e713baaaa7175480bdab7c12b7bfce65c7b700eb9169",
     "effects/synth/bitwise.js": "a88e3a78d98985d7f1f44d498b832b284b48d6b763f7c9473dc315c8a81390ba",
     "effects/synth/cell.js": "153efbe723a7e487b49820b1bb78f249d48a9bb01a68d59fec22454118762881",
