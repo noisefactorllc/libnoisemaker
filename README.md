@@ -7,7 +7,9 @@
 
 > Run **Noisemaker** programs on the GPU from **C++** and **C**.
 
-This library is under construction. Nothing here is ready to use yet.
+Use libnoisemaker as a source library or through Noisedeck's native C++ export kit.
+The compiler core works without a GPU; rendering uses Dawn. See [Building](#building)
+and [Using it from CMake](#using-it-from-cmake) to get started.
 
 ## What is this?
 
@@ -101,6 +103,12 @@ macOS universal for 13.0 and later, Windows x64 and arm64) and a `SHA256SUMS` fi
 `scripts/test` builds the GPU-free tree, runs its unit tests and the tool tests, then runs every
 parity gate (`scripts/gates`) against the reference engine at the commit locked in
 `parity/reference.json`. It needs network access to clone the reference and fetch the catalog.
+
+These gates check the compiler and pipeline against the pinned reference. Rendered pixel parity
+is measured separately with `scripts/parity-summary`; a passing build does not establish it.
+Current platform evidence and remaining verification work are tracked in the
+[compatibility report](https://github.com/noisefactorllc/libnoisemaker/issues/12) and
+[open gaps](https://github.com/noisefactorllc/libnoisemaker/issues?q=is%3Aissue+is%3Aopen+label%3Agap).
 
 ## Contributing
 
