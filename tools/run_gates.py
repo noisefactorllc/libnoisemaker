@@ -71,21 +71,8 @@ def bounded(command, seconds=300, env=None):
         result = process.wait(timeout=seconds)
     except subprocess.TimeoutExpired:
         if windows:
-            # taskkill can report a transient failure (an observed exit 255
-            # on a Windows ARM64 runner) while the tree is already stopping.
-            # A root that still runs must never survive its timeout: retry
-            # the tree kill, then kill the root, and fail loudly if it lives
-            # on.
-            for _ in range(2):
-                result = subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
-                                        check=False, stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL, timeout=5)
-                if result.returncode == 0 or process.poll() is not None:
-                    break
-                time.sleep(0.1)
-            else:
-                process.kill()
-                process.wait(timeout=5)
+            subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
         else:
             os.killpg(process.pid, signal.SIGKILL)
         process.wait()

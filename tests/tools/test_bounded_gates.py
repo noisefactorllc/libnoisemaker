@@ -139,55 +139,24 @@ class BoundedGateTests(unittest.TestCase):
             self.assertEqual('once', attempts.read_text())
             self.assertEqual(7, runner.bounded([sys.executable, '-c', 'raise SystemExit(7)'], 1))
 
-    def windows_runner(self, stop_returncodes, poll_results, wait_results):
+    def test_windows_timeout_terminates_the_exact_child_tree_without_retry(self):
         from types import SimpleNamespace
         from unittest.mock import Mock
-        import time as time_module
         runner = self.runner()
-        real = SimpleNamespace(**vars(runner.subprocess), time_module=time_module)
-        process = SimpleNamespace(pid=12345, kill=Mock(),
-                                  poll=Mock(side_effect=list(poll_results)),
-                                  wait=Mock(side_effect=[real.TimeoutExpired(['synthetic'], .1),
-                                                         *wait_results]))
-        launch = Mock(return_value=process)
-        stop = Mock(side_effect=[SimpleNamespace(returncode=code) for code in stop_returncodes])
+        real = runner.subprocess
+        process = SimpleNamespace(pid=12345, wait=Mock(side_effect=[
+            real.TimeoutExpired(['synthetic'], .1), -1]))
+        launch, stop = Mock(return_value=process), Mock()
         runner.os = SimpleNamespace(name='nt')
-        runner.time = SimpleNamespace(monotonic=time_module.monotonic, sleep=Mock())
         runner.subprocess = SimpleNamespace(Popen=launch, run=stop,
             TimeoutExpired=real.TimeoutExpired, DEVNULL=real.DEVNULL,
             CREATE_NEW_PROCESS_GROUP=512)
-        return runner, process, launch, stop, real
-
-    def test_windows_timeout_terminates_the_exact_child_tree_without_retry(self):
-        runner, process, launch, stop, real = self.windows_runner([0], [], [-1])
         self.assertEqual(124, runner.bounded(['synthetic'], .1))
         launch.assert_called_once_with(['synthetic'], env=None,
                                       start_new_session=False, creationflags=512)
         stop.assert_called_once_with(['taskkill', '/PID', '12345', '/T', '/F'],
-            check=False, stdout=real.DEVNULL, stderr=real.DEVNULL, timeout=5)
+            check=True, stdout=real.DEVNULL, stderr=real.DEVNULL, timeout=5)
         self.assertEqual(2, process.wait.call_count)
-        process.kill.assert_not_called()
-
-    def test_windows_timeout_retries_a_transient_tree_kill_failure(self):
-        runner, process, launch, stop, real = self.windows_runner([255, 0], [None], [-1])
-        self.assertEqual(124, runner.bounded(['synthetic'], .1))
-        self.assertEqual(2, stop.call_count)
-        self.assertEqual(2, process.wait.call_count)
-        process.kill.assert_not_called()
-        runner.time.sleep.assert_called_once_with(0.1)
-
-    def test_windows_timeout_accepts_a_root_that_exits_during_the_failure(self):
-        runner, process, launch, stop, real = self.windows_runner([255], [0], [-1])
-        self.assertEqual(124, runner.bounded(['synthetic'], .1))
-        self.assertEqual(1, stop.call_count)
-        process.kill.assert_not_called()
-
-    def test_windows_timeout_kills_the_root_when_both_tree_kills_fail(self):
-        runner, process, launch, stop, real = self.windows_runner([255, 255], [None, None], [-1, -1])
-        self.assertEqual(124, runner.bounded(['synthetic'], .1))
-        self.assertEqual(2, stop.call_count)
-        process.kill.assert_called_once_with()
-        self.assertEqual(3, process.wait.call_count)
 
     def test_plan_covers_original_gates_and_fixture_partitions_exactly_once(self):
         runner = self.runner()
