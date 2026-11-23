@@ -106,7 +106,7 @@ parity gate (`scripts/gates`) against the reference engine at the commit locked 
 
 These gates check the compiler and pipeline against the pinned reference. Rendered pixel parity
 is measured separately with `scripts/parity-summary`; a passing build does not establish it.
-Current platform evidence and remaining verification work are tracked in the
+Recorded platform evidence and remaining verification work are tracked in the
 [compatibility report](https://github.com/noisefactorllc/libnoisemaker/issues/12) and
 [open gaps](https://github.com/noisefactorllc/libnoisemaker/issues?q=is%3Aissue+is%3Aopen+label%3Agap).
 
