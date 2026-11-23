@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "7f3721e973944db9a680bc7048b2c3a5b49c9d8a",
-  "version": "1.0.355",
+  "commit": "478f94eae7ebe34116dfc661ac52b373b884008b",
+  "version": "1.0.357",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "6ecd0807b7b0c5a9f3a2ee2dd28bdccd7fd7de41e8d8712b6d0d8740fccb6cbb",
@@ -160,7 +160,7 @@
     "effects/points/dla.js": "eab30556be1a93f23f366f45b22ea03915d288be1e2de7d623ca464548ed6cca",
     "effects/points/flock.js": "a08fcf30ef88261febffb5ed39b13632e2282b99e20acc5f2589ab66023038bf",
     "effects/points/flow.js": "12710be127cbd697408e610339373dd2de8c70e14861b579079b0edc78bdce22",
-    "effects/points/heightGrid.js": "a79778c3aac12b52be018cb94fbc1d2af2d0e085e9e3eed9093088d3ffeeb215",
+    "effects/points/heightGrid.js": "217f5620e2610e99e5e6e1405648cd4ae446602b1541e10110fe25122bbf4c4c",
     "effects/points/hydraulic.js": "e616ce40dbca5a3b28efe95c62ab0db62ece0f9683f191d97641aec482e75c5e",
     "effects/points/lenia.js": "546b44f927db9aff83659341f63b54a1b343a36bc7958c4a044c09eaab7d98c8",
     "effects/points/life.js": "d0367351a39d0adc783fd95bc6c412962f88a71a4e0bde7add2e42bd239cc872",
@@ -211,7 +211,7 @@
     "effects/synth3d/cellularAutomata3d.js": "5af4e91ca4e1f6aa517fbadfd32acf5a411698c22d2d827f3e110146dd97f853",
     "effects/synth3d/flythrough3d.js": "d713f68c526d7edc3f4ae931c0fd462cfca4ca228332dcbbd62deafd553ecfea",
     "effects/synth3d/fractal3d.js": "31091f3171881e74daa9cb19520fe5b9ed46f099292ad727885a941df17d096a",
-    "effects/synth3d/heightmap3d.js": "2b087b63aa40d1bd514a81fa32c8d92408e37667097b7b93614f18e97111ea43",
+    "effects/synth3d/heightmap3d.js": "3ab78a98f466ecd72b224949e3f7aaceaba91e84ad507ba0078876831f778935",
     "effects/synth3d/noise3d.js": "e4311b122e3a11a4651deb695e807f6dad1fe294c2a0b91339a85ae233129764",
     "effects/synth3d/reactionDiffusion3d.js": "e02ad6dc848dd68d6ff809958fa9cd731932ce63652e8b7ccad907c086cf747e",
     "effects/synth3d/shape3d.js": "1ca44f2e9bb9489831f79f1f8d5818a984033370d19cab5c614efddbf482148b"

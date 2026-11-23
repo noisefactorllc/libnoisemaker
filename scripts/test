@@ -70,7 +70,11 @@ if $run_core; then
   cmake -S . -B "$build_dir" ${generator[@]+"${generator[@]}"} -DCMAKE_BUILD_TYPE=Release \
     -DNM_BUILD_GPU=OFF -DPython3_EXECUTABLE="$python"
   cmake --build "$build_dir" --parallel "$jobs"
-  "$python" tools/run_gates.py --run ctest --test-dir "$build_dir" --output-on-failure --timeout 300
+  # Under the gate shard split every shard rebuilds, and the shards together
+  # still run the core tests once, so only the first shard runs them.
+  if [[ -z "${NM_SHARD_COUNT:-}" || "${NM_SHARD_INDEX:-0}" == "0" ]]; then
+    "$python" tools/run_gates.py --run ctest --test-dir "$build_dir" --output-on-failure --timeout 300
+  fi
 fi
 if $run_tools; then
   "$python" tools/run_gates.py --run "$python" -m unittest discover -s tests/tools -t .

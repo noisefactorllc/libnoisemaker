@@ -215,6 +215,10 @@ class BoundedGateTests(unittest.TestCase):
                        PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'])
             env.pop('NM_CHANGED_FILES', None)
             env.pop('NM_TEST_BUILD_DIR', None)
+            # The runs here exercise the unsharded entrypoint; the shard
+            # contract has its own assertions below.
+            env.pop('NM_SHARD_COUNT', None)
+            env.pop('NM_SHARD_INDEX', None)
             bash = 'bash'
             if os.name == 'nt':
                 # Windows' System32 bash is a WSL launcher, not the Git shell.
@@ -262,6 +266,23 @@ class BoundedGateTests(unittest.TestCase):
             self.assertIn('[gate] start: ctest', result.stdout)
             self.assertIn('-m unittest discover', result.stdout)
             self.assertIn('cmake', commands.read_text())
+            # Under the gate shard split the shards together run the core
+            # tests once: the first shard runs them, the rest rebuild only.
+            commands.write_text('')
+            later_shard = dict(env, NM_CHANGED_FILES='parity/x.json\n',
+                               NM_SHARD_COUNT='8', NM_SHARD_INDEX='1')
+            result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=later_shard,
+                                    capture_output=True, text=True, timeout=5)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertNotIn('ctest', result.stdout)
+            self.assertIn('cmake', commands.read_text())
+            commands.write_text('')
+            first_shard = dict(env, NM_CHANGED_FILES='parity/x.json\n',
+                               NM_SHARD_COUNT='8', NM_SHARD_INDEX='0')
+            result = subprocess.run([bash, (root / 'scripts/test').as_posix()], env=first_shard,
+                                    capture_output=True, text=True, timeout=5)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn('[gate] start: ctest', result.stdout)
 
     def test_missing_duplicate_or_wrong_partition_receipt_cannot_pass(self):
         runner = self.runner()
