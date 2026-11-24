@@ -637,7 +637,9 @@ async function applyMeshPlan (page, plan) {
   const results = await page.evaluate(async ({ objText, builtins }) => {
     const r = window.__noisemakerCanvasRenderer
     const out = []
-    for (const b of builtins) out.push(await r.loadOBJFromURL(`${r._basePath}/${b.path}`, b.meshId))
+    // The unbundled demo resolves built-in meshes from the served source root.
+    const meshBase = new URL('../../', document.baseURI)
+    for (const b of builtins) out.push(await r.loadOBJFromURL(new URL(b.path, meshBase).href, b.meshId))
     if (objText !== null) out.push(await r.loadOBJFromString(objText, 'mesh0'))
     else if (builtins.length === 0) out.push(await r.loadOBJFromString('', 'mesh0'))
     return out

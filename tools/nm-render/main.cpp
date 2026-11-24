@@ -1118,10 +1118,8 @@ void load_meshes(const nm::Value& graph, const Fixture& fixture, be::WebGPUBacke
         if (path && path->is_string()) builtins.emplace_back(meshId->as_string(), nm::js_to_utf8(path->as_string()));
     }
     for (const auto& [meshId, path] : builtins) {
-        // The demo page fetches `${shaderBasePath}/${path}` from the
-        // reference's shaders directory, whose share is a link to ../share:
-        // the files read here, without depending on the link (a checkout
-        // without symbolic links has a text file there).
+        // Resolve built-in assets from the reference source root, as the
+        // unbundled demo does.
         const std::string root = environment("NM_REFERENCE_ROOT");
         if (root.empty()) throw std::runtime_error("a built-in mesh (" + path + ") needs NM_REFERENCE_ROOT");
         upload_mesh(backend, meshId, nm::loadOBJ(root + "/" + path));

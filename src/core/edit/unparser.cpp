@@ -7,7 +7,9 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <locale>
 #include <map>
+#include <sstream>
 #include <unordered_set>
 
 namespace libnoisemaker {
@@ -760,6 +762,84 @@ Value format_let_audio(const Value& expr, const UnparseOptions& options) {
     }
     return Value(u"audio(" + join_text(parts, u", ") + u")");
 }
+
+// Arrays in let bindings hold syntax nodes, before parameter normalization.
+// Emit their original expression shapes, including nested lists and calls.
+JsString format_array_expression(const Value& node) {
+    DepthGuard guard;
+    if (node.is_null() || node.is_undefined()) return u"null";
+    const auto var = field(node, u"_varRef");
+    if (var.is_string()) return var.as_string();
+    const auto type = text(field(node, u"type"));
+    const auto value = field(node, u"value");
+    if (type == u"ArrayLiteral" || type == u"Chain") {
+        std::vector<JsString> parts;
+        for (const auto& item : jsv::iterate_anon(field(node, type == u"ArrayLiteral" ? u"elements" : u"chain"))) {
+            parts.push_back(format_array_expression(item));
+        }
+        return type == u"ArrayLiteral" ? u"[" + join_text(parts, u", ") + u"]" : join_text(parts, u".");
+    }
+    if (type == u"Call" || type == u"Oscillator" || type == u"Midi" || type == u"Audio") {
+        std::vector<JsString> parts;
+        if (type == u"Call") {
+            for (const auto& arg : jsv::iterate_anon(field(node, u"args"))) parts.push_back(format_array_expression(arg));
+            for (const auto& [key, arg] : jsv::entries(fallback(field(node, u"kwargs"), Value(Object{})))) {
+                parts.push_back(key + u": " + format_array_expression(arg));
+            }
+            return text(field(node, u"name")) + u"(" + join_text(parts, u", ") + u")";
+        }
+        const auto add = [&](const char16_t* name, const char16_t* key) {
+            const auto arg = field(node, key);
+            if (!arg.is_undefined()) parts.push_back(JsString(name) + u": " + format_array_expression(arg));
+        };
+        if (type == u"Oscillator") {
+            add(u"type", u"oscType");
+            for (const auto key : {u"min", u"max", u"speed", u"offset", u"seed"}) add(key, key);
+            return u"osc(" + join_text(parts, u", ") + u")";
+        }
+        if (type == u"Midi") {
+            for (const auto key : {u"channel", u"mode", u"min", u"max", u"sensitivity", u"cc", u"nrpn", u"zone", u"members", u"name", u"id"}) add(key, key);
+            return u"midi(" + join_text(parts, u", ") + u")";
+        }
+        for (const auto key : {u"band", u"min", u"max", u"channel", u"name", u"id"}) add(key, key);
+        return u"audio(" + join_text(parts, u", ") + u")";
+    }
+    if (type == u"Member") return jsv::join(field(node, u"path").as_array(), u".");
+    if (type == u"Ident" || type == u"OutputRef" || type == u"VolRef" || type == u"GeoRef" || type == u"SourceRef"
+        || type == u"MeshRef" || type == u"RgbaRef" || type == u"VelRef" || type == u"XyzRef") {
+        return text(field(node, u"name"));
+    }
+    if (type == u"String") return u"\"" + text(value) + u"\"";
+    if (type == u"Boolean") return jsv::truthy(value) ? u"true" : u"false";
+    if (type == u"Color") {
+        const auto& channels = value.as_array();
+        return text(hex_color(channels, channels.size() > 3 && jsv::to_number(channels[3]) < 1 ? 4 : 3, true));
+    }
+    if (type == u"Number") {
+        double number = jsv::to_number(value);
+        if (!std::isfinite(number)) return u"0";
+        if (std::trunc(number) != number) {
+            // Every finite double has at most 768 exact significant decimal
+            // digits (a 53-bit significand times at most 5^1074). Read the
+            // first discarded digit ourselves: JS toPrecision rounds ties
+            // away from zero, whereas the stream formatter rounds to even.
+            std::ostringstream exact;
+            exact.imbue(std::locale::classic());
+            exact.precision(767);
+            exact << std::scientific << std::abs(number);
+            const auto digits = exact.str();
+            auto mantissa = std::stoull(digits.substr(0, 1) + digits.substr(2, 9));
+            if (digits[11] >= '5') ++mantissa;
+            const int exponent = std::stoi(digits.substr(digits.find('e') + 1)) - 9;
+            std::istringstream parsed((std::signbit(number) ? "-" : "")
+                                     + std::to_string(mantissa) + "e" + std::to_string(exponent));
+            parsed.imbue(std::locale::classic());
+            parsed >> number;
+        }
+        return format_lossless_number(number);
+    }
+    throw JsError(u"Error", u"unparse: no scene emitter for AST node type '" + type + u"'");
+}
 }
 Value format_let_expr(const Value& expr, const UnparseOptions& options) {
     DepthGuard guard;
@@ -769,6 +849,7 @@ Value format_let_expr(const Value& expr, const UnparseOptions& options) {
     Value type = field(expr, u"type");
     if (!type.is_string()) return format_value(expr, Value::null(), options);
     const auto& t = type.as_string();
+    if (t == u"ArrayLiteral") return Value(format_array_expression(expr));
     if (t == u"Number") return Value(format_lossless_number(field(expr, u"value").as_number()));
     if (t == u"String") {
         Value raw = field(expr, u"value");

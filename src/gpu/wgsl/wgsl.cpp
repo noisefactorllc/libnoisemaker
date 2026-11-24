@@ -572,14 +572,54 @@ OrderedMap<JsString, std::vector<double>> parseEntryPointBindings(const JsString
     return entryPointBindings;
 }
 
+namespace {
+std::optional<JsString> extractStructBody(const JsString& clean, const JsString& name) {
+    const Regex declaration(u"\\bstruct\\s+" + name + u"\\s*\\{");
+    const auto match = declaration.exec(clean);
+    if (!match) return std::nullopt;
+    const size_t start = match->end();
+    size_t depth = 1;
+    for (size_t i = start; i < clean.size(); ++i) {
+        if (clean[i] == u'{') ++depth;
+        else if (clean[i] == u'}' && --depth == 0) return clean.substr(start, i - start);
+    }
+    return std::nullopt;
+}
+}  // namespace
+
+size_t countFragmentOutputs(const JsString& source, const JsString& entryPoint) {
+    if (entryPoint.empty()) return 1;
+    const auto clean = stripComments(source);
+    const Regex declaration(u"@fragment\\s*fn\\s+" + entryPoint + u"\\s*\\(");
+    const auto match = declaration.exec(clean);
+    if (!match) return 1;
+    auto end = match->end();
+    size_t depth = 1;
+    for (; end < clean.size() && depth > 0; ++end) {
+        if (clean[end] == u'(') ++depth;
+        else if (clean[end] == u')') --depth;
+    }
+    const auto bodyStart = clean.find(u'{', end);
+    if (bodyStart == JsString::npos) return 1;
+    const auto result = clean.substr(end, bodyStart - end);
+    if (result.find(u"->") == JsString::npos) return 1;
+    static const Regex location(u"@location\\s*\\(", u"g");
+    if (const auto inlineLocations = jsre::match_all(location, result).size()) return inlineLocations;
+    static const Regex resultType(u"->\\s*([A-Za-z_]\\w*)");
+    const auto type = resultType.exec(result);
+    if (!type) return 1;
+    const auto body = extractStructBody(clean, type->str(result, 1));
+    return body ? std::max(size_t(1), jsre::match_all(location, *body).size()) : 1;
+}
+
 double parseDeclaredUniformBufferSize(const JsString& source) {
     static const Regex bindingRe(u"var<uniform>\\s+\\w+\\s*:\\s*(\\w+)\\s*;", u"g");
+    const auto clean = stripComments(source);
     double largestSize = 0;
     for (const Match& m : jsre::match_all(bindingRe, source)) {
-        const Regex structRe(u"struct\\s+" + m.str(source, 1) + u"\\s*\\{([^}]+)\\}", u"g");
-        const auto structMatch = structRe.exec(source);
-        if (!structMatch) continue;
-        const double size = computeWgslStructSize(structMatch->str(source, 1));
+        const auto body = extractStructBody(clean, m.str(source, 1));
+        if (!body) continue;
+        const double size = computeWgslStructSize(*body);
         if (size > largestSize) largestSize = size;
     }
     return largestSize;

@@ -33,5 +33,22 @@ int main(void) {
     nm_compiled_destroy(second);
     nm_diagnostics_destroy(first_errors);
     nm_diagnostics_destroy(second_errors);
+
+    const char array_source[] = "search synth\nlet palette = [1, 0.5, 0]\nsolid(color: palette).write(o0)\nrender(o0)\n";
+    first = second = NULL;
+    first_errors = second_errors = NULL;
+    regenerated = NULL;
+    CHECK(nm_compile(array_source, strlen(array_source), &first, &first_errors) == NM_OK);
+    CHECK(nm_unparse(first, NULL, &regenerated) == NM_OK);
+    CHECK(regenerated != NULL && strstr(regenerated, "let palette = [1, 0.5, 0]") != NULL);
+    CHECK(nm_compile(regenerated, strlen(regenerated), &second, &second_errors) == NM_OK);
+    first_passes = strstr(nm_compiled_graph_json(first), "\"passes\":");
+    second_passes = strstr(nm_compiled_graph_json(second), "\"passes\":");
+    CHECK(first_passes != NULL && second_passes != NULL && strcmp(first_passes, second_passes) == 0);
+    nm_string_free(regenerated);
+    nm_compiled_destroy(first);
+    nm_compiled_destroy(second);
+    nm_diagnostics_destroy(first_errors);
+    nm_diagnostics_destroy(second_errors);
     return 0;
 }

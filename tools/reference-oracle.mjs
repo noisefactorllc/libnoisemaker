@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// reference-oracle.mjs — run the unmodified reference frontend and dump each stage.
+// reference-oracle.mjs — dump each frontend stage for the stable reference grammar.
 //
 // The reference engine at $NM_REFERENCE_ROOT is bootstrapped the way its host,
 // CanvasRenderer, prepares it (manifest starter ops, standard enums, then every
@@ -20,6 +20,7 @@
 // dropped.
 
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
+import { registerHooks } from 'node:module'
 import { basename, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { normalizeGraph as normalizeForHosts } from './normalize-graph.mjs'
@@ -49,8 +50,37 @@ function sortedDirs (dir) {
 // the definitions' globals, as noisemaker-for-qt's export-graph.mjs builds it.
 export const defineMap = {}
 
+let referenceImport
+async function importStableReference () {
+  const parserUrl = pathToFileURL(join(SHADERS, 'src', 'lang', 'parser.js')).href
+  const mixedMarker = 'const allowMixed = true'
+  let loadedParser = false
+  // Exercise the 1.5 parser's stable grammar in every oracle, including
+  // ProgramState's internal compile calls. Direct mixed syntax is still
+  // experimental except for the existing MIDI and audio forms. Leave all
+  // fixture inputs, diagnostics and output comparisons intact.
+  const hook = registerHooks({
+    load (url, context, nextLoad) {
+      const result = nextLoad(url, context)
+      if (url !== parserUrl) return result
+      const source = Buffer.from(result.source).toString('utf8')
+      if (source.split(mixedMarker).length !== 2) throw new Error('reference mixed-argument gate changed')
+      loadedParser = true
+      return { ...result, source: source.replace(mixedMarker,
+        "const allowMixed = nameToken.lexeme === 'midi' || nameToken.lexeme === 'audio'") }
+    }
+  })
+  try {
+    const mod = await import(pathToFileURL(join(SHADERS, 'src', 'index.js')).href)
+    if (!loadedParser) throw new Error('reference parser was loaded before applying the stable grammar')
+    return mod
+  } finally {
+    hook.deregister()
+  }
+}
+
 export async function bootstrapReference () {
-  const mod = await import(pathToFileURL(join(SHADERS, 'src', 'index.js')).href)
+  const mod = await (referenceImport ??= importStableReference())
   const { registerEffect, registerOp, registerStarterOps, mergeIntoEnums, sanitizeEnumName, isStarterEffect } = mod
   // The host merges the standard enums of lang/std_enums.js. (index.js also
   // exports a `stdEnums`, but that one is the merged enum tree of lang/enums.js,
@@ -181,7 +211,12 @@ export function normalizeGraph (graph) {
     for (const [k, v] of Object.entries(spec)) if (!SHADER_SOURCE_KEYS.has(k)) out[k] = v
     programs[id] = out
   }
-  const { compiledAt: _compiledAt, ...rest } = graph
+  const { compiledAt: _compiledAt, _isScene, sceneIR, sceneVolumeAtlasScopes, ...rest } = graph
+  // The stable graph contract ends before the experimental scene fields.
+  // An active scene in the stable corpus is an error, not a match.
+  if (_isScene !== false || sceneIR !== null || Object.keys(sceneVolumeAtlasScopes ?? {}).length) {
+    throw new Error('expected an ordinary graph in the stable corpus')
+  }
   return plain({ ...rest, programs })
 }
 

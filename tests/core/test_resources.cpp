@@ -31,6 +31,19 @@ void check(bool condition, const char* description) {
 } // namespace
 
 int main() {
+    {
+        using namespace libnoisemaker;
+        const JsVector<PassIO> passes = {
+            {{}, {JsText(u"node_0_out")}, JsText(u"node_0")},
+            {{JsText(u"node_1_inputColor"), JsText(u"node_1_inputTex")}, {JsText(u"node_1_out")}, JsText(u"node_1")},
+            {{JsText(u"node_1_out")}, {JsText(u"node_2_out")}, JsText(u"node_2")},
+        };
+        const auto alloc = allocateResources(passes);
+        check(alloc.value(JsText(u"node_2_out")) == alloc.value(JsText(u"node_0_out")),
+              "pipeline aliases release the previous chain texture for the following pass");
+        check(alloc.value(JsText(u"node_1_out")) != alloc.value(JsText(u"node_0_out")),
+              "the alias reader cannot overwrite its input");
+    }
     // ======================================================================
     // Basic linear chain: A -> B -> C. Each pass's single output can reuse
     // the PREVIOUS pass's now-dead input slot once it's released.

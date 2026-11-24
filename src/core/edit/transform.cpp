@@ -16,6 +16,10 @@ Value object(std::initializer_list<std::pair<JsString, Value>> fields) {
     return Value(std::move(out));
 }
 Value failure(const JsString& message) { return object({{u"success", false}, {u"error", message}}); }
+bool is_builtin_op(const Value& op) { return op.is_string() && op.as_string().starts_with(u"_"); }
+Value builtin_replacement_error(const Value& op) {
+    return failure(u"Cannot replace builtin '" + op.as_string() + u"': it is a structural chain node, not an effect.");
+}
 Value or_value(const Value& value, const Value& fallback) { return jsv::truthy(value) ? value : fallback; }
 Value default_object(const Value& value) { return value.is_undefined() ? Value(Object{}) : value; }
 JsString string(const Value& value) { return jsv::to_string(value); }
@@ -204,14 +208,15 @@ Value list_steps(const Value& compiled, const Value& options_source, const Effec
         double m = jsv::to_number(jsv::member(chain, u"length"));
         for (size_t ci = 0; static_cast<double>(ci) < m; ++ci) {
             Value step = jsv::member(chain, utf8_to_js(std::to_string(ci)));
-            if (jsv::truthy(jsv::get(step, u"builtin"))) continue;
             Value op = jsv::get(step, u"op");
+            bool builtin = is_builtin_op(op);
             bool is_starter = check_starter(registry, op, order);
             bool position = ci == 0 || (is_starter && (prop(step, u"from").is_null() || prop(step, u"from").is_undefined()));
             result.push_back(object({{u"stepIndex", jsv::get(step, u"temp")}, {u"planIndex", static_cast<double>(pi)},
                                      {u"chainIndex", static_cast<double>(ci)}, {u"effectName", op},
+                                     {u"kind", builtin ? u"builtin" : u"effect"},
                                      {u"isStarter", is_starter}, {u"isStarterPosition", position},
-                                     {u"canReplaceWithStarter", position}, {u"canReplaceWithNonStarter", !position},
+                                     {u"canReplaceWithStarter", !builtin && position}, {u"canReplaceWithNonStarter", !builtin && !position},
                                      {u"args", or_value(jsv::get(step, u"args"), Value(Object{}))}}));
         }
     }
@@ -333,6 +338,7 @@ Value replace_effect(const Value& compiled, const Value& step_index, const Value
     auto location = locate(compiled, step_index);
     if (!location) return failure(u"Step with index " + string(step_index) + u" not found");
     Value old_name = jsv::get(location->step, u"op");
+    if (is_builtin_op(old_name)) return builtin_replacement_error(old_name);
     bool position = starter_position(*location, registry, order);
     bool new_is_starter = check_starter(registry, new_effect_name, order);
     Value spec = effect_spec(registry, new_effect_name, order);
@@ -423,6 +429,8 @@ Value get_compatible_replacements(const Value& compiled, const Value& step_index
     Value order = search_order(options, compiled);
     auto location = locate(compiled, step_index);
     if (!location) return failure(u"Step with index " + string(step_index) + u" not found");
+    const Value op = jsv::get(location->step, u"op");
+    if (is_builtin_op(op)) return builtin_replacement_error(op);
     bool position = starter_position(*location, registry, order);
     Value old_instance = effect_instance(registry, prop(location->step, u"op"));
     Array starters, non_starters, blocked;

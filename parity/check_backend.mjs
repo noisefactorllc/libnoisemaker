@@ -26,6 +26,8 @@ const out = line => process.stdout.write(line + '\n')
 const err = line => process.stderr.write(line + '\n')
 
 const { bootstrapReference } = await import(pathToFileURL(join(ROOT, 'tools/reference-oracle.mjs')).href)
+const { countFragmentOutputs } = await import(pathToFileURL(resolve(process.env.NM_REFERENCE_ROOT,
+  'shaders/src/runtime/backends/webgpu.js')).href)
 const mod = await bootstrapReference()
 
 const ops = []
@@ -89,20 +91,29 @@ for (const [index, file] of readdirSync(programsDir).filter(f => f.endsWith('.ds
     if (n % 7 === 3) calls.push({ op: 'createTexture3D', id, spec: { width: 16, height: 16, depth: 16, format: 'rgba16f', filter: n % 2 ? 'nearest' : undefined } })
     else calls.push({ op: 'createTexture', id, spec: { width, height, format: n % 3 ? 'rgba16f' : 'rgba8', mipmaps: n % 5 === 1 } })
   }
-  for (const [id, spec] of Object.entries(graph.programs ?? {})) calls.push({ op: 'compileProgram', id, spec })
+  const mrtPrograms = new Set()
+  for (const [id, spec] of Object.entries(graph.programs ?? {})) {
+    calls.push({ op: 'compileProgram', id, spec })
+    const source = spec.wgsl ?? spec.compute ?? spec.fragment
+    const entry = typeof source === 'string' && /@fragment\s*\n?\s*fn\s+(\w+)/.exec(source)?.[1]
+    if (entry && countFragmentOutputs(source, entry) > 1) mrtPrograms.add(id)
+  }
   const renderSurface = graph.renderSurface
   for (const frame of [0, 1]) {
     calls.push({ op: 'beginFrame' })
     const state = { globalUniforms: frameGlobals(width, height, frame), surfaces, writeSurfaces, renderSurface, screenWidth: width, screenHeight: height }
     for (const pass of graph.passes) {
       if (!graph.programs?.[pass.program]) continue
-      calls.push({ op: 'createBindGroup', pass, program: pass.program, state })
+      // An MRT program's bind group needs its actual attachment pipeline.
+      // Execute these passes to check the pipeline and the group together.
+      if (mrtPrograms.has(pass.program)) calls.push({ op: 'executePass', pass, state })
+      else calls.push({ op: 'createBindGroup', pass, program: pass.program, state })
     }
     calls.push({ op: 'endFrame' })
   }
   sequence(`corpus/${file}`, calls, true)
   // The same graph executed: every pass on the frame's encoder, over two frames.
-  const exec = calls.filter(call => call.op !== 'createBindGroup')
+  const exec = calls.filter(call => call.op !== 'createBindGroup' && call.op !== 'executePass')
   const executed = []
   for (const call of exec) {
     if (call.op === 'beginFrame') {
@@ -446,7 +457,10 @@ sequence('synthetic/texture-operations', [
   { op: 'createTexture', id: 'f16all', spec: { width: 256, height: 64, format: 'rgba16f' } },
   { op: 'createTexture', id: 'f16odd', spec: { width: 30, height: 5, format: 'rgba16f' } },
   { op: 'createTexture', id: 'f32odd', spec: { width: 7, height: 3, format: 'rgba32f' } },
-  ...['plainTex', 'mipTex', 'f16all', 'f16odd', 'f32odd', 'global_mesh0_positions', 'smaller', 'plainTex3', 'noFormat', 'vol3d', 'missing']
+  { op: 'createTexture', id: 'r16odd', spec: { width: 5, height: 3, format: 'r16float' } },
+  { op: 'createTexture', id: 'r32odd', spec: { width: 7, height: 3, format: 'r32float' } },
+  ...['plainTex', 'mipTex', 'f16all', 'f16odd', 'f32odd', 'r16odd', 'r32odd', 'global_mesh0_positions',
+    'smaller', 'plainTex3', 'noFormat', 'vol3d', 'missing']
     .map(id => ({ op: 'readPixels', id }))
 ])
 sequence('synthetic/textures', [

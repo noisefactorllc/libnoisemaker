@@ -55,6 +55,23 @@ const decodeMembers = encoded => {
 }
 
 let backend = null
+
+// The stable cube upload contract predates the scene renderer. The reference
+// no longer exposes the upload helper, so check its device command directly:
+// write RGBA8 into the requested layer with zero-filled row padding.
+function uploadCubeFace (op) {
+  const { id, face, width, height } = op
+  const handle = backend.textures.get(id).handle
+  const rowBytes = width * 4
+  const stride = Math.ceil(rowBytes / 256) * 256
+  const data = new Uint8Array(stride * height)
+  for (let row = 0; row < height; row++) {
+    data.set(op.data.slice(row * rowBytes, (row + 1) * rowBytes), row * stride)
+  }
+  backend.device.queue.writeTexture({ texture: handle, origin: [0, 0, face] }, data,
+    { bytesPerRow: stride, rowsPerImage: height }, { width, height, depthOrArrayLayers: 1 })
+}
+
 const frameState = s => {
   const surfaces = {}
   for (const [name, texId] of Object.entries(s?.surfaces ?? {})) {
@@ -92,7 +109,7 @@ for await (const line of lines) {
       case 'endFrame': backend.endFrame(); break
       case 'createBindGroup': backend.createBindGroup(op.pass, backend.programs.get(op.program), frameState(op.state)); break
       case 'executePass': backend.executePass(op.pass, frameState(op.state)); break
-      case 'uploadCubeFace': backend.uploadCubeFace(op.id, op.face, { width: op.width, height: op.height, data: Uint8Array.from(op.data) }); break
+      case 'uploadCubeFace': uploadCubeFace(op); break
       case 'uploadMeshData': result = backend.uploadMeshData(op.id, decode(op.positions), decode(op.normals), decode(op.uvs), op.width, op.height, op.vertexCount); break
       case 'copyTexture': backend.copyTexture(op.src, op.dst); break
       case 'copyTextureScaled': backend.copyTextureScaled(op.src, op.dst); break

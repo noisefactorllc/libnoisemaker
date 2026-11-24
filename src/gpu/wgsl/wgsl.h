@@ -74,6 +74,7 @@ std::vector<JsString> computeEntryPoints(const JsString& source);
 bool hasComputeEntry(const JsString& source);
 bool hasFragmentEntry(const JsString& source);
 bool hasVertexEntry(const JsString& source);
+size_t countFragmentOutputs(const JsString& source, const JsString& entryPoint);
 std::vector<Binding> parseShaderBindings(const JsString& source);
 // entry point -> binding indices it reaches, both in insertion order.
 OrderedMap<JsString, std::vector<double>> parseEntryPointBindings(const JsString& source,

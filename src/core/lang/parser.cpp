@@ -39,11 +39,8 @@ namespace {
 //     "Expect '('" (this second case is a reference bug-for-bug, verified
 //     against the oracle: `foo.bar.baz()` throws "Expect '(' at line 1
 //     col 4", NOT a namespace error and NOT a successful Member parse).
-//   - Comments are legal ONLY where the reference explicitly calls
-//     collectComments(): between top-level program statements, around
-//     the '.' in a chain, and before each subchain-body element. A
-//     comment immediately before a statement INSIDE an if/elif/else
-//     block is a syntax error (verified against the oracle).
+//   - Statement and chain comments are collected. Comments within a call
+//     or array are discarded so the unparser can emit the list on one line.
 //   - JS falsy-OR quirk: subchain `name`/`id` use `kwargs.x?.value ||
 //     null`, so an explicitly EMPTY STRING value also collapses to JSON
 //     null, not "" (verified against the oracle) -- do not "fix" this.
@@ -272,6 +269,10 @@ private:
             comments.append(advance().lexeme);
         }
         return comments;
+    }
+
+    void skipComments() {
+        while (peek().type == TokenType::COMMENT) advance();
     }
 
     bool hasCallAfterDot(int index) const;
@@ -916,6 +917,7 @@ JsonObject Parser::parseCall() {
     bool positional = false;
     const bool allowMixed = nameToken.lexeme == LangString(u"midi")
         || nameToken.lexeme == LangString(u"audio");
+    skipComments();
     if (peek().type != TokenType::RPAREN) {
         while (true) {
             if (peek().type == TokenType::IDENT && typeAt(current_ + 1) == TokenType::COLON) {
@@ -935,8 +937,10 @@ JsonObject Parser::parseCall() {
                 positional = true;
                 args.append(parseArg());
             }
+            skipComments();
             if (peek().type != TokenType::COMMA) break;
             advance();
+            skipComments();
             if (peek().type == TokenType::RPAREN) break;
         }
     }
@@ -946,6 +950,7 @@ JsonObject Parser::parseCall() {
     call.insert(LangString(u"type"), NodeKind::Call);
     call.insert(LangString(u"name"), nameToken.lexeme);
     call.insert(LangString(u"args"), args);
+    call.insert(LangString(u"loc"), ast::loc(nameToken.line, nameToken.col));
     if (keyword) call.insert(LangString(u"kwargs"), kwargs);
 
     const LangString lexeme = nameToken.lexeme;
@@ -1330,6 +1335,7 @@ JsonObject Parser::transformFromInvocation(const JsonObject& call, const Token& 
     replacement.insert(LangString(u"type"), NodeKind::Call);
     replacement.insert(LangString(u"name"), targetCall.value(LangString(u"name")));
     replacement.insert(LangString(u"args"), targetCall.value(LangString(u"args")).toArray());
+    if (targetCall.contains(LangString(u"loc"))) replacement.insert(LangString(u"loc"), targetCall.value(LangString(u"loc")));
     if (targetCall.contains(LangString(u"kwargs"))) {
         replacement.insert(LangString(u"kwargs"), targetCall.value(LangString(u"kwargs")).toObject());
     }
@@ -1352,6 +1358,7 @@ JsonObject Parser::transformFromInvocation(const JsonObject& call, const Token& 
 void Parser::parseKwarg(JsonObject& obj) {
     const LangString key = expect(TokenType::IDENT, LangString(u"Expected identifier")).lexeme;
     expect(TokenType::COLON, LangString(u"Expect ':'"));
+    skipComments();
     if (!exprStartTokens().contains(peek().type)) {
         // NOTE: reference message says "after '='" even though a kwarg
         // uses ':' -- a copy-paste artifact in the source of truth, kept
@@ -1369,7 +1376,9 @@ JsonObject Parser::parseAdditive() {
         const JsonObject right = parseMultiplicative();
         const double l = toNumber(node);
         const double r = toNumber(right);
+        const auto loc = node.value(LangString(u"loc"));
         node = ast::number(op == TokenType::PLUS ? l + r : l - r);
+        if (!loc.isUndefined()) node.insert(LangString(u"loc"), loc);
     }
     return node;
 }
@@ -1381,7 +1390,9 @@ JsonObject Parser::parseMultiplicative() {
         const JsonObject right = parseUnary();
         const double l = toNumber(node);
         const double r = toNumber(right);
+        const auto loc = node.value(LangString(u"loc"));
         node = ast::number(op == TokenType::STAR ? l * r : l / r);
+        if (!loc.isUndefined()) node.insert(LangString(u"loc"), loc);
     }
     return node;
 }
@@ -1394,7 +1405,10 @@ JsonObject Parser::parseUnary() {
     if (peek().type == TokenType::MINUS) {
         advance();
         const JsonObject val = parseUnary();
-        return ast::number(-toNumber(val));
+        auto node = ast::number(-toNumber(val));
+        const auto loc = val.value(LangString(u"loc"));
+        if (!loc.isUndefined()) node.insert(LangString(u"loc"), loc);
+        return node;
     }
     return parsePrimary();
 }
@@ -1432,13 +1446,16 @@ JsonObject Parser::parsePrimary() {
 
     if (tt == TokenType::NUMBER) {
         advance();
-        return ast::number(LangString(token.lexeme).toDouble());
+        auto node = ast::number(LangString(token.lexeme).toDouble());
+        node.insert(LangString(u"loc"), ast::loc(token.line, token.col));
+        return node;
     }
     if (tt == TokenType::STRING) {
         advance();
         JsonObject node;
         node.insert(LangString(u"type"), NodeKind::String);
         node.insert(LangString(u"value"), token.lexeme);
+        node.insert(LangString(u"loc"), ast::loc(token.line, token.col));
         return node;
     }
     if (tt == TokenType::HEX) {
@@ -1467,6 +1484,7 @@ JsonObject Parser::parsePrimary() {
         value.append(b / 255.0);
         value.append(a);
         node.insert(LangString(u"value"), value);
+        node.insert(LangString(u"loc"), ast::loc(token.line, token.col));
         return node;
     }
     if (tt == TokenType::LBRACKET) {
@@ -1476,11 +1494,16 @@ JsonObject Parser::parsePrimary() {
         const int startCol = token.col;
         advance();
         JsonArray elements;
+        skipComments();
         if (peek().type != TokenType::RBRACKET) {
             elements.append(parseArg());
+            skipComments();
             while (peek().type == TokenType::COMMA) {
                 advance();
+                skipComments();
+                if (peek().type == TokenType::RBRACKET) break;
                 elements.append(parseArg());
+                skipComments();
             }
         }
         if (peek().type != TokenType::RBRACKET) {
@@ -1514,6 +1537,7 @@ JsonObject Parser::parsePrimary() {
         JsonObject node;
         node.insert(LangString(u"type"), NodeKind::Boolean);
         node.insert(LangString(u"value"), true);
+        node.insert(LangString(u"loc"), ast::loc(token.line, token.col));
         return node;
     }
     if (tt == TokenType::FALSE) {
@@ -1521,6 +1545,7 @@ JsonObject Parser::parsePrimary() {
         JsonObject node;
         node.insert(LangString(u"type"), NodeKind::Boolean);
         node.insert(LangString(u"value"), false);
+        node.insert(LangString(u"loc"), ast::loc(token.line, token.col));
         return node;
     }
     if (tt == TokenType::IDENT) {
@@ -1531,7 +1556,9 @@ JsonObject Parser::parsePrimary() {
             advance();
             advance();
             advance();
-            return ast::number(3.141592653589793);
+            auto node = ast::number(3.141592653589793);
+            node.insert(LangString(u"loc"), ast::loc(token.line, token.col));
+            return node;
         }
         // member-then-call OR direct call -> parse as a chain (expression
         // context). See file header note: for 2+ dotted segments this

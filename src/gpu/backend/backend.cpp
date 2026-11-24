@@ -331,7 +331,7 @@ void WebGPUBackend::createCubeTexture(const JsString& id, const Value& size) {
     TextureDescriptor descriptor;
     descriptor.size = extent(size, size, Value(6.0));
     descriptor.format = u"rgba8unorm";
-    descriptor.usage = TextureUsage::TextureBinding | TextureUsage::CopyDst | TextureUsage::RenderAttachment;
+    descriptor.usage = TextureUsage::TextureBinding | TextureUsage::CopyDst;
     TextureRecord record;
     record.handle = device_.createTexture(descriptor);
     TextureViewDescriptor view;
@@ -339,6 +339,8 @@ void WebGPUBackend::createCubeTexture(const JsString& id, const Value& size) {
     record.view = device_.createView(record.handle, view);
     record.width = size;
     record.height = size;
+    record.format = Value(u"rgba8");
+    record.gpuFormat = Value(u"rgba8unorm");
     record.cube = true;
     setTexture(id, ownRecord(std::move(record)));
 }
@@ -591,22 +593,25 @@ const ProgramInfo& WebGPUBackend::compileRenderProgram(const JsString& id, const
     info.outputFormat = resolveFormat(jsv::truthy(outputFormatSpec) ? outputFormatSpec : Value(u"rgba16float"));
     const Value topology = jsv::get(spec, u"topology");
     const Value blend = jsv::get(spec, u"blend");
-
-    RenderPipelineDescriptor descriptor;
-    descriptor.vertexModule = info.vertexModule;
-    descriptor.vertexEntryPoint = info.vertexEntryPoint;
-    descriptor.fragmentModule = info.fragmentModule;
-    descriptor.fragmentEntryPoint = info.fragmentEntryPoint;
-    descriptor.targets.push_back(ColorTargetState{jsv::to_string(info.outputFormat), resolveBlendState(blend)});
-    descriptor.topology = jsv::truthy(topology) ? jsv::to_string(topology) : JsString(u"triangle-list");
-    info.pipeline = device_.createRenderPipeline(descriptor);
     info.module = info.fragmentModule;
+    info.fragmentOutputCount = wgsl::countFragmentOutputs(source, info.fragmentEntryPoint);
+    // A program with several color outputs builds its pipeline with the
+    // attachment formats of the first MRT pass that uses it.
+    if (info.fragmentOutputCount <= 1) {
+        RenderPipelineDescriptor descriptor;
+        descriptor.vertexModule = info.vertexModule;
+        descriptor.vertexEntryPoint = info.vertexEntryPoint;
+        descriptor.fragmentModule = info.fragmentModule;
+        descriptor.fragmentEntryPoint = info.fragmentEntryPoint;
+        descriptor.targets.push_back(ColorTargetState{jsv::to_string(info.outputFormat), resolveBlendState(blend)});
+        const JsString topoKey = jsv::truthy(topology) ? jsv::to_string(topology) : JsString(u"triangle-list");
+        descriptor.topology = topoKey;
+        info.pipeline = device_.createRenderPipeline(descriptor);
 
-    // getPipelineKey({topology, blend, format})
-    const JsString blendKey = jsv::truthy(blend) ? utf8_to_js(json::stringify(blend)) : JsString(u"noblend");
-    const JsString topoKey = jsv::truthy(topology) ? jsv::to_string(topology) : JsString(u"triangle-list");
-    const JsString formatKey = jsv::truthy(info.outputFormat) ? jsv::to_string(info.outputFormat) : JsString(u"rgba16float");
-    info.pipelineCache.emplace_back(topoKey + u"|" + blendKey + u"|" + formatKey, info.pipeline);
+        const JsString blendKey = jsv::truthy(blend) ? utf8_to_js(json::stringify(blend)) : JsString(u"noblend");
+        const JsString formatKey = jsv::truthy(info.outputFormat) ? jsv::to_string(info.outputFormat) : JsString(u"rgba16float");
+        info.pipelineCache.emplace_back(topoKey + u"|" + blendKey + u"|" + formatKey, info.pipeline);
+    }
 
     info.samplerTextureNames = wgsl::parseSamplerTextureUses(source + u"\n" + vertexSource);
     info.uniforms = ProgramUniforms::fromSource(source, jsv::get(spec, u"uniformLayout"));
@@ -627,6 +632,18 @@ void WebGPUBackend::endFrame() {
     const Handle commandBuffer = device_.finish(commandEncoder_);
     device_.submit({commandBuffer});
     commandEncoder_ = 0;
+    if (!retiredDepthTextures_.empty()) {
+        auto retired = std::exchange(retiredDepthTextures_, {});
+        std::weak_ptr<Device*> releaser = releaser_;
+        // Retire after submitting this encoder too. It can still reference
+        // a depth attachment evicted by a later pass in the same frame.
+        device_.onSubmittedWorkDone([releaser, retired = std::move(retired)]() mutable {
+            if (const auto device = releaser.lock()) {
+                for (const auto& texture : retired) (*device)->destroyTexture(texture->handle);
+            }
+            retired.clear();
+        });
+    }
     if (!retiredStorageBuffers_.empty()) {
         std::vector<Buffer> retired = std::move(retiredStorageBuffers_);
         retiredStorageBuffers_.clear();
@@ -720,8 +737,12 @@ Pixels WebGPUBackend::readPixels(const JsString& textureId) {
     const Handle handle = tex->handle;
     const Value width = tex->width;
     const Value height = tex->height;
+    const bool singleHalf = jsv::strict_equals(tex->gpuFormat, Value(u"r16float"));
+    const bool singleFloat = jsv::strict_equals(tex->gpuFormat, Value(u"r32float"));
     double bytesPerPixel = 4;
-    if (jsv::strict_equals(tex->gpuFormat, Value(u"rgba16float"))) {
+    if (singleHalf) {
+        bytesPerPixel = 2;
+    } else if (jsv::strict_equals(tex->gpuFormat, Value(u"rgba16float"))) {
         bytesPerPixel = 8;
     } else if (jsv::strict_equals(tex->gpuFormat, Value(u"rgba32float"))) {
         bytesPerPixel = 16;
@@ -754,7 +775,17 @@ Pixels WebGPUBackend::readPixels(const JsString& textureId) {
         std::memcpy(&value, mapped.data() + size_t(index) * 4, 4);
         return double(value);
     };
-    if (bytesPerPixel == 8) {
+    if (singleHalf || singleFloat) {
+        for (double row = 0; row < h; ++row) {
+            for (double col = 0; col < w; ++col) {
+                const double srcPixel = row * bytesPerRow / bytesPerPixel + col;
+                const uint8_t gray = toByte(singleHalf ? float16ToFloat32(u16(srcPixel)) : f32(srcPixel));
+                const auto dstPixel = size_t((row * w + col) * 4);
+                out.data[dstPixel] = out.data[dstPixel + 1] = out.data[dstPixel + 2] = gray;
+                out.data[dstPixel + 3] = 255;
+            }
+        }
+    } else if (bytesPerPixel == 8) {
         for (double row = 0; row < h; row++) {
             const double srcRowOffset = (row * bytesPerRow) / 2;
             for (double col = 0; col < w; col++) {
@@ -913,6 +944,13 @@ std::optional<Handle> WebGPUBackend::storageTextureView(const wgsl::Binding& bin
 }
 
 Handle WebGPUBackend::legacyBindGroup(const Value& pass, const ProgramInfo& program, const FrameState& state) {
+    if (!program.pipeline) {
+        throw JsError(u"Error", u"Program '" + jsv::to_string(jsv::member(pass, u"program"))
+                      + u"' has no eager pipeline to take a bind group layout from: "
+                        u"its fragment stage declares " + utf8_to_js(std::to_string(program.fragmentOutputCount))
+                      + u" @location outputs, so it is MRT-only. The legacy bind group path is for shaders with no "
+                        u"@binding declarations at all; declare them so the parsed-binding path builds the group instead.");
+    }
     std::vector<BindGroupEntry> entries;
     double binding = 0;
     const Value inputs = jsv::member(pass, u"inputs");
@@ -1103,13 +1141,15 @@ Handle WebGPUBackend::createBindGroup(const Value& pass, const ProgramInfo& prog
         }
     }
 
-    if (bindings.empty()) {
-        // No bindings parsed: a shader that declares none uses the legacy
-        // layout; one whose bindings were all dead gets an empty group.
-        if (!(program.module && program.sourceHasBindings)) return legacyBindGroup(pass, program, state);
-        return device_.createBindGroup(device_.getBindGroupLayout(targetPipeline, 0), {});
+    // A shader without declarations uses the legacy layout. A parsed MRT
+    // program needs the concrete pipeline created for its attachments.
+    if (bindings.empty() && !(program.module && program.sourceHasBindings)) {
+        return legacyBindGroup(pass, program, state);
     }
-    return createBindGroupFromEntries(device_.getBindGroupLayout(targetPipeline, 0), entries);
+    if (!targetPipeline) throw JsError(u"TypeError", u"Cannot read properties of null (reading 'getBindGroupLayout')");
+    const auto layout = device_.getBindGroupLayout(targetPipeline, 0);
+    if (bindings.empty()) return device_.createBindGroup(layout, {});
+    return createBindGroupFromEntries(layout, entries);
 }
 
 namespace {
@@ -1313,20 +1353,30 @@ Handle WebGPUBackend::resolveMRTRenderPipeline(ProgramInfo& program, const Value
 }
 
 Handle WebGPUBackend::getDepthTexture(const Value& width, const Value& height) {
-    if (!depthTexture_ || !jsv::strict_equals(depthTextureWidth_, width) || !jsv::strict_equals(depthTextureHeight_, height)) {
-        if (depthTexture_) {
-            device_.destroyTexture(depthTexture_);
-            device_.release(depthTexture_);
-        }
-        TextureDescriptor descriptor;
-        descriptor.size = extent(width, height);
-        descriptor.format = u"depth24plus";
-        descriptor.usage = TextureUsage::RenderAttachment;
-        depthTexture_ = device_.createTexture(descriptor);
-        depthTextureWidth_ = width;
-        depthTextureHeight_ = height;
+    constexpr size_t cacheLimit = 4;
+    const auto cached = std::find_if(depthTextures_.begin(), depthTextures_.end(), [&](const auto& texture) {
+        return jsv::strict_equals(texture->width, width) && jsv::strict_equals(texture->height, height);
+    });
+    if (cached != depthTextures_.end()) {
+        const Handle handle = (*cached)->handle;
+        std::rotate(cached, cached + 1, depthTextures_.end());
+        return handle;
     }
-    return depthTexture_;
+    TextureDescriptor descriptor;
+    descriptor.size = extent(width, height);
+    descriptor.format = u"depth24plus";
+    descriptor.usage = TextureUsage::RenderAttachment;
+    TextureRecord depth;
+    depth.handle = device_.createTexture(descriptor);
+    depth.width = width;
+    depth.height = height;
+    const Handle handle = depth.handle;
+    depthTextures_.push_back(ownRecord(std::move(depth)));
+    if (depthTextures_.size() > cacheLimit) {
+        retiredDepthTextures_.push_back(std::move(depthTextures_.front()));
+        depthTextures_.erase(depthTextures_.begin());
+    }
+    return handle;
 }
 
 void WebGPUBackend::drawPass(Handle passEncoder, const Value& pass, const FrameState& state, const Value& outputId,
@@ -1421,6 +1471,11 @@ void WebGPUBackend::executeMRTRenderPass(const Value& pass, ProgramInfo& program
         const TextureRecord* tex = textureFor(outputId);
         if (!tex) tex = surfaceTexture(state, jsv::to_property_key(outputId));
         if (!tex) continue;  // the reference warns and records a missing render target
+        if (tex->cube) {
+            throw JsError(u"Error", u"Pass '" + jsv::to_string(jsv::member(pass, u"id")) + u"' targets cube texture '"
+                          + jsv::to_string(outputId) + u"' from a multiple-render-target pass. "
+                          u"Cube render targets are supported only on single-output passes, which select a face via cubeFace.");
+        }
         if (!viewportTex) viewportTex = tex;
         formats.push_back(jsv::truthy(tex->gpuFormat) ? tex->gpuFormat
                           : resolveFormat(jsv::truthy(tex->format) ? tex->format : Value(u"rgba16float")));

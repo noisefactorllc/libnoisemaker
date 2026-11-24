@@ -560,6 +560,9 @@ JsValue Validator::resolveCall(JsObject call) {
         merged.insert(JsText(u"type"), NodeKind::Call);
         merged.insert(JsText(u"name"), valObj.value(JsText(u"name")));
         merged.insert(JsText(u"args"), mergedArgs);
+        const JsText locKey(u"loc");
+        if (call.contains(locKey)) merged.insert(locKey, call.value(locKey));
+        else if (valObj.contains(locKey)) merged.insert(locKey, valObj.value(locKey));
         if (haveKw) merged.insert(JsText(u"kwargs"), mergedKw);
         if (call.contains(JsText(u"namespace"))) {
             merged.insert(JsText(u"namespace"), call.value(JsText(u"namespace")));
@@ -688,6 +691,7 @@ JsValue Validator::substitute(const JsValue& nodeVal, const JsList& resolving) {
             mappedCall.insert(JsText(u"type"), NodeKind::Call);
             mappedCall.insert(JsText(u"name"), c.value(JsText(u"name")));
             mappedCall.insert(JsText(u"args"), mappedArgs);
+            if (c.contains(JsText(u"loc"))) mappedCall.insert(JsText(u"loc"), c.value(JsText(u"loc")));
             if (c.contains(JsText(u"kwargs"))) {
                 JsObject kw;
                 const JsObject srcKw = c.value(JsText(u"kwargs")).toObject();
@@ -711,6 +715,7 @@ JsValue Validator::substitute(const JsValue& nodeVal, const JsList& resolving) {
         mappedCall.insert(JsText(u"type"), NodeKind::Call);
         mappedCall.insert(JsText(u"name"), node.value(JsText(u"name")));
         mappedCall.insert(JsText(u"args"), mappedArgs);
+        if (node.contains(JsText(u"loc"))) mappedCall.insert(JsText(u"loc"), node.value(JsText(u"loc")));
         if (node.contains(JsText(u"kwargs"))) {
             JsObject kw;
             const JsObject srcKw = node.value(JsText(u"kwargs")).toObject();
@@ -1593,6 +1598,15 @@ JsValue Validator::resolveArgs(JsArray& chain, const OpSpec& spec, const JsObjec
                           JsText(u"Unknown argument '%1' for %2()").arg(it.key(), call.value(JsText(u"name")).toString()));
             }
         }
+    }
+    // Positionals in a stable call bind by index, including when a let joins
+    // them with keywords. Unbound positions beyond the signature only warn.
+    const auto paramCount = std::ssize(spec.args);
+    if (std::ssize(callArgs) > paramCount) {
+        const JsText name = call.value(JsText(u"name")).toString();
+        pushDiag(JsText(u"S009"), callArgs.at(paramCount),
+                 JsText(u"Too many positional arguments for %1(): '%2' takes %3")
+                     .arg(name, name, JsText::fromLatin1(std::to_string(paramCount).c_str())));
     }
     if (resolvedKwargs) *resolvedKwargs = kw;
     return haveArgSources ? JsValue(argSources) : JsValue(JsValue::Undefined);

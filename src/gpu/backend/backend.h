@@ -74,6 +74,7 @@ struct ProgramInfo {
     Handle fragmentModule = 0;
     JsString vertexEntryPoint;
     JsString fragmentEntryPoint;
+    size_t fragmentOutputCount = 1;
     Value outputFormat;
     std::vector<std::pair<JsString, Handle>> pipelineCache;
     // Both.
@@ -235,9 +236,8 @@ private:
     std::unordered_map<JsString, Buffer> storageBuffers_;
     std::vector<Buffer> retiredStorageBuffers_;
     std::unordered_map<JsString, Handle> fallbackStorageViews_;
-    Handle depthTexture_ = 0;
-    Value depthTextureWidth_;
-    Value depthTextureHeight_;
+    std::vector<std::shared_ptr<TextureRecord>> depthTextures_;
+    std::vector<std::shared_ptr<TextureRecord>> retiredDepthTextures_;
     std::vector<std::pair<JsString, Handle>> bufferToTexturePipelines_;
     Handle resampleModule_ = 0;
     std::vector<std::pair<JsString, Handle>> resamplePipelines_;

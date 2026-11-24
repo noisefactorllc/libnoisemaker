@@ -59,6 +59,16 @@ bool numEq(double a, double b) {
 } // namespace
 
 int main() {
+    {
+        const auto prog = parseSrc(LangString(
+            u"search synth\nsolid( // color follows\ncolor: /* RGB */ [1, 0.5, 0, /* end */], // end of call\n).write(o0)\nrender(o0)\n"));
+        const auto plan = prog.value(LangString(u"plans")).toArray().at(0).toObject();
+        const auto call = plan.value(LangString(u"chain")).toArray().at(0).toObject();
+        const auto color = call.value(LangString(u"kwargs")).toObject().value(LangString(u"color")).toObject();
+        const auto elements = color.value(LangString(u"elements")).toArray();
+        check(elements.size() == 3 && numEq(elements.at(1).toObject().value(LangString(u"value")).toDouble(), 0.5),
+              "comments and trailing commas preserve the stable color array");
+    }
     // ==================================================================
     // chain
     // ==================================================================

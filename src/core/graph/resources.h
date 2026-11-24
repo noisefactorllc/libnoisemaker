@@ -7,6 +7,7 @@ namespace libnoisemaker {
 struct PassIO {
     JsVector<JsText> inputs;
     JsVector<JsText> outputs;
+    JsText nodeId{};
 };
 
 struct TexLifetime {

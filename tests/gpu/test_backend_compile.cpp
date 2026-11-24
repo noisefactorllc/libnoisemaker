@@ -137,6 +137,67 @@ void test_releases_nothing_on_success() {
     NM_CHECK(device.releasedCount_ == 0);
 }
 
+void test_mrt_pipeline_is_built_for_its_actual_attachments() {
+    RecordingDevice device;
+    WebGPUBackend backend(device);
+    backend.init();
+    Object spec;
+    spec.set(u"wgsl", Value(uR"(
+        struct Result {
+            @location(0) first: vec4f,
+            // } @location(2) is not a field.
+            @location(1) second: vec4f,
+        }
+        @fragment fn main(@location(0) uv: vec2f) -> Result {
+            return Result(vec4f(uv, 0.0, 1.0), vec4f(1.0));
+        }
+    )"));
+    backend.compileProgram(u"mrt", Value(std::move(spec)));
+    const auto log = device.takeLog();
+    size_t eagerPipelines = 0;
+    for (const auto& call : log) {
+        if (libnoisemaker::jsv::strict_equals(libnoisemaker::jsv::get(call, u"call"), Value(u"createRenderPipeline"))) {
+            ++eagerPipelines;
+        }
+    }
+    NM_CHECK(eagerPipelines == 0);
+    NM_CHECK(backend.programsSnapshot().at(u"mrt").fragmentOutputCount == 2);
+}
+
+void test_depth_eviction_waits_for_the_current_frame() {
+    using libnoisemaker::backend::FrameState;
+    RecordingDevice device;
+    WebGPUBackend backend(device);
+    backend.init();
+    Object shader;
+    shader.set(u"wgsl", Value(kFragment));
+    backend.compileProgram(u"mesh", Value(std::move(shader)));
+    backend.beginFrame();
+    for (int width = 1; width <= 5; ++width) {
+        Object spec;
+        spec.set(u"width", Value(double(width)));
+        spec.set(u"height", Value(1.0));
+        const JsString id(1, static_cast<char16_t>(u'a' + width));
+        backend.createTexture(id, Value(std::move(spec)));
+        Object outputs;
+        outputs.set(u"color", Value(id));
+        Object pass;
+        pass.set(u"program", Value(u"mesh"));
+        pass.set(u"drawMode", Value(u"triangles"));
+        pass.set(u"outputs", Value(std::move(outputs)));
+        backend.executePass(Value(std::move(pass)), FrameState{});
+    }
+    for (const auto& call : device.takeLog()) {
+        NM_CHECK(!libnoisemaker::jsv::strict_equals(libnoisemaker::jsv::get(call, u"call"), Value(u"destroyTexture")));
+    }
+    backend.endFrame();
+    size_t destroyed = 0;
+    for (const auto& call : device.takeLog()) {
+        if (libnoisemaker::jsv::strict_equals(libnoisemaker::jsv::get(call, u"call"), Value(u"destroyTexture"))) ++destroyed;
+    }
+    NM_CHECK(destroyed == 1);
+}
+
 }  // namespace
 
 int main() {
@@ -144,6 +205,8 @@ int main() {
     test_releases_a_failed_render_module();
     test_releases_a_failed_vertex_module();
     test_releases_nothing_on_success();
+    test_mrt_pipeline_is_built_for_its_actual_attachments();
+    test_depth_eviction_waits_for_the_current_frame();
     std::printf("test_backend_compile: ok\n");
     return 0;
 }

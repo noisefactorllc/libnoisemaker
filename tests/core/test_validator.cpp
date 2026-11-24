@@ -81,6 +81,19 @@ bool anyDiagCode(const libnoisemaker::JsObject& out, const libnoisemaker::JsText
 } // namespace
 
 int main() {
+    {
+        using namespace libnoisemaker;
+        const auto result = validateSrc(JsText(u"search synth\nsolid(#f00, 1, 99).write(o0)\nrender(o0)"));
+        const auto diagnostics = diags(result);
+        const auto warning = diagnostics.at(0).toObject();
+        const auto location = warning.value(JsText(u"location")).toObject();
+        check(diagnostics.size() == 1 && warning.value(JsText(u"code")).toString() == JsText(u"S009")
+                  && warning.value(JsText(u"severity")).toString() == JsText(u"warning")
+                  && location.value(JsText(u"line")).toInt() == 2 && location.value(JsText(u"column")).toInt() == 16,
+              "excess positionals warn at the unused argument");
+        check(args(result, 0, 0).value(JsText(u"alpha")).toDouble() == 1,
+              "excess arguments leave bound parameters intact");
+    }
     // ==================================================================
     // numeric arg resolution: clamp + S002, and pass-through when in range
     // ==================================================================

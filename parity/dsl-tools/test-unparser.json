@@ -743,6 +743,13 @@
  ],
  "cases": [
   {
+   "id": "unparse/stable-array-binding",
+   "op": "unparse",
+   "compiled": {
+    "$compile": "search synth\nlet controls = [0.123456789012, 1.0009765625, -1.0009765625, [#f80, true, o1], \"a\\\\b\", solid(color: #00ff00)]\nsolid().write(o0)\nrender(o0)"
+   }
+  },
+  {
    "id": "unparser/basic",
    "op": "unparse",
    "compiled": {
