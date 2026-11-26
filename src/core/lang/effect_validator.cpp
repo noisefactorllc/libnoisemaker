@@ -210,7 +210,8 @@ const JsList& topLevelKeys() {
         JsText(u"paramAliases"), JsText(u"openCategories"),
         JsText(u"defaultProgram"), JsText(u"hidden"), JsText(u"deprecatedBy"),
         JsText(u"externalTexture"), JsText(u"externalMesh"),
-        JsText(u"builtinMeshes"), JsText(u"outputTex3d"), JsText(u"outputGeo"),
+        JsText(u"builtinMeshes"), JsText(u"outputTex"), JsText(u"outputTex3d"), JsText(u"outputGeo"),
+        JsText(u"outputXyz"), JsText(u"outputVel"), JsText(u"outputRgba"),
         JsText(u"state"), JsText(u"uniforms"),
         JsText(u"onInit"), JsText(u"onUpdate"), JsText(u"onDestroy"),
         JsText(u"asyncInit"),
@@ -1647,13 +1648,11 @@ std::vector<std::string> validateEffectDefinition(const JsValue& def) {
             }
         }
     }
-    const JsValue outputTex3d = source.value(JsText(u"outputTex3d"));
-    if (!outputTex3d.isUndefined() && !isNonEmptyString(outputTex3d)) {
-        errors.push_back("\"outputTex3d\" must be a non-empty string");
-    }
-    const JsValue outputGeo = source.value(JsText(u"outputGeo"));
-    if (!outputGeo.isUndefined() && !isNonEmptyString(outputGeo)) {
-        errors.push_back("\"outputGeo\" must be a non-empty string");
+    for (const char* field : {"outputTex", "outputTex3d", "outputGeo", "outputXyz", "outputVel", "outputRgba"}) {
+        const JsValue value = source.value(JsText::fromLatin1(field));
+        if (!value.isUndefined() && (!value.isString() || value.toString().trimmed().isEmpty())) {
+            errors.push_back(std::string("\"") + field + "\" must be a non-empty string");
+        }
     }
 
     // --- lifecycle hooks must be functions ---

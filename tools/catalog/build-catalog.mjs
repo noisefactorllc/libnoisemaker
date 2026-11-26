@@ -70,7 +70,7 @@ function projectPass (pass) {
   const out = { name: pass.name, program: pass.program }
   out.inputs = pass.inputs || {}
   if (pass.uniforms !== undefined) out.uniforms = pass.uniforms
-  out.outputs = pass.outputs || {}
+  if (pass.outputs !== undefined || !pass.storageTextures) out.outputs = pass.outputs || {}
   // Execution modifiers (mostly used by agent/compute effects).
   if (pass.drawMode !== undefined) out.drawMode = pass.drawMode
   if (pass.drawBuffers !== undefined) out.drawBuffers = pass.drawBuffers

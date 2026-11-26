@@ -284,6 +284,7 @@ private:
     JsonObject parseStatement();
     JsonArray parseChain(const LangString& context);
     JsonObject parseWriteCall();
+    JsonValue parseWriteId();
     JsonObject parseSubchainCall();
     JsonObject parseCall();
     JsonObject parseArg() { return parseAdditive(); }
@@ -658,6 +659,17 @@ JsonArray Parser::parseChain(const LangString& context) {
     return calls;
 }
 
+JsonValue Parser::parseWriteId() {
+    if (peek().type != TokenType::COMMA || current_ + 2 >= std::ssize(tokens_) ||
+        tokens_.at(current_ + 1).type != TokenType::IDENT ||
+        tokens_.at(current_ + 1).lexeme != LangString(u"_id") ||
+        tokens_.at(current_ + 2).type != TokenType::COLON) return JsonValue();
+    advance();
+    JsonObject kwargs;
+    parseKwarg(kwargs);
+    return kwargs.value(LangString(u"_id"));
+}
+
 JsonObject Parser::parseWriteCall() {
     const Token tok = peek();
     const LangString tokenType = tok.type;
@@ -690,11 +702,13 @@ JsonObject Parser::parseWriteCall() {
                     u"write() requires an explicit surface reference (e.g., o0, o1, xyz0, vel0, rgba0, mesh0, none)"),
                 p);
         }
+        const JsonValue id = parseWriteId();
         expect(TokenType::RPAREN, LangString(u"Expect ')'"));
         JsonObject node;
         node.insert(LangString(u"type"), NodeKind::Write);
         node.insert(LangString(u"surface"), surface);
         node.insert(LangString(u"loc"), ast::loc(tokenLine, tokenCol));
+        if (!id.isUndefined()) node.insert(LangString(u"_id"), id);
         return node;
     }
     if (tokenType == TokenType::WRITE3D) {
@@ -729,12 +743,14 @@ JsonObject Parser::parseWriteCall() {
             const Token p = peek();
             throw parserErrorAt(LangString(u"P005"), LangString(u"Expected geo reference in write3d()"), p);
         }
+        const JsonValue id = parseWriteId();
         expect(TokenType::RPAREN, LangString(u"Expect ')'"));
         JsonObject node;
         node.insert(LangString(u"type"), NodeKind::Write3D);
         node.insert(LangString(u"tex3d"), tex3d);
         node.insert(LangString(u"geo"), geo);
         node.insert(LangString(u"loc"), ast::loc(tokenLine, tokenCol));
+        if (!id.isUndefined()) node.insert(LangString(u"_id"), id);
         return node;
     }
     Token dummy;
@@ -1012,6 +1028,7 @@ JsonObject Parser::parseCall() {
             && skip.value(LangString(u"value")).toBool()) {
             node.insert(LangString(u"_skip"), true);
         }
+        if (kwargs.contains(LangString(u"_id"))) node.insert(LangString(u"_id"), kwargs.value(LangString(u"_id")));
         return node;
     }
     if (lexeme == LangString(u"read3d")) {
@@ -1035,6 +1052,7 @@ JsonObject Parser::parseCall() {
             && skip.value(LangString(u"value")).toBool()) {
             node.insert(LangString(u"_skip"), true);
         }
+        if (kwargs.contains(LangString(u"_id"))) node.insert(LangString(u"_id"), kwargs.value(LangString(u"_id")));
         return node;
     }
     return call;

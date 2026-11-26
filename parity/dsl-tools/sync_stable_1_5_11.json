@@ -1,0 +1,441 @@
+{
+  "profile": "host",
+  "setup": [],
+  "cases": [
+    {
+      "id": "element_ids",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth, filter\nnoise(_id: \"pond\", octaves: 3).invert(_id: \"flip\").write(o0, _id: \"out\")\nrender(o0)\n"
+      }
+    },
+    {
+      "id": "element_ids/twice",
+      "op": "unparse",
+      "compiled": {
+        "$compile": {
+          "$resultOf": "element_ids"
+        }
+      }
+    },
+    {
+      "id": "element_ids_read",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth, filter\nnoise().write(o1, _id: \"save\")\nread(_id: \"again\", surface: o1).invert().write(o0, _id: \"out\")\nrender(o0)\n"
+      }
+    },
+    {
+      "id": "element_ids_read/twice",
+      "op": "unparse",
+      "compiled": {
+        "$compile": {
+          "$resultOf": "element_ids_read"
+        }
+      }
+    },
+    {
+      "id": "element_ids_volume",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth3d, render\nnoise3d(_id: \"vol\").write3d(vol0, geo0, _id: \"save\")\nread3d(_id: \"again\", tex3d: vol0, geo: geo0).render3d().write(o0)\nrender(o0)\n"
+      }
+    },
+    {
+      "id": "element_ids_volume/twice",
+      "op": "unparse",
+      "compiled": {
+        "$compile": {
+          "$resultOf": "element_ids_volume"
+        }
+      }
+    },
+    {
+      "id": "element_ids_let",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth, filter\nlet n = noise(_id: \"pond\", octaves: 3)\nn().write(o0)\nn().invert().write(o1)\nrender(o1)\n"
+      }
+    },
+    {
+      "id": "element_ids_let/twice",
+      "op": "unparse",
+      "compiled": {
+        "$compile": {
+          "$resultOf": "element_ids_let"
+        }
+      }
+    },
+    {
+      "id": "let_expression_arguments",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth, mixer\nlet n = noise(octaves: 3)\nlet mix = blendMode(tex: n(), mix: 50)\nnoise().mix().write(o0)\nrender(o0)\n"
+      }
+    },
+    {
+      "id": "let_expression_arguments/twice",
+      "op": "unparse",
+      "compiled": {
+        "$compile": {
+          "$resultOf": "let_expression_arguments"
+        }
+      }
+    },
+    {
+      "id": "output/outputTex/10",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputTex": "history"
+      }
+    },
+    {
+      "id": "output/outputTex/11",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputTex": ""
+      }
+    },
+    {
+      "id": "output/outputTex/12",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputTex": " \t\n"
+      }
+    },
+    {
+      "id": "output/outputTex/13",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputTex": 17
+      }
+    },
+    {
+      "id": "output/outputTex3d/14",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputTex3d": "history"
+      }
+    },
+    {
+      "id": "output/outputTex3d/15",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputTex3d": ""
+      }
+    },
+    {
+      "id": "output/outputTex3d/16",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputTex3d": " \t\n"
+      }
+    },
+    {
+      "id": "output/outputTex3d/17",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputTex3d": 17
+      }
+    },
+    {
+      "id": "output/outputGeo/18",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputGeo": "history"
+      }
+    },
+    {
+      "id": "output/outputGeo/19",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputGeo": ""
+      }
+    },
+    {
+      "id": "output/outputGeo/20",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputGeo": " \t\n"
+      }
+    },
+    {
+      "id": "output/outputGeo/21",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputGeo": 17
+      }
+    },
+    {
+      "id": "output/outputXyz/22",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputXyz": "history"
+      }
+    },
+    {
+      "id": "output/outputXyz/23",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputXyz": ""
+      }
+    },
+    {
+      "id": "output/outputXyz/24",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputXyz": " \t\n"
+      }
+    },
+    {
+      "id": "output/outputXyz/25",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputXyz": 17
+      }
+    },
+    {
+      "id": "output/outputVel/26",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputVel": "history"
+      }
+    },
+    {
+      "id": "output/outputVel/27",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputVel": ""
+      }
+    },
+    {
+      "id": "output/outputVel/28",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputVel": " \t\n"
+      }
+    },
+    {
+      "id": "output/outputVel/29",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputVel": 17
+      }
+    },
+    {
+      "id": "output/outputRgba/30",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputRgba": "history"
+      }
+    },
+    {
+      "id": "output/outputRgba/31",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputRgba": ""
+      }
+    },
+    {
+      "id": "output/outputRgba/32",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputRgba": " \t\n"
+      }
+    },
+    {
+      "id": "output/outputRgba/33",
+      "op": "validateEffectDefinition",
+      "definition": {
+        "name": "HandOn",
+        "namespace": "user",
+        "func": "handOn",
+        "globals": {},
+        "passes": [],
+        "outputRgba": 17
+      }
+    },
+    {
+      "id": "invalid-id/34",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth\nnoise(_id: 5).write(o0)\nrender(o0)"
+      }
+    },
+    {
+      "id": "invalid-id/35",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth\nnoise(_id: \"9a\").write(o0)\nrender(o0)"
+      }
+    },
+    {
+      "id": "invalid-id/36",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth\nnoise(_id: \"a-b\").write(o0)\nrender(o0)"
+      }
+    },
+    {
+      "id": "invalid-id/37",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth\nnoise(_id: \"\").write(o0)\nrender(o0)"
+      }
+    },
+    {
+      "id": "invalid-id/38",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth\nnoise(_id: pond).write(o0)\nrender(o0)"
+      }
+    },
+    {
+      "id": "invalid-id/39",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth\nnoise(_id: \"_a\").write(o0)\nrender(o0)"
+      }
+    },
+    {
+      "id": "override-id",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth, filter\nnoise(_id: \"pond\", octaves: 3).invert(_id: \"flip\").write(o0, _id: \"out\")\nrender(o0)\n"
+      },
+      "overrides": {
+        "0": {
+          "_id": "changed"
+        },
+        "1": {
+          "_id": null
+        },
+        "2": {
+          "_id": "sink"
+        }
+      }
+    },
+    {
+      "id": "let-expression-siblings",
+      "op": "unparse",
+      "compiled": {
+        "$compile": "search synth\nlet p = probe(color: #804020ff, faded: #11223344, source: noise(), amount: 0.5, enabled: true, label: \"x\", vector: [1, 2, 3])\nnoise().write(o0)\nrender(o0)"
+      }
+    }
+  ]
+}

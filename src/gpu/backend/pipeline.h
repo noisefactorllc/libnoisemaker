@@ -111,7 +111,7 @@ public:
     // render(time): one frame at the normalized time. Presentation is outside
     // the port.
     void render(double time);
-    void syncTime(double time) { lastTime_ = time; }
+    void syncTime(double time) { lastTime_ = time; hasTimeReference_ = true; }
     // setTileRegion({ offset, fullResolution, renderScale }) and clearTileRegion().
     void setTileRegion(std::array<double, 2> offset, std::array<double, 2> fullResolution,
                        std::optional<double> renderScale);
@@ -272,6 +272,7 @@ private:
     Value globalUniforms_ = Value(Object{});
     double frameIndex_ = 0;
     double lastTime_ = 0;
+    bool hasTimeReference_ = false;
     double lastPassCount_ = 0;
     FrameBindings frameReadTextures_;
     FrameBindings frameWriteTextures_;

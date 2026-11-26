@@ -28,6 +28,7 @@
 #include "core/lang/lexer.h"
 #include "core/lang/parser.h"
 #include "core/lang/validator.h"
+#include "core/value/json.h"
 
 
 #include <cmath>
@@ -536,6 +537,40 @@ int main() {
         check(r.errors.isEmpty(), "single instances in a second chain: no expand errors");
         check(r.textureSpecs.contains(libnoisemaker::JsText(u"global_rd_state_chain_1")),
               "single instances retain their existing chain-scoped texture IDs (chain_1)");
+    }
+
+
+    {
+        using namespace libnoisemaker;
+        EffectRegistry custom;
+        custom.loadEmbedded();
+        custom.loadDefinitions(json::parse(R"json({
+          "user.store": {"namespace":"user","func":"store","name":"Store","starter":true,
+            "globals":{},"textures":{"history":{"width":8,"height":8,"format":"rgba16f"}},
+            "passes":[{"name":"fill","program":"fill","type":"compute",
+              "storageTextures":{"state":"history"}},
+              {"name":"write","program":"write","type":"compute","storageTextures":{"target":"outputTex"}}]}
+        })json"));
+        auto graph = [&](const JsText& source) {
+            return JsObject(compileGraphJson(source, custom));
+        };
+        const JsObject continuing = graph(u"search user, filter\nstore().invert().write(o0)\nrender(o0)");
+        const JsArray passes = continuing.value(u"passes").toArray();
+        check(passes.at(0).toObject().value(u"storageTextures").toObject().value(u"state") == JsValue(u"node_0_history"),
+              "storage target uses its effect-local texture ID");
+        check(!passes.at(0).toObject().contains(u"outputs"), "storage-only passes omit the render-output map");
+        const JsObject textures = continuing.value(u"textures").toObject();
+        auto hasStorage = [&](const JsText& id) {
+            const JsArray usage = textures.value(id).toObject().value(u"usage").toArray();
+            return std::any_of(usage.begin(), usage.end(), [](const JsValue& v) { return v == JsValue(u"storage"); });
+        };
+        check(hasStorage(u"node_0_history"),
+              "declared storage texture includes storage usage");
+        check(hasStorage(u"node_0_out"),
+              "intermediate storage-only output is allocated with storage usage");
+        const JsObject written = graph(u"search user\nstore().write(o0)\nrender(o0)");
+        check(written.value(u"passes").toArray().at(1).toObject().value(u"storageTextures").toObject().value(u"target") == JsValue(u"global_o0"),
+              "storage output maps directly to the following write surface");
     }
 
     if (g_failures == 0) {

@@ -30,6 +30,17 @@ Value field(const Value& v, const JsString& key) { return jsv::get_opt(v, key); 
 bool is(const Value& v, const char16_t* type) { return jsv::strict_equals(field(v, u"type"), Value(type)); }
 JsString text(const Value& v) { return jsv::to_string(v); }
 Value fallback(const Value& a, const Value& b) { return jsv::truthy(a) ? a : b; }
+Value element_id_value(const Value& value) {
+    if (value.is_string()) return value;
+    const Value inner = field(value, u"value");
+    return is(value, u"String") && inner.is_string() ? inner : Value();
+}
+JsString builtin_id_part(const Value& args, const Value& override) {
+    Value id = override.is_object() && override.as_object().find(u"_id") != nullptr
+        ? field(override, u"_id") : field(args, u"_id");
+    return id.is_string() ? u"_id: " + format_string_literal(id.as_string()) : JsString();
+}
+
 JsString join_text(const std::vector<JsString>& parts, const JsString& separator) {
     JsString out;
     for (size_t i = 0; i < parts.size(); ++i) {
@@ -210,13 +221,17 @@ Value format_object(const Value& value, const Value& spec, const UnparseOptions&
     if (is(ast, u"Midi")) return format_midi(value);
     if (is(ast, u"Audio")) return format_audio(value);
     if (is(value, u"Read")) {
-        Value surface = field(value, u"surface");
-        return Value(u"read(" + text(fallback(field(surface, u"name"), surface)) + u")");
+        Value surface = field(value, u"surface"), id = element_id_value(field(value, u"_id"));
+        JsString target = text(fallback(field(surface, u"name"), surface));
+        return Value(id.is_string() ? u"read(_id: " + format_string_literal(id.as_string()) + u", surface: " + target + u")"
+                                    : u"read(" + target + u")");
     }
     if (is(value, u"Read3D")) {
-        Value t = field(value, u"tex3d"), g = field(value, u"geo");
-        JsString out = u"read3d(" + text(fallback(field(t, u"name"), t));
-        if (jsv::truthy(g)) out += u", " + text(fallback(field(g, u"name"), g));
+        Value t = field(value, u"tex3d"), g = field(value, u"geo"), id = element_id_value(field(value, u"_id"));
+        JsString out = u"read3d(";
+        if (id.is_string()) out += u"_id: " + format_string_literal(id.as_string()) + u", tex3d: ";
+        out += text(fallback(field(t, u"name"), t));
+        if (jsv::truthy(g)) out += (id.is_string() ? u", geo: " : u", ") + text(fallback(field(g, u"name"), g));
         return Value(out + u")");
     }
     for (const char16_t* kind : {u"OutputRef", u"SourceRef", u"VolRef", u"GeoRef"})
@@ -522,10 +537,23 @@ JsString unparse_call(const Value& call, const UnparseOptions& options) {
     double base = jsv::is_finite_number(options.indent) ? options.indent.as_number() : 0;
     JsString parent_indent = jsv::repeat(u" ", std::max(0.0, base));
     JsString child_indent = jsv::repeat(u" ", std::max(0.0, base + 2));
+    const auto format_argument = [&](const Value& value, const Value& spec, const Value& source = Value()) {
+        if (options.let_arguments && jsv::truthy(field(value, u"type"))) {
+            if (is(value, u"Color")) {
+                const Value color = field(value, u"value");
+                return hex_color(color.as_array(), color.as_array().size() > 3 && jsv::to_number(color.as_array()[3]) < 1 ? 4 : 3, true);
+            }
+            return format_let_expr(value, options);
+        }
+        return format_value(value, spec, options, source);
+    };
     Value kwargs = jsv::get(call, u"kwargs");
+    const Value element_id = element_id_value(field(kwargs, u"_id"));
+    if (element_id.is_string()) parts.emplace_back(u"_id: " + format_string_literal(element_id.as_string()));
     size_t kwarg_count = jsv::truthy(kwargs) ? jsv::keys(kwargs).size() : 0;
     if (kwarg_count)
         for (const auto& [key, value] : jsv::entries(kwargs)) {
+            if (key == u"_id" && (element_id.is_string() || value.is_null() || value.is_undefined())) continue;
             if (key == u"_skip" && jsv::strict_equals(value, Value(false))) continue;
             Value spec = fallback(jsv::member(specs, key), Value::null());
             Value default_spec = jsv::truthy(spec) ? spec : fallback(field(options.schema_specs, key), Value::null());
@@ -533,7 +561,7 @@ JsString unparse_call(const Value& call, const UnparseOptions& options) {
             if (jsv::truthy(default_spec)) {
                 Value def = field(default_spec, u"default");
                 if (!def.is_undefined()) {
-                    Value formatted = format_value(value, spec, options, source_form);
+                    Value formatted = format_argument(value, spec, source_form);
                     Value formatted_default = format_value(def, spec, options);
                     bool explicit_none = jsv::strict_equals(field(spec, u"type"), u"surface") &&
                                          jsv::strict_equals(formatted, u"none") &&
@@ -541,12 +569,12 @@ JsString unparse_call(const Value& call, const UnparseOptions& options) {
                     if (jsv::strict_equals(formatted, formatted_default) && !explicit_none) continue;
                 }
             }
-            parts.emplace_back(key + u": " + text(format_value(value, spec, options, source_form)));
+            parts.emplace_back(key + u": " + text(format_argument(value, spec, source_form)));
         }
     Value args = jsv::get(call, u"args");
     if (jsv::truthy(args) && jsv::to_number(field(args, u"length")) > 0)
         for (const auto& arg : jsv::iterate(args, u"call.args"))
-            parts.push_back(format_value(arg, Value::null(), options));
+            parts.push_back(format_argument(arg, Value::null()));
     bool has_kwargs = kwarg_count > 0 && !parts.empty();
     JsString op = text(name);
     if (multiline && has_kwargs && parts.size() > 2) {
@@ -841,6 +869,29 @@ JsString format_array_expression(const Value& node) {
     throw JsError(u"Error", u"unparse: no scene emitter for AST node type '" + type + u"'");
 }
 }
+Value format_let_binding(const Value& expr, const UnparseOptions& options) {
+    const Value calls = is(expr, u"Chain") ? field(expr, u"chain") : Value(Array{expr});
+    if (calls.is_null() || calls.is_undefined()) throw jsv::cannot_read(calls, u"some");
+    if (!calls.is_array()) throw jsv::not_a_function(u"calls.some");
+    auto expression = [](const Value& value) { return is(value, u"Call") || is(value, u"Chain") || is(value, u"Ident"); };
+    UnparseOptions binding_options = options;
+    bool has_expression = false;
+    for (const Value& call : calls.as_array()) {
+        if (!is(call, u"Call")) continue;
+        const Value args = field(call, u"args");
+        if (!args.is_null() && !args.is_undefined() && !args.is_array())
+            throw jsv::not_a_function(u"call.args?.some");
+        if (args.is_array()) for (const Value& arg : args.as_array()) if (expression(arg)) has_expression = true;
+        if (has_expression) break;
+        for (const auto& [key, value] : jsv::entries(field(call, u"kwargs"))) {
+            (void)key;
+            if (expression(value)) has_expression = true;
+        }
+        if (has_expression) break;
+    }
+    if (has_expression) binding_options.let_arguments = true;
+    return format_let_expr(expr, binding_options);
+}
 Value format_let_expr(const Value& expr, const UnparseOptions& options) {
     DepthGuard guard;
     if (!jsv::truthy(expr)) return Value(u"null");
@@ -1032,7 +1083,7 @@ JsString unparse_control_flow(const Value& plan, const Value& search, const Unpa
         body = jsv::truthy(value) ? u"return " + text(format_let_expr(value, options)) : JsString(u"return");
     } else if (t == u"VarAssign") {
         // A `let` inside a block body
-        body = u"let " + text(field(plan, u"name")) + u" = " + text(format_let_expr(field(plan, u"expr"), options));
+        body = u"let " + text(field(plan, u"name")) + u" = " + text(format_let_binding(field(plan, u"expr"), options));
     } else {
         return JsString();
     }
@@ -1127,7 +1178,7 @@ JsString unparse(const Value& compiled, const Value& override_input, const Unpar
                 for (const auto& c : comments.as_array())
                     lines.push_back(c.is_null() || c.is_undefined() ? JsString() : text(c));
             lines.push_back(u"let " + text(jsv::get(v, u"name")) + u" = " +
-                            text(format_let_expr(jsv::get(v, u"expr"), options)));
+                            text(format_let_binding(jsv::get(v, u"expr"), options)));
         }
         // Blank line separator after a let block that comes before a plan
         if (static_cast<double>(at) < plan_count || plan_count == 0) lines.emplace_back();
@@ -1228,6 +1279,7 @@ JsString unparse(const Value& compiled, const Value& override_input, const Unpar
             auto add = [&](JsString code, bool begin = false, bool end = false) {
                 current.push_back({std::move(code), leading, begin, end});
             };
+            const JsString id_part = builtin_id_part(args, step_override);
             if (builtin && (op_name == u"_read" || op_name == u"_read3d")) {
                 if (!current.empty()) {
                     chains.push_back(std::move(current));
@@ -1238,24 +1290,24 @@ JsString unparse(const Value& compiled, const Value& override_input, const Unpar
                              jsv::strict_equals(field(args, u"_skip"), Value(true)));
                 if (op_name == u"_read") {
                     JsString tex = text(name_or_self(field(args, u"tex")));
-                    add(skip ? u"read(surface: " + tex + u", _skip: true)" : u"read(" + tex + u")");
+                    add(skip || !id_part.empty() ? u"read(" + (id_part.empty() ? JsString() : id_part + u", ") + u"surface: " + tex + (skip ? u", _skip: true" : u"") + u")" : u"read(" + tex + u")");
                 } else {
                     JsString tex = text(name_or_self(field(args, u"tex3d"))),
                              geo = text(name_or_self(field(args, u"geo")));
-                    add(skip ? u"read3d(tex3d: " + tex + u", geo: " + geo + u", _skip: true)"
+                    add(skip || !id_part.empty() ? u"read3d(" + (id_part.empty() ? JsString() : id_part + u", ") + u"tex3d: " + tex + u", geo: " + geo + (skip ? u", _skip: true" : u"") + u")"
                              : u"read3d(" + tex + u", " + geo + u")");
                 }
                 ++global_index;
                 continue;
             }
             if (builtin && op_name == u"_write") {
-                add(u"write(" + text(name_or_self(field(args, u"tex"))) + u")");
+                add(u"write(" + text(name_or_self(field(args, u"tex"))) + (id_part.empty() ? JsString() : u", " + id_part) + u")");
                 ++global_index;
                 continue;
             }
             if (builtin && op_name == u"_write3d") {
                 add(u"write3d(" + text(name_or_self(field(args, u"tex3d"))) + u", " +
-                    text(name_or_self(field(args, u"geo"))) + u")");
+                    text(name_or_self(field(args, u"geo"))) + (id_part.empty() ? JsString() : u", " + id_part) + u")");
                 ++global_index;
                 continue;
             }

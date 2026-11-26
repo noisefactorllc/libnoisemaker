@@ -1,0 +1,29 @@
+{
+  "name": "storageHandOn",
+  "namespace": "user",
+  "func": "storageHandOn",
+  "globals": {},
+  "passes": [
+    {
+      "name": "fill",
+      "program": "fill",
+      "type": "compute",
+      "workgroups": [
+        64,
+        64,
+        1
+      ],
+      "storageTextures": {
+        "outputBuffer": "work"
+      }
+    }
+  ],
+  "textures": {
+    "work": {
+      "width": "100%",
+      "height": "100%",
+      "format": "rgba16f"
+    }
+  },
+  "outputTex": "work"
+}

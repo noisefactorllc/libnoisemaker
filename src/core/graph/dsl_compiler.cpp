@@ -67,7 +67,7 @@ JsObject extractTextureSpecs(const JsVector<ExpandedPass>& passes, const JsObjec
         const JsValue formatVal = effectSpec.value(JsText(u"format"));
         spec.insert(JsText(u"format"), jsTruthy(formatVal) ? formatVal : JsValue(JsText(u"rgba16f")));
         JsArray usage2d{JsText(u"render"), JsText(u"sample"), JsText(u"copySrc"), JsText(u"copyDst")};
-        spec.insert(JsText(u"usage"), usage2d);
+        spec.insert(JsText(u"usage"), jsTruthy(effectSpec.value(u"usage")) ? effectSpec.value(u"usage") : JsValue(usage2d));
 
         if (jsTruthy(effectSpec.value(JsText(u"is3D")))) {
             const JsValue depthVal = effectSpec.value(JsText(u"depth"));
@@ -106,6 +106,27 @@ JsObject extractTextureSpecs(const JsVector<ExpandedPass>& passes, const JsObjec
             spec.insert(JsText(u"usage"),
                         JsArray{JsText(u"render"), JsText(u"sample"), JsText(u"copySrc"), JsText(u"copyDst")});
             textures.insert(texId, spec);
+        }
+    }
+    for (const ExpandedPass& pass : passes) {
+        const JsObject storage = pass.storageTextures.toObject();
+        for (auto it = storage.constBegin(); it != storage.constEnd(); ++it) {
+            if (!it.value().isString()) continue;
+            const JsText id = it.value().toString();
+            if (id.startsWith(u"global_")) continue;
+            if (textures.contains(id)) {
+                JsObject spec = textures.value(id).toObject();
+                JsArray usage = spec.value(u"usage").toArray();
+                if (std::none_of(usage.begin(), usage.end(), [](const JsValue& v) { return v == JsValue(u"storage"); })) usage.append(JsText(u"storage"));
+                spec.insert(u"usage", usage);
+                textures.insert(id, spec);
+            } else {
+                JsObject spec;
+                spec.insert(u"width", JsText(u"screen")); spec.insert(u"height", JsText(u"screen"));
+                spec.insert(u"format", JsText(u"rgba16f"));
+                spec.insert(u"usage", JsArray{JsText(u"render"), JsText(u"sample"), JsText(u"storage"), JsText(u"copySrc"), JsText(u"copyDst")});
+                textures.insert(id, spec);
+            }
         }
     }
     return textures;

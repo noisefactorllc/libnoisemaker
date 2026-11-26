@@ -1,0 +1,21 @@
+{
+  "name": "storageDirect",
+  "namespace": "user",
+  "func": "storageDirect",
+  "globals": {},
+  "passes": [
+    {
+      "name": "fill",
+      "program": "fill",
+      "type": "compute",
+      "workgroups": [
+        64,
+        64,
+        1
+      ],
+      "storageTextures": {
+        "outputBuffer": "outputTex"
+      }
+    }
+  ]
+}

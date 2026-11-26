@@ -524,6 +524,17 @@ JsValue Validator::resolveEnum(const JsList& path) {
     return cur;
 }
 
+void keepElementId(const JsValue& node, JsObject& args) {
+    const JsObject obj = node.toObject();
+    const JsValue value = obj.value(u"value");
+    if (obj.value(u"type") != JsValue(NodeKind::String) || !obj.value(u"_varRef").isUndefined() || !value.isString()) return;
+    const JsText id = value.toString();
+    auto letter = [](char16_t c) { return (c >= u'A' && c <= u'Z') || (c >= u'a' && c <= u'z'); };
+    if (id.empty() || !letter(id.front())) return;
+    for (char16_t c : id) if (!letter(c) && !(c >= u'0' && c <= u'9') && c != u'_') return;
+    args.insert(u"_id", id);
+}
+
 bool Validator::canResolveOpName(const JsText& name) {
     for (const JsText& ns : programSearchOrder_) {
         if (reg_.getOp(ns + u'.' + name) != nullptr) return true;
@@ -564,6 +575,18 @@ JsValue Validator::resolveCall(JsObject call) {
         if (call.contains(locKey)) merged.insert(locKey, call.value(locKey));
         else if (valObj.contains(locKey)) merged.insert(locKey, valObj.value(locKey));
         if (haveKw) merged.insert(JsText(u"kwargs"), mergedKw);
+        if (haveKw && !mergedArgs.isEmpty()) {
+            bool hasBoundKeyword = false;
+            for (const JsText& key : valObj.value(u"kwargs").toObject().keys())
+                if (key != u"_skip" && key != u"_id") hasBoundKeyword = true;
+            const JsValue inherited = valObj.value(u"positionalsByIndex").toObject().value(u"colorSplatLimit");
+            JsObject indexed;
+            indexed.insert(u"colorSplatLimit", hasBoundKeyword
+                ? (inherited.isUndefined() ? JsValue(static_cast<int>(valObj.value(u"args").toArray().size())) : inherited)
+                : JsValue(static_cast<int>(mergedArgs.size())));
+            merged.insert(u"positionalsByIndex", indexed);
+        }
+
         if (call.contains(JsText(u"namespace"))) {
             merged.insert(JsText(u"namespace"), call.value(JsText(u"namespace")));
         } else if (valObj.contains(JsText(u"namespace"))) {
@@ -680,29 +703,10 @@ JsValue Validator::substitute(const JsValue& nodeVal, const JsList& resolving) {
     }
     if (t == NodeKind::Chain) {
         JsArray mapped;
-        for (const JsValue& cVal : node.value(JsText(u"chain")).toArray()) {
-            const JsObject c = cVal.toObject();
-            if (!c.value(JsText(u"args")).isArray()) {
-                throw JsError(u"TypeError", u"Cannot read properties of undefined (reading 'map')");
-            }
-            JsArray mappedArgs;
-            for (const JsValue& a : c.value(JsText(u"args")).toArray()) mappedArgs.append(substitute(a, resolving));
-            JsObject mappedCall;
-            mappedCall.insert(JsText(u"type"), NodeKind::Call);
-            mappedCall.insert(JsText(u"name"), c.value(JsText(u"name")));
-            mappedCall.insert(JsText(u"args"), mappedArgs);
-            if (c.contains(JsText(u"loc"))) mappedCall.insert(JsText(u"loc"), c.value(JsText(u"loc")));
-            if (c.contains(JsText(u"kwargs"))) {
-                JsObject kw;
-                const JsObject srcKw = c.value(JsText(u"kwargs")).toObject();
-                for (auto it = srcKw.constBegin(); it != srcKw.constEnd(); ++it) kw.insert(it.key(), substitute(it.value(), resolving));
-                mappedCall.insert(JsText(u"kwargs"), kw);
-            }
-            mapped.append(resolveCall(mappedCall));
-        }
+        for (const JsValue& entry : node.value(u"chain").toArray()) mapped.append(substitute(entry, resolving));
         JsObject out;
-        out.insert(JsText(u"type"), NodeKind::Chain);
-        out.insert(JsText(u"chain"), mapped);
+        out.insert(u"type", NodeKind::Chain);
+        out.insert(u"chain", mapped);
         return out;
     }
     if (t == NodeKind::Call) {
@@ -716,6 +720,7 @@ JsValue Validator::substitute(const JsValue& nodeVal, const JsList& resolving) {
         mappedCall.insert(JsText(u"name"), node.value(JsText(u"name")));
         mappedCall.insert(JsText(u"args"), mappedArgs);
         if (node.contains(JsText(u"loc"))) mappedCall.insert(JsText(u"loc"), node.value(JsText(u"loc")));
+        if (node.contains(u"positionalsByIndex")) mappedCall.insert(u"positionalsByIndex", node.value(u"positionalsByIndex"));
         if (node.contains(JsText(u"kwargs"))) {
             JsObject kw;
             const JsObject srcKw = node.value(JsText(u"kwargs")).toObject();
@@ -750,6 +755,20 @@ std::optional<size_t> objectIdentity(const JsValue& nodeVal) {
     if (!nodeVal.isObject()) return std::nullopt;
     const Value* id = nodeVal.raw().as_object().find(nodeIdentityKey);
     return id && id->is_number() ? std::optional<size_t>(static_cast<size_t>(id->as_number())) : std::nullopt;
+}
+
+Value dropCallMarks(Value value) {
+    if (value.is_array()) {
+        for (Value& item : value.as_array()) item = dropCallMarks(std::move(item));
+    } else if (value.is_object()) {
+        Object& object = value.as_object();
+        const Value* type = object.find(u"type");
+        if (type && type->is_string() && type->as_string() == u"Call")
+            object.erase(u"positionalsByIndex");
+        for (const JsString& key : object.keys())
+            object.set(key, dropCallMarks(*object.find(key)));
+    }
+    return value;
 }
 
 void Validator::declareVar(const JsObject& v) {
@@ -1168,6 +1187,7 @@ int Validator::processChain(JsArray& chain, const JsArray& calls, int input, boo
             JsObject stepArgs;
             stepArgs.insert(JsText(u"tex"), surface);
             if (original.value(JsText(u"_skip")).toBool(false)) stepArgs.insert(JsText(u"_skip"), true);
+            keepElementId(original.value(u"_id"), stepArgs);
             JsObject step;
             step.insert(JsText(u"op"), JsText(u"_read"));
             step.insert(JsText(u"args"), stepArgs);
@@ -1202,6 +1222,7 @@ int Validator::processChain(JsArray& chain, const JsArray& calls, int input, boo
             stepArgs.insert(JsText(u"tex3d"), tex3d);
             stepArgs.insert(JsText(u"geo"), geo);
             if (original.value(JsText(u"_skip")).toBool(false)) stepArgs.insert(JsText(u"_skip"), true);
+            keepElementId(original.value(u"_id"), stepArgs);
             JsObject step;
             step.insert(JsText(u"op"), JsText(u"_read3d"));
             step.insert(JsText(u"args"), stepArgs);
@@ -1230,6 +1251,7 @@ int Validator::processChain(JsArray& chain, const JsArray& calls, int input, boo
             const int idx = tempIndex_++;
             JsObject stepArgs;
             stepArgs.insert(JsText(u"tex"), surface);
+            keepElementId(original.value(u"_id"), stepArgs);
             JsObject step;
             step.insert(JsText(u"op"), JsText(u"_write"));
             step.insert(JsText(u"args"), stepArgs);
@@ -1260,6 +1282,7 @@ int Validator::processChain(JsArray& chain, const JsArray& calls, int input, boo
             JsObject stepArgs;
             stepArgs.insert(JsText(u"tex3d"), tex3d);
             stepArgs.insert(JsText(u"geo"), geo);
+            keepElementId(original.value(u"_id"), stepArgs);
             JsObject step;
             step.insert(JsText(u"op"), JsText(u"_write3d"));
             step.insert(JsText(u"args"), stepArgs);
@@ -1469,30 +1492,40 @@ JsValue Validator::resolveArgs(JsArray& chain, const OpSpec& spec, const JsObjec
     JsObject argSources;
     bool haveArgSources = false;
 
+    const JsValue limit = call.value(u"positionalsByIndex").toObject().value(u"colorSplatLimit");
+    const double colorSplatLimit = limit.isUndefined() ? std::numeric_limits<double>::infinity() : limit.toDouble();
+    JsObject splatValues;
     for (int i = 0; i < std::ssize(spec.args); ++i) {
         const ParamDef& def = spec.args.at(i);
-        JsValue node = (hasKw && kw.contains(def.name)) ? kw.value(def.name)
-                                                             : (i < std::ssize(callArgs) ? callArgs.at(i) : JsValue(JsValue::Undefined));
+        JsValue positional = i < std::ssize(callArgs) ? callArgs.at(i) : JsValue();
+        if (i < colorSplatLimit && def.type != u"color" && def.name == u"r" &&
+            i + 2 < std::ssize(spec.args) && spec.args.at(i + 1).name == u"g" && spec.args.at(i + 2).name == u"b") {
+            const JsValue color = substitute(positional);
+            if (nodeType(color) == NodeKind::Color) {
+                const JsArray values = color.toObject().value(u"value").toArray();
+                for (int k = 0; k < 3; ++k)
+                    splatValues.insert(spec.args.at(i + k).name, values.at(k));
+            }
+        }
+        if (!(hasKw && kw.contains(def.name)) && splatValues.contains(def.name)) {
+            args.insert(def.name, splatValues.value(def.name));
+            continue;
+        }
+        JsValue node = hasKw && kw.contains(def.name) ? kw.value(def.name)
+            : positional;
         node = substitute(node);
         const JsText argKey = def.name;
 
-        // color-splat special case: a bare Color literal spread into THREE
-        // consecutive r/g/b NUMERIC params (only fires positional-only,
-        // never with kwargs). Structurally unreachable on this catalog (no
-        // effect declares consecutive r/g/b globals) -- ported for
-        // fidelity, never exercised.
-        if (!hasKw && nodeType(node) == NodeKind::Color && def.type != JsText(u"color") && def.name == JsText(u"r")
-            && i + 2 < std::ssize(spec.args) && spec.args.at(i + 1).name == JsText(u"g")
-            && spec.args.at(i + 2).name == JsText(u"b")) {
-            const JsArray cv = node.toObject().value(JsText(u"value")).toArray();
-            args.insert(JsText(u"r"), cv.at(0));
-            args.insert(spec.args.at(i + 1).name, cv.at(1));
-            args.insert(spec.args.at(i + 2).name, cv.at(2));
-            i += 2;
-            continue;
+        if (hasKw && kw.contains(def.name)) seen.insert(def.name);
+        if (nodeType(node) == NodeKind::Chain) {
+            const JsArray entries = node.toObject().value(u"chain").toArray();
+            if (std::any_of(entries.begin(), entries.end(), [](const JsValue& entry) { return nodeType(entry) != NodeKind::Call; })) {
+                pushDiag(u"S001", entries.first(), JsText(u"Chain for argument '%1' in %2() may contain only effect calls").arg(def.name, call.value(u"name").toString()));
+                args.insert(argKey, JsValue(JsValue::Null));
+                continue;
+            }
         }
 
-        if (hasKw && kw.contains(def.name)) seen.insert(def.name);
 
         // array literal -- additive numeric input form.
         if (nodeType(node) == NodeKind::ArrayLiteral) {
@@ -1583,6 +1616,10 @@ JsValue Validator::resolveArgs(JsArray& chain, const OpSpec& spec, const JsObjec
         }
     }
 
+    if (hasKw && kw.contains(u"_id")) {
+        keepElementId(kw.value(u"_id"), args);
+        seen.insert(u"_id");
+    }
     // _skip meta-argument (reference/02 SS6.14).
     if (hasKw && kw.contains(JsText(u"_skip"))) {
         const JsValue skipNode = kw.value(JsText(u"_skip"));
@@ -2565,6 +2602,7 @@ JsObject Validator::run(const JsObject& input) {
         if (!compiled.isUndefined()) plans.append(compiled);
     }
     declareVarsBefore(std::numeric_limits<double>::infinity());
+    plans = JsValue(dropCallMarks(plans.raw())).toArray();
 
     JsObject result;
     result.insert(JsText(u"plans"), plans);

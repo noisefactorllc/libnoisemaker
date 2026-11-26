@@ -863,6 +863,7 @@ private:
         const JsObject globals = effectDef.value(JsText(u"globals")).toObject();
         for (auto it = stepArgs.constBegin(); it != stepArgs.constEnd(); ++it) {
             const JsText argName = it.key();
+            if (argName == u"_id") continue;
             const JsValue arg = it.value();
             if (isTextureArg(arg)) continue;
 
@@ -1015,7 +1016,7 @@ private:
             pass.conditions = passDef.value(JsText(u"conditions"));
             pass.workgroups = passDef.value(JsText(u"workgroups"));
             pass.storageBuffers = passDef.value(JsText(u"storageBuffers"));
-            pass.storageTextures = passDef.value(JsText(u"storageTextures"));
+            if (passDef.value(u"storageTextures").isObject()) pass.storageTextures = JsObject();
             // Pass-field propagation (reference fa83eeabf): copied verbatim.
             pass.passName = passDef.value(JsText(u"name"));
             pass.passType = passDef.value(JsText(u"type"));
@@ -1116,6 +1117,7 @@ private:
             // step 7: args -> uniforms
             for (auto it = stepArgs.constBegin(); it != stepArgs.constEnd(); ++it) {
                 const JsText argName = it.key();
+                if (argName == u"_id") continue;
                 const JsValue arg = it.value();
                 if (isTextureArg(arg)) continue;
 
@@ -1179,6 +1181,7 @@ private:
 
             // steps 10/11: inputs / outputs
             mapInputs(effectDef, passDef, step, stepArgs, nodeId, plan, i, keyOrders, pass);
+            mapStorageTargets(passDef, nodeId, plan, i, effectPasses.size(), stepPos, pass);
             mapOutputs(passDef, nodeId, plan, i, effectPasses.size(), stepPos, keyOrders, pass);
 
             // step 12: scoped-param propagation
@@ -1368,6 +1371,49 @@ private:
         if (name.startsWith(JsText(u"global_"))) return name;
         if (isSurfaceRef(name)) return JsText(u"global_") + name;
         return name;
+    }
+
+    void mapStorageTargets(const JsObject& passDef, const JsText& nodeId, const JsObject& plan,
+                           int passIndex, int passCount, int stepPos, ExpandedPass& pass) {
+        if (!passDef.value(u"storageTextures").isObject()) return;
+        const JsArray chain = plan.value(u"chain").toArray();
+        const bool lastPass = passIndex == passCount - 1;
+        const JsObject next = stepPos + 1 < std::ssize(chain) ? chain.at(stepPos + 1).toObject() : JsObject();
+        JsValue inlineWrite;
+        if (lastPass && next.value(u"builtin").toBool() && next.value(u"op") == JsValue(u"_write"))
+            inlineWrite = next.value(u"args").toObject().value(u"tex");
+        JsObject targets;
+        const JsObject authored = passDef.value(u"storageTextures").toObject();
+        for (auto it = authored.constBegin(); it != authored.constEnd(); ++it) {
+            const JsText texRef = it.value().toString();
+            JsText resolved;
+            if (texRef == u"outputTex") {
+                JsValue write;
+                if (inlineWrite.isObject() && inlineWrite.toObject().value(u"name") != JsValue(u"none")) write = inlineWrite;
+                else if (stepPos == std::ssize(chain) - 1 && lastPass) write = plan.value(u"write");
+                if (write.isObject() || write.isString()) {
+                    const JsText name = write.isString() ? write.toString() : write.toObject().value(u"name").toString();
+                    const JsText prefix = write.toObject().value(u"kind") == JsValue(u"feedback") ? JsText(u"feedback_") : JsText(u"global_");
+                    resolved = prefix + name;
+                    lastWrittenSurface_ = name;
+                } else resolved = nodeId + u"_out";
+                textureMap_.insert(nodeId + u"_out", resolved);
+            } else if (texRef.startsWith(u"global_")) resolved = scopeChainTex(texRef);
+            else {
+                resolved = nodeId + u'_' + texRef;
+                if (textureSpecs_.contains(resolved)) {
+                    JsObject spec = textureSpecs_.value(resolved).toObject();
+                    JsArray usage = spec.value(u"usage").isArray() ? spec.value(u"usage").toArray()
+                        : JsArray{JsText(u"render"), JsText(u"sample"), JsText(u"copySrc"), JsText(u"copyDst")};
+                    if (std::none_of(usage.begin(), usage.end(), [](const JsValue& v) { return v == JsValue(u"storage"); })) usage.append(JsText(u"storage"));
+                    spec.insert(u"usage", usage);
+                    textureSpecs_.insert(resolved, spec);
+                }
+            }
+            targets.insert(it.key(), resolved);
+        }
+        pass.storageTextures = targets;
+        if (isMissing(passDef.value(u"outputs"))) pass.hasOutputs = false;
     }
 
     // reference/03 §5.2 + §5.3 last-pass-to-surface optimization.
@@ -1579,7 +1625,7 @@ Value toRawPassJson(const ExpandedPass& pass) {
     out.insert(JsText(u"inputs"), inputs);
     JsObject outputs;
     for (const auto& kv : pass.outputs) outputs.insert(kv.first, kv.second);
-    out.insert(JsText(u"outputs"), outputs);
+    if (pass.hasOutputs) out.insert(JsText(u"outputs"), outputs);
     out.insert(JsText(u"uniforms"), pass.uniforms);
 
     if (pass.isBlit) {

@@ -603,7 +603,9 @@ void Pipeline::recreateTextures(const Value& uniforms) {
             const bool is3D = jsv::truthy(jsv::get(spec, u"is3D"));
             if (const TextureRecord* existing = backend_.texture(texId)) {
                 if (jsv::strict_equals(existing->width, Value(width)) && jsv::strict_equals(existing->height, Value(height)) &&
-                    jsv::strict_equals(existing->format, jsv::get(spec, u"format"))) {
+                    jsv::strict_equals(existing->format, jsv::get(spec, u"format")) &&
+                    (!jsv::get(spec, u"usage").is_array() ||
+                     (existing->usage & backend_.resolveUsage(jsv::get(spec, u"usage"))) == backend_.resolveUsage(jsv::get(spec, u"usage")))) {
                     if (!is3D) continue;
                     // existing.depth is read before the spec's depth resolves.
                     const Value existingDepth = existing->depth;
@@ -1357,10 +1359,9 @@ void Pipeline::render(double time) {
     // Programs still compiling.
     if (isCompiling_) return;
 
-    // Normalized time wraps from about 1 to about 0: then a small positive delta.
-    double deltaTime = lastTime_ > 0 ? time - lastTime_ : 0;
-    if (deltaTime < 0) deltaTime = 1.0 / 60.0 / 10.0;
-    lastTime_ = time;
+    double deltaTime = hasTimeReference_ ? time - lastTime_ : 0;
+    if (deltaTime < 0) deltaTime += 1;
+    syncTime(time);
 
     updateGlobalUniforms(time, deltaTime);
     invokeUpdateHooks();

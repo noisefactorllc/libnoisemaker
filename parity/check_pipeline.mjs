@@ -751,6 +751,18 @@ sequence('synthetic/missing-program', [
   { op: 'create', graph: { passes: [{ id: 'x', program: 'nope' }], programs: {}, textures: {} } },
   { op: 'init', width: 8, height: 8 }
 ])
+// A same-sized texture gains storage usage when the graph is recompiled.
+{
+  const initial = graph([], { scratch: { width: 8, height: 8, format: 'rgba16f', usage: ['render', 'sample', 'copySrc', 'copyDst'] } })
+  const storage = structuredClone(initial)
+  storage.textures.scratch.usage.push('storage')
+  sequence('synthetic/storage-usage-growth', [
+    { op: 'create', graph: initial }, { op: 'init', width: 8, height: 8 },
+    { op: 'recompile', graph: storage }, { op: 'resize', width: 8, height: 8 },
+    { op: 'syncTime', time: 0 }, { op: 'render', time: 0.25 },
+    { op: 'syncTime', time: 0.99 }, { op: 'render', time: 0.01 }
+  ], true)
+}
 sequence('synthetic/no-programs', [
   { op: 'create', graph: { passes: [{ id: 'x' }] } },
   { op: 'init', width: 8, height: 8 }

@@ -547,6 +547,10 @@ bool portable_valid(const nm::Value& def, const nm::JsString& func) {
         }
     }
     if (object.find(u"paramAliases")) return false;
+    for (const char16_t* key : {u"outputTex", u"outputXyz", u"outputVel", u"outputRgba"}) {
+        const nm::Value value = field(key);
+        if (!value.is_undefined() && !has_source(value)) return false;
+    }
     return !registry().hasEffect(nm::JsText(u"user." + func)) && !registry().hasEffect(nm::JsText(u"user/" + func));
 }
 
@@ -573,7 +577,8 @@ void register_portable_effect(const nm::Value& definition) {
     instance.set(u"namespace", nm::Value(u"user"));
     instance.set(u"func", nm::Value(func));
     for (const char16_t* key : {u"description", u"tags", u"globals", u"passes", u"textures", u"textures3d", u"externalTexture",
-                                u"externalMesh", u"builtinMeshes", u"outputTex3d", u"outputGeo", u"uniformLayout", u"uniformLayouts",
+                                u"externalMesh", u"builtinMeshes", u"outputTex", u"outputTex3d", u"outputGeo",
+                                u"outputXyz", u"outputVel", u"outputRgba", u"uniformLayout", u"uniformLayouts",
                                 u"openCategories", u"defaultProgram"}) {
         copy(key);
     }

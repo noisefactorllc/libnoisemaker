@@ -5,6 +5,7 @@
 
 namespace libnoisemaker {
 struct UnparseOptions {
+    bool let_arguments = false;
     Value enums;
     Value omit_search_directive;
     Value multiline_kwargs;

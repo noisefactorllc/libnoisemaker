@@ -143,6 +143,7 @@ public:
     std::shared_ptr<TextureRecord> textureRecord(const JsString& id) const;
     void setTexture(const JsString& id, std::shared_ptr<TextureRecord> record);
     const std::vector<JsString>& textureIds() const { return textureOrder_; }
+    uint32_t resolveUsage(const Value& usageArray) const;
     const Value& capabilities() const { return capabilities_; }
     static JsString getName() { return u"WebGPU"; }
 
@@ -169,7 +170,6 @@ public:
 
 private:
     Value resolveFormat(const Value& format) const;
-    uint32_t resolveUsage(const Value& usageArray) const;
     std::optional<BlendState> resolveBlendState(const Value& blend) const;
     Handle defaultVertexModule();
     const ProgramInfo& compileComputeProgram(const JsString& id, const JsString& source, const Value& spec);

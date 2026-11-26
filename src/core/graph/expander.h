@@ -105,6 +105,7 @@ struct ExpandedPass {
     // correct phys_N assignment (reference/04 §1.3).
     JsVector<std::pair<JsText, JsText>> inputs;
     JsVector<std::pair<JsText, JsText>> outputs;
+    bool hasOutputs = true;
 
     JsObject uniforms;  // name -> literal value (bool/double/string/array/{type:'Oscillator',...})
 

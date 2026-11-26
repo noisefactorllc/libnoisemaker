@@ -26,6 +26,7 @@
 #include "core/lang/lexer.h"
 #include "core/lang/parser.h"
 #include "core/lang/validator.h"
+#include "core/value/json.h"
 
 
 #include <cstdio>
@@ -787,6 +788,57 @@ int main() {
         check(foundP008, "validate() surfaces P008 diagnostic from Subchain node");
 
 
+    }
+
+
+    {
+        using namespace libnoisemaker;
+        EffectRegistry custom;
+        custom.loadEmbedded();
+        custom.loadDefinitions(json::parse(R"json({"user.rgbprobe": {
+          "name":"RGB","namespace":"user","func":"rgbprobe","globals":{
+            "r":{"type":"float","default":0},"g":{"type":"float","default":0},
+            "b":{"type":"float","default":0},"a":{"type":"float","default":0.9}},
+          "passes":[{"inputs":{"inputTex":"inputTex"},"outputs":{"fragColor":"outputTex"}}]
+        }})json"));
+        for (bool overrideGreen : {false, true}) {
+            const JsText source = overrideGreen
+                ? JsText(u"search synth, user\nlet c = rgbprobe(#804020)\nnoise().c(g: 0.9).write(o0)")
+                : JsText(u"search synth, user\nlet c = rgbprobe(#804020, 0.5, 0.6, 0.7)\nnoise().c(_id: \"rgb\").write(o0)");
+            const JsObject result = validate(JsObject(parse(lexTokens(source))), custom);
+            check(result.value(u"diagnostics").toArray().isEmpty(), "let-bound RGB arguments have no diagnostics");
+            const JsArray chain = result.value(u"plans").toArray().at(0).toObject().value(u"chain").toArray();
+            const JsObject args = chain.at(1).toObject().value(u"args").toObject();
+            check(args.value(u"r").toDouble() == 128.0/255.0 && args.value(u"b").toDouble() == 32.0/255.0,
+                  "let-bound color preserves its red and blue slots");
+            check(args.value(u"g").toDouble() == (overrideGreen ? 0.9 : 64.0/255.0),
+                  "keyword override replaces only its RGB slot");
+            check(args.value(u"a").toDouble() == (overrideGreen ? 0.9 : 0.7),
+                  "positionals retain their indexes after the color");
+        }
+    }
+
+
+    {
+        using namespace libnoisemaker;
+        EffectRegistry custom;
+        custom.loadEmbedded();
+        custom.loadDefinitions(json::parse(R"json({"user.rgbprobe": {
+          "name":"RGB","namespace":"user","func":"rgbprobe","globals":{
+            "r":{"type":"float","default":0.5,"min":0.2,"max":0.8},
+            "g":{"type":"float","default":0.5,"min":0.2,"max":0.8},
+            "b":{"type":"float","default":0.5,"min":0.2,"max":0.8}},
+          "passes":[{"inputs":{"inputTex":"inputTex"},"outputs":{"fragColor":"outputTex"}}]
+        }})json"));
+        const JsObject result = validate(JsObject(parse(lexTokens(u"search synth, user\nnoise().rgbprobe(#ff0000).write(o0)"))), custom);
+        check(result.value(u"diagnostics").toArray().isEmpty(), "RGB splats bypass numeric bounds without diagnostics");
+        const JsObject args = result.value(u"plans").toArray().at(0).toObject().value(u"chain").toArray().at(1).toObject().value(u"args").toObject();
+        check(args.value(u"r").toDouble() == 1 && args.value(u"g").toDouble() == 0 && args.value(u"b").toDouble() == 0,
+              "RGB splats retain source components beyond parameter bounds");
+        const JsObject overridden = validate(JsObject(parse(lexTokens(u"search synth, user\nlet c = rgbprobe(#ff0000)\nnoise().c(g: 1).write(o0)"))), custom);
+        const JsObject overriddenArgs = overridden.value(u"plans").toArray().at(0).toObject().value(u"chain").toArray().at(1).toObject().value(u"args").toObject();
+        check(overriddenArgs.value(u"r").toDouble() == 1 && overriddenArgs.value(u"g").toDouble() == 0.8 && overriddenArgs.value(u"b").toDouble() == 0,
+              "an explicit keyword clamps its own RGB slot while splatted slots retain source values");
     }
 
     if (g_failures == 0) {
