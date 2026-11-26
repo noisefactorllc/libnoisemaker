@@ -884,7 +884,7 @@ JsonObject Parser::parseSubchainCall() {
     node.insert(LangString(u"body"), body);
     node.insert(LangString(u"loc"), ast::loc(nameToken.line, nameToken.col));
     if (!argDiagnostics.isEmpty()) {
-        node.insert(LangString(u"subchainArgumentDiagnostics"), argDiagnostics);
+        node.define_hidden(LangString(u"subchainArgumentDiagnostics"), argDiagnostics);
     }
     return node;
 }

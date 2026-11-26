@@ -1112,6 +1112,8 @@ int main() {
             check(subchain.value(LangString(u"id")).isNull(), "subchain id is null");
             const JsonArray diags = subchain.value(LangString(u"subchainArgumentDiagnostics")).toArray();
             check(diags.size() == 1, "subchain has 1 arg diagnostic");
+            check(json::stringify(prog.native()).find("subchainArgumentDiagnostics") == std::string::npos,
+                  "subchain diagnostics remain accessible without entering the serialized AST");
             const JsonObject d0 = diags.at(0).toObject();
             check(d0.value(LangString(u"code")).toString() == LangString(u"P008"), "diag code is P008");
             check(d0.value(LangString(u"severity")).toString() == LangString(u"warning"), "P008 severity is warning");
