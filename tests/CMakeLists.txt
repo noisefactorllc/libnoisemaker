@@ -4,6 +4,12 @@ if(NM_BUILD_GPU)
   target_link_libraries(test_device PRIVATE noisemaker_gpu)
   add_test(NAME test_device COMMAND test_device)
 
+  add_executable(test_backend_pixels gpu/test_backend_pixels.cpp)
+  target_include_directories(test_backend_pixels PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries(test_backend_pixels PRIVATE noisemaker_dawn)
+  add_test(NAME test_backend_pixels COMMAND test_backend_pixels)
+  set_tests_properties(test_backend_pixels PROPERTIES TIMEOUT 60)
+
   # Inject a real device loss into the renderer's test build after a draw.
   file(READ "${PROJECT_SOURCE_DIR}/tools/nm-render/main.cpp" _nm_renderer)
   set(_nm_draw "pipeline.render(fixture.time);")

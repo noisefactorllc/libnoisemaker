@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "78aff2a5ee946bac680ed690f07448ca60d92e9c",
-  "version": "1.5.11",
+  "commit": "5596e69fd6e3b9014e9df0f8674e10e70c332e11",
+  "version": "1.5.17",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "ff7cb4aa0b8f2516159ea2b85e18c318b112c3c591beee51eb77aba1fa15f4d9",
@@ -137,8 +137,8 @@
     "effects/filter/wobble.js": "e24e69a630d9b0ba57727b36cbac7f49a1601ef59ea768b0318be8494959d983",
     "effects/filter/wormhole.js": "cad109ab362fada5d4b401a39c668e35b42c8ccb95421fa1ac26be22cef597ca",
     "effects/filter/zoomBlur.js": "a2c575d7cc63e6df597a1011f0b76452fbfb81cefbd557a172b5c0f9bed0cde7",
-    "effects/filter3d/flow3d.js": "16a80f4d09fd52df2544644ed7940e9dade22d6223e729ce0fe1ee3481295aa5",
-    "effects/filter3d/palette3d.js": "416a0a34e0f3ff3f2b013a7249e40950164cbf5ebed227cf9bbcb4e7a5821e55",
+    "effects/filter3d/flow3d.js": "7df9756495797a756661cf75a8b6a7f09ea9a1d5d4b3153de74c5f612f5b8dd8",
+    "effects/filter3d/palette3d.js": "fbe6ef585940fbf22e0d3180e3681ea2920c04c1d2eaffdbb28897a58b102010",
     "effects/manifest.json": "05c4d7b7744837ae90a3bb4c89e5403ff09448a74d9d7e824abb3d719ad3314e",
     "effects/mixer/alphaMask.js": "b12e2ae997455d72d3a470f27e23abd507e3424113774590154e0a1264cafc92",
     "effects/mixer/applyMode.js": "640b4b53a6db2559fac90ebe44cea81a7a150d0d65fcacd9eeb990cfb13032ea",

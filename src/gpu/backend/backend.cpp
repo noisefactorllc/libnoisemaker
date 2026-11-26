@@ -461,6 +461,10 @@ std::optional<BlendState> WebGPUBackend::resolveBlendState(const Value& blend) c
             if (!factor.is_string()) return {};
             JsString lower = asciiLower(factor.as_string());
             for (char16_t& c : lower) if (c == u'_') c = u'-';
+            if (lower == u"src-color") return u"src";
+            if (lower == u"dst-color") return u"dst";
+            if (lower == u"one-minus-src-color") return u"one-minus-src";
+            if (lower == u"one-minus-dst-color") return u"one-minus-dst";
             return lower;
         };
         const Array& factors = blend.as_array();
@@ -1262,9 +1266,10 @@ Value WebGPUBackend::resolveMeshVertexCount(const Value& pass, const FrameState&
         if (uniformValue.is_undefined()) uniformValue = jsv::member(state.globalUniforms, name);
         if (uniformValue.is_number() && uniformValue.as_number() > 0) return uniformValue;
     }
-    // count === 'auto' || count === 'input' || count <= 0
+    // count === 'auto' || count === 'screen' || count === 'input' || count <= 0
     const bool lessEqualZero = count.is_string() ? jsv::to_number(count) <= 0 : jsv::to_number(count) <= 0;
-    if (jsv::strict_equals(count, Value(u"auto")) || jsv::strict_equals(count, Value(u"input")) || lessEqualZero) {
+    if (jsv::strict_equals(count, Value(u"auto")) || jsv::strict_equals(count, Value(u"screen")) ||
+        jsv::strict_equals(count, Value(u"input")) || lessEqualZero) {
         const TextureRecord* refTex = nullptr;
         const Value inputs = jsv::member(pass, u"inputs");
         if (jsv::truthy(inputs)) {
