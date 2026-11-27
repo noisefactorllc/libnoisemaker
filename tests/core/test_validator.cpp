@@ -32,6 +32,8 @@
 #include <cstdio>
 #include <iterator>
 #include <stdexcept>
+#include <tuple>
+#include <vector>
 
 namespace {
 
@@ -242,6 +244,78 @@ int main() {
         check(pc.size() == 3 && pc.at(0).toDouble() == 0.5 && pc.at(1).toDouble() == 0.5 && pc.at(2).toDouble() == 0.5,
               "solid(0.1,0.2,0.3): a bare Number can't satisfy the single color-typed param, falls back to default [0.5,0.5,0.5]");
         check(anyDiagCode(positional, libnoisemaker::JsText(u"S002")), "S002 pushed for the out-of-type positional color arg");
+    }
+
+    // ==================================================================
+    // color vector constructors (reference 1.5.25, GAP-086): a color
+    // parameter preserves the components a vec3/vec4 constructor
+    // supplies, independently of the parameter's default length. A
+    // constructor with the wrong arity, or one carrying kwargs, takes
+    // the branches below and falls back to the default with S002. The
+    // mixed positional+kwarg constructor forms the reference suite also
+    // covers are excluded below: the experimental lang.mixedArguments
+    // feature never reaches the validator.
+    // ==================================================================
+    {
+        for (const auto& [src, stepIndex, expected] : std::initializer_list<std::tuple<const char*, int, std::vector<double>>>{
+            {"search synth\nsolid(color: vec3(0.3,0.2,0.25)).write(o0)\nrender(o0)\n", 0, {0.3, 0.2, 0.25}},
+            {"search synth\nsolid(color: vec4(0.3,0.2,0.25,0.4)).write(o0)\nrender(o0)\n", 0, {0.3, 0.2, 0.25, 0.4}},
+            {"search synth, filter\nsolid().tint(color: vec3(0.3,0.2,0.25)).write(o0)\nrender(o0)\n", 1, {0.3, 0.2, 0.25}},
+            {"search synth, filter\nsolid().tint(color: vec4(0.3,0.2,0.25,0.4)).write(o0)\nrender(o0)\n", 1, {0.3, 0.2, 0.25, 0.4}},
+        }) {
+            const libnoisemaker::JsObject out = validateSrc(libnoisemaker::JsText(src));
+            const libnoisemaker::JsArray c = args(out, 0, stepIndex)
+                                                 .value(libnoisemaker::JsText(u"color")).toArray();
+            const std::vector<double>& want = expected;
+            bool ok = std::ssize(c) == std::ssize(want);
+            for (std::size_t i = 0; ok && i < want.size(); ++i) ok = c.at(static_cast<int>(i)).toDouble() == want[i];
+            check(ok, "a color parameter preserves the components its vec3/vec4 constructor supplies");
+            check(diags(out).isEmpty(), "no diagnostics for a valid color vector constructor");
+        }
+
+        for (const char* bad : {
+                 "search synth\nsolid(color: vec2(0.3,0.2)).write(o0)\nrender(o0)\n",
+                 "search synth\nsolid(color: vec3(0.3,0.2)).write(o0)\nrender(o0)\n",
+                 "search synth\nsolid(color: vec3(0.3,0.2,0.25,0.4)).write(o0)\nrender(o0)\n",
+                 "search synth\nsolid(color: vec4(0.3,0.2,0.25)).write(o0)\nrender(o0)\n",
+                 "search synth\nsolid(color: vec4(0.3,0.2,0.25,0.4,1)).write(o0)\nrender(o0)\n",
+             }) {
+            const libnoisemaker::JsObject out = validateSrc(libnoisemaker::JsText(bad));
+            const libnoisemaker::JsArray c = args(out, 0, 0).value(libnoisemaker::JsText(u"color")).toArray();
+            check(std::ssize(c) == 3 && c.at(0).toDouble() == 0.5 && c.at(1).toDouble() == 0.5 && c.at(2).toDouble() == 0.5,
+                  "a malformed color constructor falls back to the parameter's default");
+            check(anyDiagCode(out, libnoisemaker::JsText(u"S002")), "S002 pushed for a malformed color constructor");
+        }
+
+        // tint's own default differs: [1,1,1].
+        const libnoisemaker::JsObject tintBad = validateSrc(
+            libnoisemaker::JsText(u"search synth, filter\nsolid().tint(color: vec3(0.3,0.2)).write(o0)\nrender(o0)\n"));
+        const libnoisemaker::JsArray tc = args(tintBad, 0, 1).value(libnoisemaker::JsText(u"color")).toArray();
+        check(std::ssize(tc) == 3 && tc.at(0).toDouble() == 1.0 && tc.at(1).toDouble() == 1.0 && tc.at(2).toDouble() == 1.0,
+              "tint's malformed color constructor falls back to tint's own default [1,1,1]");
+        check(anyDiagCode(tintBad, libnoisemaker::JsText(u"S002")), "S002 pushed for tint's malformed color constructor");
+
+        // The reference suite also covers the mixed positional+kwarg
+        // constructor forms. lang.mixedArguments is experimental, so the
+        // port keeps them out at the parse boundary: a mixed constructor
+        // call throws P007 before the validator runs.
+        for (const char* mixed : {
+                 "search synth\nsolid(color: vec3(0.3,0.2,0.25, bogus: 1)).write(o0)\nrender(o0)\n",
+                 "search synth\nsolid(color: vec4(0.3,0.2,0.25,0.4, bogus: 1)).write(o0)\nrender(o0)\n",
+                 "search synth, filter\nsolid().tint(color: vec3(0.3,0.2,0.25, bogus: 1)).write(o0)\nrender(o0)\n",
+             }) {
+            bool caught = false;
+            try {
+                validateSrc(libnoisemaker::JsText(mixed));
+            } catch (const libnoisemaker::DslSyntaxError& err) {
+                caught = true;
+                const libnoisemaker::JsonObject d =
+                    libnoisemaker::JsonValue(err.diagnostic()).toObject();
+                check(d.value(libnoisemaker::JsText(u"code")).toString() == libnoisemaker::JsText(u"P007"),
+                      "a mixed constructor call is rejected with P007, not a validator diagnostic");
+            }
+            check(caught, "a mixed constructor call never reaches the validator");
+        }
     }
 
     // ==================================================================

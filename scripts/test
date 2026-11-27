@@ -77,7 +77,11 @@ if $run_core; then
   fi
 fi
 if $run_tools; then
-  "$python" tools/run_gates.py --run "$python" -m unittest discover -s tests/tools -t .
+  # Under the gate shard split the shards together run every test once, so
+  # only the first shard runs the tool tests.
+  if [[ -z "${NM_SHARD_COUNT:-}" || "${NM_SHARD_INDEX:-0}" == "0" ]]; then
+    "$python" tools/run_gates.py --run "$python" -m unittest discover -s tests/tools -t .
+  fi
 fi
 if $run_gates; then
   NM_BUILD_DIR="$build_dir" NM_PYTHON="$python" scripts/gates

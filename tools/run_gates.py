@@ -17,7 +17,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # Fixture partitions keep each fixture child inside the per-child bound even
 # on slow runners: under full-plan load a child runs several times slower
 # than standalone, so the split must be fine enough to keep that margin.
-PARTITIONS = 64
+# 128 keeps every fixture child near 10 s standalone and spreads the plan
+# rows finely enough that one 8-shard slice of the plan fits a 300 s
+# invocation on a one-worker runner.
+PARTITIONS = 128
 
 
 def effective_cpus():
@@ -294,6 +297,11 @@ def main():
                         default='' if os.environ.get('NM_GATE_FRESH') else str(ROOT / '.cache' / 'gates'))
     parser.add_argument('--run', nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if os.environ.get('NM_SHARD_COUNT') and os.environ.get('NM_SHARD_INDEX') and args.jobs < 2:
+        # A shard slice holds an eighth of the full plan, so the quota-sized
+        # pool can take a second worker without the full-plan throttle
+        # stalls the quota sizing guards against.
+        args.jobs = 2
     if not math.isfinite(args.timeout_seconds) or not 0 < args.timeout_seconds <= 300:
         parser.error('timeout must be positive and at most 300 seconds')
     if args.run is not None:

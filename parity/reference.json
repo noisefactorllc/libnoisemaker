@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "5596e69fd6e3b9014e9df0f8674e10e70c332e11",
-  "version": "1.5.17",
+  "commit": "688794aca5998d9573afa5601c2b9b023c896007",
+  "version": "1.5.25",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "ff7cb4aa0b8f2516159ea2b85e18c318b112c3c591beee51eb77aba1fa15f4d9",
