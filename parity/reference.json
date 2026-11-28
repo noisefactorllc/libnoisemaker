@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/noisefactorllc/noisemaker",
-  "commit": "688794aca5998d9573afa5601c2b9b023c896007",
-  "version": "1.5.25",
+  "commit": "f4a1382a1dc863bebe5a3204acfdec425a19c983",
+  "version": "1.5.26",
   "cdn": "https://shaders.noisedeck.app",
   "files": {
     "effects/classicNoisedeck/bitEffects.js": "ff7cb4aa0b8f2516159ea2b85e18c318b112c3c591beee51eb77aba1fa15f4d9",
@@ -120,7 +120,7 @@
     "effects/filter/temporalAberration.js": "4678b3cf077b5ccea5bf91455b2e731eb339816559acca89fd4ba424632dade4",
     "effects/filter/tetraColorArray.js": "7a7c1b36192d567448a36a0281b0c35e38ba2c0b08c397afc2d6e59599476700",
     "effects/filter/tetraCosine.js": "f8ffb7e4d522b11295a8045ccdd78c7d1f33aa2d912b09d6b6b0924f187d9950",
-    "effects/filter/text.js": "803fbe5422b65c0696553c9349ba6588be4e190968b6058a3e385264dfbb418d",
+    "effects/filter/text.js": "f705615462dab19ccb29cb61d6d8b9b69c3035313aac408083e129a6a030682c",
     "effects/filter/texture.js": "31bec3dd43b9ef2d8f9c5b515a113c12e24f7137878c7656cb3677d1fa0c4ca3",
     "effects/filter/threshold.js": "30c43e6b4e5494ebaccf3b315208f3ba4be1c4bdcb782636c299f179f9fcaac6",
     "effects/filter/tile.js": "48a0b5ba386511c23e9877c01075d18666928cb7d8c0bc6268ea561de7bd35ce",

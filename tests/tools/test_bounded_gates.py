@@ -190,6 +190,28 @@ class BoundedGateTests(unittest.TestCase):
                    'parity/check_audio_state.mjs', 'parity/check_obj_parser.mjs'],
                 ordinary_commands)
 
+    def test_shard_slices_cover_the_plan_exactly_once_and_stay_deterministic(self):
+        import os
+        runner = self.runner()
+        with tempfile.TemporaryDirectory() as directory:
+            plan = runner.gate_plan(ROOT, pathlib.Path(directory))
+            serial = [id(row) for row in plan if row.get('serial')]
+            rest = [id(row) for row in plan if not row.get('serial')]
+            seen = []
+            for index in range(8):
+                os.environ['NM_SHARD_COUNT'] = '8'
+                os.environ['NM_SHARD_INDEX'] = str(index)
+                try:
+                    sliced = runner.sharded_plan(list(plan))
+                    again = runner.sharded_plan(list(plan))
+                finally:
+                    os.environ.pop('NM_SHARD_COUNT')
+                    os.environ.pop('NM_SHARD_INDEX')
+                self.assertEqual([id(row) for row in sliced], [id(row) for row in again])
+                self.assertEqual(serial, [id(row) for row in sliced[:len(serial)]])
+                seen.extend(id(row) for row in sliced[len(serial):])
+            self.assertEqual(sorted(rest), sorted(seen))
+
     def test_test_entrypoint_bounds_unit_suites_without_running_real_tests(self):
         import os
         import shutil

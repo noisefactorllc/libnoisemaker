@@ -17,10 +17,41 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # Fixture partitions keep each fixture child inside the per-child bound even
 # on slow runners: under full-plan load a child runs several times slower
 # than standalone, so the split must be fine enough to keep that margin.
-# 128 keeps every fixture child near 10 s standalone and spreads the plan
-# rows finely enough that one 8-shard slice of the plan fits a 300 s
-# invocation on a one-worker runner.
-PARTITIONS = 128
+# 32 keeps the largest fixture child near 42 s standalone, which stays
+# inside the 300 s bound even at a several-fold load slowdown, while
+# keeping the fixed per-child overhead that eight shard slices must share
+# small enough for the slowest slice to fit its invocation budget.
+PARTITIONS = 32
+
+# Balance hints: rough standalone seconds per plan row. They spread shard
+# slices evenly (see sharded_plan); a stale hint only shifts rows between
+# shards and never changes which rows run.
+GATE_WEIGHTS = {
+    'tools/catalog/check-catalog.mjs': 3,
+    'tools/generate-kit-compat.mjs': 2,
+    'parity/check_func_bodies_differential.mjs': 4,
+    'parity/check_frontend.mjs': {
+        'tokens': 2, 'ast': 3, 'validated': 11, 'expanded': 29,
+        'graph': 25, 'graph-normalized': 26,
+    },
+    'parity/check_wgsl.mjs': 7,
+    'parity/check_uniforms.mjs': 5,
+    'parity/check_backend.mjs': 21,
+    'parity/check_js_math.mjs': 6,
+    'parity/check_pipeline.mjs': 99,
+    'parity/check_registry.mjs': 3,
+    'parity/check_midi_state.mjs': 3,
+    'parity/check_audio_state.mjs': 2,
+    'parity/check_obj_parser.mjs': 11,
+}
+SUITE_WEIGHTS = {
+    'edge_transform.json': 15, 'edge_unparser.json': 16,
+    'sync_stable_1_5_11.json': 14, 'fixtures_format_value.json': 84,
+    'reference-tests.json': 17, 'test_transform.json': 9,
+}
+DEFAULT_SUITE_WEIGHT = 4
+# Fixture child cost per group: fixed startup plus seconds per fixture file.
+FIXTURE_WEIGHTS = {'dsl-tools': (4.0, 0.5), 'program-state': (5.0, 0.2)}
 
 
 def effective_cpus():
@@ -268,6 +299,26 @@ def run_plan(plan, jobs, seconds, receipts, head):
         return failure
 
 
+def row_weight(row):
+    """Balance hint in rough standalone seconds; see GATE_WEIGHTS."""
+    if row.get('partition') is not None:
+        fixed, per_file = FIXTURE_WEIGHTS[row['group']]
+        return fixed + per_file * len(row['fixture_ids'])
+    command = row['command']
+    if command[0] == 'tools/check-readme-lock.py':
+        return 2
+    weight = GATE_WEIGHTS.get(command[0], 4)
+    if command[0] == 'parity/check_frontend.mjs':
+        stage = command[1]
+        weight = weight.get(stage, 25)
+        if '--isolated' in command:
+            # Isolated stages run half the programs and cost near 0.6x.
+            weight *= 0.6
+    if row.get('group') in ('dsl-tools', 'program-state'):
+        return SUITE_WEIGHTS.get(row['suite'].name, DEFAULT_SUITE_WEIGHT)
+    return weight
+
+
 def sharded_plan(plan):
     """Split the plan across parallel shard invocations.
 
@@ -275,6 +326,10 @@ def sharded_plan(plan):
     the shards cover every plan row exactly once. When either variable is
     unset the full plan runs unchanged. Serial rows run in every shard so
     each shard builds its offline catalog cache before its pool starts.
+
+    Rows pack longest-first onto the currently lightest shard, so the
+    slowest runner's per-shard budget holds for every shard, not just on
+    average.
     """
     count = os.environ.get('NM_SHARD_COUNT', '')
     index = os.environ.get('NM_SHARD_INDEX', '')
@@ -284,8 +339,16 @@ def sharded_plan(plan):
     if not 2 <= count <= 8 or not 0 <= index < count:
         raise ValueError('shard index must fall inside a shard count of 2 to 8')
     serial = [row for row in plan if row.get('serial')]
-    rest = [row for row in plan if not row.get('serial')]
-    return serial + rest[index::count]
+    rest = list(enumerate(row for row in plan if not row.get('serial')))
+    shards = [[] for _ in range(count)]
+    loads = [0.0] * count
+    for original, row in sorted(rest, key=lambda item: (-row_weight(item[1]), item[0])):
+        target = min(range(count), key=lambda shard: (loads[shard], shard))
+        shards[target].append((original, row))
+        loads[target] += row_weight(row)
+    # Plan order inside each shard keeps receipts and logs stable.
+    packed = [row for shard in shards for _, row in sorted(shard)]
+    return serial + packed[index::count]
 
 
 def main():
