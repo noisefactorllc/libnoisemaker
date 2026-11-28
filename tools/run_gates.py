@@ -347,8 +347,7 @@ def sharded_plan(plan):
         shards[target].append((original, row))
         loads[target] += row_weight(row)
     # Plan order inside each shard keeps receipts and logs stable.
-    packed = [row for shard in shards for _, row in sorted(shard)]
-    return serial + packed[index::count]
+    return serial + [row for _, row in sorted(shards[index])]
 
 
 def main():

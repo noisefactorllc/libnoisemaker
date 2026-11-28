@@ -212,6 +212,43 @@ class BoundedGateTests(unittest.TestCase):
                 seen.extend(id(row) for row in sliced[len(serial):])
             self.assertEqual(sorted(rest), sorted(seen))
 
+    def test_shard_slices_stay_balanced(self):
+        # The returned slice must be the bin the longest-first packing
+        # assigned to that index; re-slicing a flattened bin list breaks the
+        # balance the packing computed. A stale weight hint only shifts rows
+        # between shards, so the tests here check the packing contract, not
+        # the hints.
+        import os
+        runner = self.runner()
+        with tempfile.TemporaryDirectory() as directory:
+            plan = runner.gate_plan(ROOT, pathlib.Path(directory))
+            serial = [row for row in plan if row.get('serial')]
+            rest = [row for row in plan if not row.get('serial')]
+            bins = [[] for _ in range(8)]
+            loads = [0.0] * 8
+            for _, row in sorted(enumerate(rest),
+                                 key=lambda item: (-runner.row_weight(item[1]), item[0])):
+                target = min(range(8), key=lambda shard: (loads[shard], shard))
+                bins[target].append(row)
+                loads[target] += runner.row_weight(row)
+            for index in range(8):
+                os.environ['NM_SHARD_COUNT'] = '8'
+                os.environ['NM_SHARD_INDEX'] = str(index)
+                try:
+                    sliced = runner.sharded_plan(list(plan))
+                finally:
+                    os.environ.pop('NM_SHARD_COUNT')
+                    os.environ.pop('NM_SHARD_INDEX')
+                self.assertEqual([id(row) for row in serial],
+                                 [id(row) for row in sliced[:len(serial)]])
+                # The shard runs the rows in plan order; the packing's
+                # append order inside the bin is irrelevant.
+                self.assertEqual(sorted(id(row) for row in bins[index]),
+                                 sorted(id(row) for row in sliced[len(serial):]))
+            self.assertLessEqual(max(loads) - min(loads),
+                                 max(runner.row_weight(row) for row in rest))
+            self.assertLess(max(loads), 300)
+
     def test_test_entrypoint_bounds_unit_suites_without_running_real_tests(self):
         import os
         import shutil
