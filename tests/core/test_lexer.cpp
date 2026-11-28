@@ -442,15 +442,26 @@ int main() {
               "token JSON round-trip preserves position");
     }
     {
-        const auto inherited = libnoisemaker::lexTokens(u"constructor __proto__ toString");
-        const libnoisemaker::Value functionToken = libnoisemaker::toJson(inherited[0]);
-        const libnoisemaker::Value objectToken = libnoisemaker::toJson(inherited[1]);
-        check(!functionToken.as_object().has(u"type")
-                  && objectToken.as_object().find(u"type")->is_object(),
-              "inherited object-prototype token types preserve JSON omission/object shape");
-        check(inherited[0].type == u"function Object() { [native code] }"
-                  && inherited[1].type == u"[object Object]",
-              "inherited token types preserve JS error-message coercion");
+        // The reference looks keyword candidates up with Object.hasOwn
+        // (upstream e9b37133), so names inherited from Object.prototype are
+        // plain identifiers, not native-function or object tokens.
+        const auto inherited = libnoisemaker::lexTokens(
+            u"constructor toString valueOf hasOwnProperty __proto__");
+        bool allIdent = inherited.size() == 6;
+        for (int i = 0; allIdent && i < 5; ++i) {
+            allIdent = inherited[static_cast<size_t>(i)].type == libnoisemaker::TokenType::IDENT;
+        }
+        check(allIdent, "Object.prototype-inherited names lex as IDENT");
+        const auto member = libnoisemaker::lexTokens(u"oscKind.toString");
+        check(member.size() == 4 && member[0].type == libnoisemaker::TokenType::IDENT
+                  && member[1].type == libnoisemaker::TokenType::DOT
+                  && member[2].type == libnoisemaker::TokenType::IDENT
+                  && member[3].type == libnoisemaker::TokenType::EOF_,
+              "a prototype-property name lexes as a member segment");
+        const libnoisemaker::Value tokenJson = libnoisemaker::toJson(inherited[0]);
+        check(tokenJson.as_object().find(u"type")->is_string()
+                  && tokenJson.as_object().find(u"type")->as_string() == u"IDENT",
+              "an inherited-name token serializes with a string type");
     }
     if (g_failures == 0) {
         std::printf("ALL PASS (test_lexer)\n");

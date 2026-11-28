@@ -646,6 +646,27 @@ int main() {
     }
 
     // ==================================================================
+    // Upstream e9b37133: Object.prototype-inherited names lex as plain
+    // identifiers, so they bind as let variables and reference like any
+    // other name (verified against the oracle).
+    // ==================================================================
+    {
+        const libnoisemaker::JsObject bound = validateSrc(libnoisemaker::JsText(u"search synth\nlet constructor = 2\nnoise(scaleX: constructor).write(o0)\nrender(o0)\n"));
+        const libnoisemaker::JsObject ref = args(bound, 0, 0).value(libnoisemaker::JsText(u"scaleX")).toObject();
+        check(diags(bound).isEmpty(), "let constructor = 2 compiles without diagnostics");
+        check(ref.value(libnoisemaker::JsText(u"_varRef")).toString() == libnoisemaker::JsText(u"constructor") && ref.value(libnoisemaker::JsText(u"value")).toDouble() == 2.0,
+              "let constructor = 2; noise(scaleX: constructor) -> {_varRef:'constructor', value:2}");
+
+        const libnoisemaker::JsObject unassigned = validateSrc(libnoisemaker::JsText(u"search synth\nnoise(scaleX: constructor).write(o0)\nrender(o0)\n"));
+        bool foundS003 = false;
+        for (const auto& d : diags(unassigned)) {
+            foundS003 = d.toObject().value(libnoisemaker::JsText(u"code")).toString() == libnoisemaker::JsText(u"S003")
+                && d.toObject().value(libnoisemaker::JsText(u"message")).toString() == libnoisemaker::JsText(u"Variable used before assignment: 'constructor'");
+        }
+        check(foundS003, "noise(scaleX: constructor) without a let binding reports S003");
+    }
+
+    // ==================================================================
     // Nested automation descriptors: numeric fields may themselves be
     // oscillator/MIDI/audio sources; enum/string selector fields may not.
     // ==================================================================

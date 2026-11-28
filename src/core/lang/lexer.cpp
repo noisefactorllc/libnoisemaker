@@ -454,23 +454,13 @@ std::vector<Token> lexTokens(const JsString& source) {
             while (j < n && (isLetter(src.at(j)) || isDigit(src.at(j)) || src.at(j) == u'_')) j++;
             const LangString lexeme = src.mid(i, j - i);
             const auto it = keywords().find(lexeme);
+            // The reference looks the lexeme up with Object.hasOwn, so names
+            // inherited from Object.prototype (constructor, toString,
+            // __proto__, ...) lex as plain identifiers (upstream e9b37133).
             if (it != keywords().end()) {
                 add(it->second, lexeme, startLine, startCol, j);
-            } else if (lexeme == LangString(u"__proto__")) {
-                add(LangString(u"[object Object]"), lexeme, startLine, startCol, j);
-                tokens.back().nonStringType = Token::NonStringType::Object;
             } else {
-                static const std::unordered_set<JsString> inheritedFunctions = {
-                    u"constructor", u"toString", u"valueOf", u"hasOwnProperty", u"isPrototypeOf",
-                    u"propertyIsEnumerable", u"toLocaleString", u"__defineGetter__", u"__defineSetter__",
-                    u"__lookupGetter__", u"__lookupSetter__"};
-                if (inheritedFunctions.contains(lexeme)) {
-                    const JsString name = lexeme == LangString(u"constructor") ? JsString(u"Object") : JsString(lexeme);
-                    add(LangString(u"function ") + name + u"() { [native code] }", lexeme, startLine, startCol, j);
-                    tokens.back().nonStringType = Token::NonStringType::Function;
-                } else {
-                    add(TokenType::IDENT, lexeme, startLine, startCol, j);
-                }
+                add(TokenType::IDENT, lexeme, startLine, startCol, j);
             }
             col += j - i;
             i = j;

@@ -1259,12 +1259,18 @@ int main() {
               "native parse API returns a Value AST with one plan");
     }
     {
-        bool matched = false;
-        try { libnoisemaker::parse(libnoisemaker::lexTokens(u"search synth\nnoise(constructor)")); }
-        catch (const libnoisemaker::DslSyntaxError& err) {
-            matched = err.message() == u"Unexpected token function Object() { [native code] } at line 2 col 7";
+        // Upstream e9b37133: Object.prototype-inherited names lex as plain
+        // identifiers, so `constructor` is a normal (unassigned) variable
+        // reference here, not a native-function token that breaks parsing.
+        bool parsed = false;
+        try {
+            const libnoisemaker::Value native = libnoisemaker::parse(libnoisemaker::lexTokens(u"search synth\nnoise(constructor).write(o0)\nrender(o0)\n"));
+            const libnoisemaker::Value* plans = native.is_object() ? native.as_object().find(u"plans") : nullptr;
+            parsed = plans && plans->is_array() && plans->as_array().size() == 1;
+        } catch (const libnoisemaker::DslSyntaxError&) {
+            parsed = false;
         }
-        check(matched, "inherited constructor token preserves JS SyntaxError text");
+        check(parsed, "inherited constructor name parses as a normal identifier");
     }
     if (g_failures == 0) {
         std::printf("ALL PASS (test_parser)\n");
